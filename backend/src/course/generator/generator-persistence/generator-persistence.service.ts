@@ -11,6 +11,8 @@ import { AnalysisResponseDto } from '../dto/analysis-response.dto';
 import { ArchitectureResponseDto } from '../dto/architecture-response.dto';
 import { CourseContextDto } from '../dto/course-context.dto';
 import { LessonContextDto } from '../dto/lesson-context.dto';
+import { LessonContentContextDto } from '../dto/lesson-content-context.dto';
+import { LessonContentResponseDto } from '../dto/lesson-content-response.dto';
 import { LessonPlanType, LessonResponseDto } from '../dto/lesson-response.dto';
 
 @Injectable()
@@ -41,7 +43,9 @@ export class GeneratorPersistenceService {
         detectedCurrentLevel: this.toLevelOrNull(analysis.detectedCurrentLevel),
         detectedTargetLevel: this.toLevelOrNull(analysis.detectedTargetLevel),
         detectedGoal: analysis.detectedGoal,
-        detectedLanguage: this.toCourseLanguageOrNull(analysis.detectedLanguage),
+        detectedLanguage: this.toCourseLanguageOrNull(
+          analysis.detectedLanguage,
+        ),
         clarificationQuestions: this.toJson(analysis.clarificationQuestions),
         rawAnalysisOutput: this.parseJson(rawAnalysisOutput),
       },
@@ -212,6 +216,70 @@ export class GeneratorPersistenceService {
         where: { id: module.id },
         include: { lessons: { orderBy: { lessonOrder: 'asc' } } },
       });
+    });
+  }
+
+  /**
+   * Persists generated Markdown content for a single lesson and updates course status.
+   *
+   * @param payload - Context used to generate the lesson content.
+   * @param lessonContent - Validated lesson content returned by the model.
+   * @param rawLessonContentOutput - Raw JSON string returned by the model.
+   * @returns The updated lesson.
+   */
+  public async persistLessonContent(
+    payload: LessonContentContextDto,
+    lessonContent: LessonContentResponseDto,
+    rawLessonContentOutput: string,
+  ) {
+    if (payload.lessonToGenerate.lessonId !== lessonContent.lessonId) {
+      throw new BadRequestException('Generated lesson id does not match input');
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      const lesson = await tx.lesson.findUnique({
+        where: { id: lessonContent.lessonId },
+        include: { module: true },
+      });
+
+      if (!lesson) {
+        throw new BadRequestException('Lesson not found');
+      }
+
+      if (lesson.module.courseId !== payload.courseId) {
+        throw new BadRequestException('Lesson does not belong to this course');
+      }
+
+      const updatedLesson = await tx.lesson.update({
+        where: { id: lessonContent.lessonId },
+        data: {
+          contentMarkdown: lessonContent.contentMarkdown,
+          rawContentOutput: this.parseJson(rawLessonContentOutput),
+        },
+      });
+
+      const lessons = await tx.lesson.findMany({
+        where: {
+          module: { courseId: payload.courseId },
+        },
+        select: {
+          contentMarkdown: true,
+        },
+      });
+      const areAllLessonContentsGenerated = lessons.every((courseLesson) =>
+        Boolean(courseLesson.contentMarkdown),
+      );
+
+      await tx.course.update({
+        where: { id: payload.courseId },
+        data: {
+          status: areAllLessonContentsGenerated
+            ? CourseGenerationStatus.COMPLETED
+            : CourseGenerationStatus.CONTENT_GENERATING,
+        },
+      });
+
+      return updatedLesson;
     });
   }
 

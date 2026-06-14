@@ -20,3 +20,4 @@
 - [x] Analyze DTO and Prisma schema alignment for persistence at each generation step and document recommendations in the vault.
 - [x] Scaffold a minimal Go backend in `backend-go` with environment loading, prompt loading, and HTTP health endpoints.
 - [x] Finalize the NestJS generation pipeline with Prisma persistence, aligned DTO/schema models, Swagger route documentation, CRUD endpoints, and README updates.
+- [x] Add the lesson content generation step with prompt, DTO validation, Prisma persistence, API documentation, migration, and tests.

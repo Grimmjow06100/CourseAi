@@ -7,6 +7,8 @@ import { LessonContextDto } from './dto/lesson-context.dto';
 import { AnalysisGenerationResultDto } from './dto/analysis-generation-result.dto';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ArchitectureGenerationResultDto } from './dto/architecture-generation-result.dto';
+import { LessonContentContextDto } from './dto/lesson-content-context.dto';
+import { LessonContentResponseDto } from './dto/lesson-content-response.dto';
 
 @ApiTags('generation')
 @Controller('generator')
@@ -73,6 +75,28 @@ export class GeneratorController {
     try {
       const lessons = await this.generatorService.promptLessons(lessonContext);
       return lessons;
+    } catch (error) {
+      console.error(error);
+      throw error;
+    }
+  }
+
+  @Post('/lesson-content')
+  @ApiOperation({
+    summary: 'Generate and persist the full Markdown content for one lesson',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Lesson content generated and persisted.',
+    type: LessonContentResponseDto,
+  })
+  public async courseLessonContent(
+    @Body() lessonContentContext: LessonContentContextDto,
+  ): Promise<LessonContentResponseDto> {
+    try {
+      const lessonContent =
+        await this.generatorService.promptLessonContent(lessonContentContext);
+      return lessonContent;
     } catch (error) {
       console.error(error);
       throw error;

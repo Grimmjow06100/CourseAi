@@ -10,12 +10,15 @@ import { LessonResponseDto } from './dto/lesson-response.dto';
 import { GeneratorPersistenceService } from './generator-persistence/generator-persistence.service';
 import { AnalysisGenerationResultDto } from './dto/analysis-generation-result.dto';
 import { ArchitectureGenerationResultDto } from './dto/architecture-generation-result.dto';
+import { LessonContentContextDto } from './dto/lesson-content-context.dto';
+import { LessonContentResponseDto } from './dto/lesson-content-response.dto';
 @Injectable()
 export class GeneratorService implements OnModuleInit {
   public readonly prompts = new Map<string, string>();
   private readonly ANALYSIS: string = 'analysis';
   private readonly ARCHITECTURE: string = 'architecture';
   private readonly LESSONS: string = 'lessons';
+  private readonly LESSON_CONTENT: string = 'lesson-content';
 
   constructor(
     @Inject('OPEN_AI_SERVICE') private openai: OpenAI,
@@ -34,7 +37,12 @@ export class GeneratorService implements OnModuleInit {
       markdownPromptFileNames.map(async (fileName) => {
         const filePath = join(promptsDirectoryPath, fileName);
         const fileContent = await readFile(filePath, 'utf8');
-        const promptNames = [this.ANALYSIS, this.ARCHITECTURE, this.LESSONS];
+        const promptNames = [
+          this.ANALYSIS,
+          this.ARCHITECTURE,
+          this.LESSONS,
+          this.LESSON_CONTENT,
+        ];
 
         const name = fileName.split('.')[0];
         if (promptNames.includes(name)) {
@@ -172,6 +180,54 @@ export class GeneratorService implements OnModuleInit {
       await this.persistenceService.persistLessons(payload, lessonPlan, result);
 
       return lessonPlan;
+    } catch (error) {
+      console.error('Erreur OpenAI:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generates and persists the full Markdown content for one lesson.
+   *
+   * @param payload - Course, module, and lesson context for content generation.
+   * @returns A validated lesson content response.
+   */
+  public async promptLessonContent(
+    payload: LessonContentContextDto,
+  ): Promise<LessonContentResponseDto> {
+    try {
+      const content = this.prompts.get(this.LESSON_CONTENT);
+      if (!content) throw new Error('erreur de récuperation du prompt system');
+
+      const response = await this.openai.chat.completions.create({
+        model: 'gpt-5.4',
+        messages: [
+          {
+            role: 'system',
+            content,
+          },
+          {
+            role: 'user',
+            content: JSON.stringify(payload),
+          },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.2,
+      });
+
+      const result = response.choices[0].message.content;
+      if (!result) throw new Error("erreur aucune réponse de l'api");
+
+      const lessonContent =
+        await this.parserService.parseAndValidateLessonContentResponse(result);
+
+      await this.persistenceService.persistLessonContent(
+        payload,
+        lessonContent,
+        result,
+      );
+
+      return lessonContent;
     } catch (error) {
       console.error('Erreur OpenAI:', error);
       throw error;

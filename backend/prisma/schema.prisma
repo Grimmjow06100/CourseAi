@@ -148,6 +148,7 @@ model Lesson {
   requiresDiagram          Boolean    @default(false) @map("requires_diagram")
   technicalKeywords        Json       @default("[]") @map("technical_keywords")
   contentMarkdown          String?    @map("content_markdown")
+  rawContentOutput         Json?      @map("raw_content_output")
   createdAt                DateTime   @default(now()) @map("created_at")
   updatedAt                DateTime   @updatedAt @map("updated_at")
 

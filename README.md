@@ -7,6 +7,7 @@ The current backend is a NestJS API that can:
 - analyze a raw user learning request;
 - generate a course architecture;
 - generate lesson plans for each module;
+- generate full Markdown content for each lesson;
 - persist generation outputs into PostgreSQL;
 - expose CRUD routes for courses, modules, and lessons.
 
@@ -97,6 +98,20 @@ Persists:
 - raw lessons plan output on the related module
 - course generation status
 
+### 4. Generate Lesson Content
+
+```http
+POST /course/generator/lesson-content
+```
+
+Requires the `courseId`, module context, and the persisted `lessonId`.
+
+Persists:
+
+- `Lesson.contentMarkdown`
+- raw lesson content output
+- course generation status
+
 ## CRUD Routes
 
 Courses:
@@ -133,4 +148,5 @@ DELETE /course/lessons/:lessonId
 cd backend
 npm run build
 npx eslint "src/**/*.ts"
+npm test
 ```
