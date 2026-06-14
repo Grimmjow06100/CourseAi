@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GeneratorService } from './generator.service';
 import { GeneratorParserService } from './generator-parser/generator-parser.service';
 import { GeneratorPersistenceService } from './generator-persistence/generator-persistence.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('GeneratorService', () => {
   let service: GeneratorService;
@@ -21,6 +22,16 @@ describe('GeneratorService', () => {
         {
           provide: GeneratorPersistenceService,
           useValue: {},
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string) => {
+              if (key === 'AI_MODEL') return 'gpt-5.4';
+              if (key === 'OPENAI_MAX_RETRIES') return 2;
+              return undefined;
+            }),
+          },
         },
       ],
     }).compile();

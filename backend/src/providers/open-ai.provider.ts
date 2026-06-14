@@ -1,6 +1,6 @@
 import { Provider } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config/dist/config.service';
-import { OpenAI } from 'openai/client.mjs';
+import { ConfigService } from '@nestjs/config';
+import OpenAI from 'openai';
 
 export const OpenAiService: Provider = {
   provide: 'OPEN_AI_SERVICE',

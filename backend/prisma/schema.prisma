@@ -29,6 +29,15 @@ enum CourseGenerationStatus {
   @@map("course_generation_status")
 }
 
+enum GenerationPipelineStatus {
+  QUEUED    @map("queued")
+  RUNNING   @map("running")
+  COMPLETED @map("completed")
+  FAILED    @map("failed")
+
+  @@map("generation_pipeline_status")
+}
+
 enum CourseLanguage {
   FR @map("fr")
   EN @map("en")
@@ -56,24 +65,31 @@ enum Level {
 }
 
 model GenerationRequest {
-  id                     String          @id @default(uuid()) @db.Uuid
-  initialUserPrompt      String          @map("initial_user_prompt")
-  isOutOfScope           Boolean         @default(false) @map("is_out_of_scope")
-  errorMessage           String?         @map("error_message")
-  warningMessage         String?         @map("warning_message")
-  suggestedTitle         String?         @map("suggested_title")
-  shortSynopsis          String?         @map("short_synopsis")
-  detectedCurrentLevel   Level?          @map("detected_current_level")
-  detectedTargetLevel    Level?          @map("detected_target_level")
-  detectedGoal           String?         @map("detected_goal")
-  detectedLanguage       CourseLanguage? @map("detected_language")
-  clarificationQuestions Json            @default("[]") @map("clarification_questions")
-  rawAnalysisOutput      Json?           @map("raw_analysis_output")
-  createdAt              DateTime        @default(now()) @map("created_at")
-  updatedAt              DateTime        @updatedAt @map("updated_at")
+  id                     String                   @id @default(uuid()) @db.Uuid
+  initialUserPrompt      String                   @map("initial_user_prompt")
+  pipelineStatus         GenerationPipelineStatus @default(QUEUED) @map("pipeline_status")
+  currentStep            String?                  @map("current_step")
+  progressPercent        Int                      @default(0) @map("progress_percent")
+  failureMessage         String?                  @map("failure_message")
+  startedAt              DateTime?                @map("started_at")
+  completedAt            DateTime?                @map("completed_at")
+  isOutOfScope           Boolean                  @default(false) @map("is_out_of_scope")
+  errorMessage           String?                  @map("error_message")
+  warningMessage         String?                  @map("warning_message")
+  suggestedTitle         String?                  @map("suggested_title")
+  shortSynopsis          String?                  @map("short_synopsis")
+  detectedCurrentLevel   Level?                   @map("detected_current_level")
+  detectedTargetLevel    Level?                   @map("detected_target_level")
+  detectedGoal           String?                  @map("detected_goal")
+  detectedLanguage       CourseLanguage?          @map("detected_language")
+  clarificationQuestions Json                     @default("[]") @map("clarification_questions")
+  rawAnalysisOutput      Json?                    @map("raw_analysis_output")
+  createdAt              DateTime                 @default(now()) @map("created_at")
+  updatedAt              DateTime                 @updatedAt @map("updated_at")
 
   course Course?
 
+  @@index([pipelineStatus], map: "generation_requests_pipeline_status_idx")
   @@map("generation_requests")
 }
 

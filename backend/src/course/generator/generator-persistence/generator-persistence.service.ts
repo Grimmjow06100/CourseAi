@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   CourseGenerationStatus,
   CourseLanguage,
+  GenerationPipelineStatus,
   LessonType,
   Level,
   Prisma,
@@ -14,10 +19,220 @@ import { LessonContextDto } from '../dto/lesson-context.dto';
 import { LessonContentContextDto } from '../dto/lesson-content-context.dto';
 import { LessonContentResponseDto } from '../dto/lesson-content-response.dto';
 import { LessonPlanType, LessonResponseDto } from '../dto/lesson-response.dto';
+import { GenerationStatusResponseDto } from '../dto/generation-status-response.dto';
+import { GenerationResultResponseDto } from '../dto/generation-result-response.dto';
 
 @Injectable()
 export class GeneratorPersistenceService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Creates the root generation request used as the asynchronous pipeline job.
+   *
+   * @param initialUserPrompt - Raw prompt entered by the user.
+   * @returns The persisted generation request id.
+   */
+  public async createQueuedGenerationRequest(
+    initialUserPrompt: string,
+  ): Promise<string> {
+    const request = await this.prisma.generationRequest.create({
+      data: {
+        initialUserPrompt,
+        pipelineStatus: GenerationPipelineStatus.QUEUED,
+        currentStep: 'queued',
+        progressPercent: 0,
+        clarificationQuestions: [],
+      },
+    });
+
+    return request.id;
+  }
+
+  /**
+   * Updates generation job progress in a single place so every pipeline phase is observable.
+   *
+   * @param requestId - Generation request id.
+   * @param currentStep - Human-readable machine step name.
+   * @param progressPercent - Integer progress from 0 to 100.
+   * @returns The updated generation request.
+   */
+  public async updateRequestProgress(
+    requestId: string,
+    currentStep: string,
+    progressPercent: number,
+  ) {
+    return await this.prisma.generationRequest.update({
+      where: { id: requestId },
+      data: {
+        pipelineStatus: GenerationPipelineStatus.RUNNING,
+        currentStep,
+        progressPercent: Math.min(Math.max(progressPercent, 0), 99),
+        failureMessage: null,
+        startedAt: new Date(),
+        completedAt: null,
+      },
+    });
+  }
+
+  /**
+   * Marks a generation request as failed without leaking raw provider errors.
+   *
+   * @param requestId - Generation request id.
+   * @param failureMessage - Sanitized failure message.
+   * @returns The updated generation request.
+   */
+  public async markRequestFailed(requestId: string, failureMessage: string) {
+    await this.prisma.course.updateMany({
+      where: { requestId },
+      data: { status: CourseGenerationStatus.FAILED },
+    });
+
+    return await this.prisma.generationRequest.update({
+      where: { id: requestId },
+      data: {
+        pipelineStatus: GenerationPipelineStatus.FAILED,
+        currentStep: 'failed',
+        failureMessage,
+        progressPercent: 100,
+        completedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Marks a generation request as completed.
+   *
+   * @param requestId - Generation request id.
+   * @returns The updated generation request.
+   */
+  public async markRequestCompleted(requestId: string) {
+    return await this.prisma.generationRequest.update({
+      where: { id: requestId },
+      data: {
+        pipelineStatus: GenerationPipelineStatus.COMPLETED,
+        currentStep: 'completed',
+        failureMessage: null,
+        progressPercent: 100,
+        completedAt: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Resets status fields before retrying an existing generation request.
+   *
+   * @param requestId - Generation request id.
+   * @returns The updated generation request.
+   */
+  public async resetRequestForRetry(requestId: string) {
+    const request = await this.prisma.generationRequest.findUnique({
+      where: { id: requestId },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Generation request not found');
+    }
+
+    return await this.prisma.generationRequest.update({
+      where: { id: requestId },
+      data: {
+        pipelineStatus: GenerationPipelineStatus.QUEUED,
+        currentStep: 'queued',
+        progressPercent: 0,
+        failureMessage: null,
+        startedAt: null,
+        completedAt: null,
+      },
+    });
+  }
+
+  /**
+   * Returns the persisted prompt for retrying a generation request.
+   *
+   * @param requestId - Generation request id.
+   * @returns The generation request.
+   */
+  public async getGenerationRequestOrThrow(requestId: string) {
+    const request = await this.prisma.generationRequest.findUnique({
+      where: { id: requestId },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Generation request not found');
+    }
+
+    return request;
+  }
+
+  /**
+   * Returns a lightweight observable status for a generation request.
+   *
+   * @param requestId - Generation request id.
+   * @returns A status payload suitable for polling.
+   */
+  public async getGenerationStatus(
+    requestId: string,
+  ): Promise<GenerationStatusResponseDto> {
+    const request = await this.prisma.generationRequest.findUnique({
+      where: { id: requestId },
+      include: { course: true },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Generation request not found');
+    }
+
+    return {
+      requestId: request.id,
+      courseId: request.course?.id ?? null,
+      pipelineStatus: request.pipelineStatus,
+      courseStatus: request.course?.status ?? null,
+      currentStep: request.currentStep,
+      progressPercent: request.progressPercent,
+      errorMessage: request.failureMessage ?? request.errorMessage,
+      startedAt: request.startedAt,
+      completedAt: request.completedAt,
+    };
+  }
+
+  /**
+   * Returns the fully persisted generated course for a completed or partial request.
+   *
+   * @param requestId - Generation request id.
+   * @returns Course result with modules and lessons.
+   */
+  public async getGenerationResult(
+    requestId: string,
+  ): Promise<GenerationResultResponseDto> {
+    const request = await this.prisma.generationRequest.findUnique({
+      where: { id: requestId },
+      include: {
+        course: {
+          include: {
+            request: true,
+            modules: {
+              orderBy: { moduleOrder: 'asc' },
+              include: { lessons: { orderBy: { lessonOrder: 'asc' } } },
+            },
+          },
+        },
+      },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Generation request not found');
+    }
+
+    if (!request.course) {
+      throw new NotFoundException('Generated course not available yet');
+    }
+
+    return {
+      requestId: request.id,
+      courseId: request.course.id,
+      course: request.course as unknown as Record<string, unknown>,
+    };
+  }
 
   /**
    * Persists the needs-analysis output before the user answers clarification questions.
@@ -52,6 +267,43 @@ export class GeneratorPersistenceService {
     });
 
     return request.id;
+  }
+
+  /**
+   * Persists analysis output into an existing request used by the full pipeline.
+   *
+   * @param requestId - Generation request id.
+   * @param analysis - Validated model analysis.
+   * @param rawAnalysisOutput - Raw JSON string returned by the model.
+   * @returns The persisted generation request id.
+   */
+  public async persistAnalysisForRequest(
+    requestId: string,
+    analysis: AnalysisResponseDto,
+    rawAnalysisOutput: string,
+  ): Promise<string> {
+    await this.getGenerationRequestOrThrow(requestId);
+
+    await this.prisma.generationRequest.update({
+      where: { id: requestId },
+      data: {
+        isOutOfScope: analysis.isOutOfScope,
+        errorMessage: analysis.errorMessage,
+        warningMessage: analysis.warningMessage,
+        suggestedTitle: analysis.suggestedTitle,
+        shortSynopsis: analysis.shortSynopsis,
+        detectedCurrentLevel: this.toLevelOrNull(analysis.detectedCurrentLevel),
+        detectedTargetLevel: this.toLevelOrNull(analysis.detectedTargetLevel),
+        detectedGoal: analysis.detectedGoal,
+        detectedLanguage: this.toCourseLanguageOrNull(
+          analysis.detectedLanguage,
+        ),
+        clarificationQuestions: this.toJson(analysis.clarificationQuestions),
+        rawAnalysisOutput: this.parseJson(rawAnalysisOutput),
+      },
+    });
+
+    return requestId;
   }
 
   /**
@@ -281,6 +533,34 @@ export class GeneratorPersistenceService {
 
       return updatedLesson;
     });
+  }
+
+  /**
+   * Returns persisted lessons for a generated module.
+   *
+   * @param courseId - Course id.
+   * @param moduleOrder - Module order in the course.
+   * @returns Persisted lessons ordered by lesson order.
+   */
+  public async findPersistedLessonsForModule(
+    courseId: string,
+    moduleOrder: number,
+  ) {
+    const module = await this.prisma.courseModule.findUnique({
+      where: {
+        courseId_moduleOrder: {
+          courseId,
+          moduleOrder,
+        },
+      },
+      include: { lessons: { orderBy: { lessonOrder: 'asc' } } },
+    });
+
+    if (!module) {
+      throw new NotFoundException('Course module not found');
+    }
+
+    return module.lessons;
   }
 
   private toJson(value: unknown): Prisma.InputJsonValue {
