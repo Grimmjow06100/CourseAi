@@ -1,0 +1,159 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider        = "prisma-client"
+  output          = "../src/generated/prisma"
+  previewFeatures = ["views"]
+  moduleFormat    = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum CourseGenerationStatus {
+  ANALYSIS_PENDING        @map("analysis_pending")
+  NEEDS_CLARIFICATION     @map("needs_clarification")
+  ANALYSIS_COMPLETED      @map("analysis_completed")
+  ARCHITECTURE_GENERATING @map("architecture_generating")
+  STRUCTURE_GENERATED     @map("structure_generated")
+  LESSONS_GENERATING      @map("lessons_generating")
+  LESSONS_GENERATED       @map("lessons_generated")
+  CONTENT_GENERATING      @map("content_generating")
+  COMPLETED               @map("completed")
+  FAILED                  @map("failed")
+
+  @@map("course_generation_status")
+}
+
+enum CourseLanguage {
+  FR @map("fr")
+  EN @map("en")
+
+  @@map("course_language")
+}
+
+enum LessonType {
+  THEORY   @map("theory")
+  PRACTICE @map("practice")
+  MIXED    @map("mixed")
+  QUIZ     @map("quiz")
+
+  @@map("lesson_type")
+}
+
+enum Level {
+  BEGINNER     @map("beginner")
+  INTERMEDIATE @map("intermediate")
+  ADVANCED     @map("advanced")
+  EXPERT       @map("expert")
+  UNKNOWN      @map("unknown")
+
+  @@map("level")
+}
+
+model GenerationRequest {
+  id                     String          @id @default(uuid()) @db.Uuid
+  initialUserPrompt      String          @map("initial_user_prompt")
+  isOutOfScope           Boolean         @default(false) @map("is_out_of_scope")
+  errorMessage           String?         @map("error_message")
+  warningMessage         String?         @map("warning_message")
+  suggestedTitle         String?         @map("suggested_title")
+  shortSynopsis          String?         @map("short_synopsis")
+  detectedCurrentLevel   Level?          @map("detected_current_level")
+  detectedTargetLevel    Level?          @map("detected_target_level")
+  detectedGoal           String?         @map("detected_goal")
+  detectedLanguage       CourseLanguage? @map("detected_language")
+  clarificationQuestions Json            @default("[]") @map("clarification_questions")
+  rawAnalysisOutput      Json?           @map("raw_analysis_output")
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
+
+  course Course?
+
+  @@map("generation_requests")
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  username  String   @unique
+  password  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Course {
+  id                      String                 @id @default(uuid()) @db.Uuid
+  requestId               String                 @unique @map("request_id") @db.Uuid
+  language                CourseLanguage
+  status                  CourseGenerationStatus @default(ANALYSIS_COMPLETED)
+  initialUserPrompt       String                 @map("initial_user_prompt")
+  title                   String
+  synopsis                String
+  targetAudience          String?                @map("target_audience")
+  currentLevel            Level                  @map("current_level")
+  targetLevel             Level                  @map("target_level")
+  prerequisites           Json                   @default("[]")
+  goals                   Json                   @default("[]")
+  acquiredSkills          Json                   @default("[]") @map("acquired_skills")
+  finalProjectTitle       String?                @map("final_project_title")
+  finalProjectDescription String?                @map("final_project_description")
+  finalProjectConstraints Json                   @default("[]") @map("final_project_constraints")
+  generationPayload       Json?                  @map("generation_payload")
+  rawArchitectureOutput   Json?                  @map("raw_architecture_output")
+  createdAt               DateTime               @default(now()) @map("created_at")
+  updatedAt               DateTime               @updatedAt @map("updated_at")
+
+  modules CourseModule[]
+  request GenerationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([status], map: "courses_status_idx")
+  @@index([language], map: "courses_language_idx")
+  @@map("courses")
+}
+
+model CourseModule {
+  id                   String   @id @default(uuid()) @db.Uuid
+  courseId             String   @map("course_id") @db.Uuid
+  moduleOrder          Int      @map("module_order")
+  title                String
+  description          String
+  keyLearningPoints    Json     @default("[]") @map("key_learning_points")
+  rawModuleOutput      Json?    @map("raw_module_output")
+  rawLessonsPlanOutput Json?    @map("raw_lessons_plan_output")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  course  Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons Lesson[]
+
+  @@unique([courseId, moduleOrder], map: "modules_course_order_unique")
+  @@index([courseId], map: "modules_course_id_idx")
+  @@map("modules")
+}
+
+model Lesson {
+  id                       String     @id @default(uuid()) @db.Uuid
+  moduleId                 String     @map("module_id") @db.Uuid
+  lessonOrder              Int        @map("lesson_order")
+  title                    String
+  type                     LessonType
+  estimatedDurationMinutes Int        @map("estimated_duration_minutes")
+  learningGoal             String     @map("learning_goal")
+  requiresDiagram          Boolean    @default(false) @map("requires_diagram")
+  technicalKeywords        Json       @default("[]") @map("technical_keywords")
+  contentMarkdown          String?    @map("content_markdown")
+  createdAt                DateTime   @default(now()) @map("created_at")
+  updatedAt                DateTime   @updatedAt @map("updated_at")
+
+  module CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, lessonOrder], map: "lessons_module_order_unique")
+  @@index([moduleId], map: "lessons_module_id_idx")
+  @@map("lessons")
+}
