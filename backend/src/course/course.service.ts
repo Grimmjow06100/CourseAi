@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CourseGenerationStatus, Prisma } from '../generated/prisma/client';
 import { UpdateModuleDto } from './dto/update-module.dto';
 import { UpdateLessonDto } from './dto/update-lesson.dto';
+import { ListCoursesQueryDto } from './dto/list-courses-query.dto';
 
 @Injectable()
 export class CourseService {
@@ -43,17 +44,43 @@ export class CourseService {
     });
   }
 
-  async findAll() {
-    return await this.prisma.course.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        modules: {
-          orderBy: { moduleOrder: 'asc' },
-          include: { lessons: { orderBy: { lessonOrder: 'asc' } } },
-        },
-        request: true,
+  /**
+   * Lists courses with pagination and simple filters.
+   *
+   * @param query - Pagination, filtering, search, and ordering options.
+   * @returns A paginated list of courses with metadata.
+   */
+  async findAll(query: ListCoursesQueryDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const where = this.buildCourseWhereInput(query);
+    const orderBy: Prisma.CourseOrderByWithRelationInput = {
+      [query.orderBy ?? 'createdAt']: query.orderDirection ?? 'desc',
+    };
+
+    const [data, totalItems] = await this.prisma.$transaction([
+      this.prisma.course.findMany({
+        where,
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+        orderBy,
+        include: this.courseInclude,
+      }),
+      this.prisma.course.count({ where }),
+    ]);
+    const totalPages = Math.max(Math.ceil(totalItems / pageSize), 1);
+
+    return {
+      data,
+      meta: {
+        page,
+        pageSize,
+        totalItems,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
       },
-    });
+    };
   }
 
   async findOne(id: string) {
@@ -86,9 +113,11 @@ export class CourseService {
   async remove(id: string) {
     await this.ensureCourseExists(id);
 
-    return await this.prisma.course.delete({
+    const deletedCourse = await this.prisma.course.delete({
       where: { id },
     });
+
+    return { id: deletedCourse.id, deleted: true };
   }
 
   async findModules(courseId: string) {
@@ -127,9 +156,11 @@ export class CourseService {
   async removeModule(moduleId: string) {
     await this.ensureModuleExists(moduleId);
 
-    return await this.prisma.courseModule.delete({
+    const deletedModule = await this.prisma.courseModule.delete({
       where: { id: moduleId },
     });
+
+    return { id: deletedModule.id, deleted: true };
   }
 
   async findLessons(moduleId: string) {
@@ -169,9 +200,11 @@ export class CourseService {
   async removeLesson(lessonId: string) {
     await this.ensureLessonExists(lessonId);
 
-    return await this.prisma.lesson.delete({
+    const deletedLesson = await this.prisma.lesson.delete({
       where: { id: lessonId },
     });
+
+    return { id: deletedLesson.id, deleted: true };
   }
 
   private readonly courseInclude = {
@@ -184,6 +217,31 @@ export class CourseService {
 
   private toJson(value: unknown): Prisma.InputJsonValue {
     return value as Prisma.InputJsonValue;
+  }
+
+  private buildCourseWhereInput(
+    query: ListCoursesQueryDto,
+  ): Prisma.CourseWhereInput {
+    const filters: Prisma.CourseWhereInput[] = [];
+
+    if (query.status) {
+      filters.push({ status: query.status });
+    }
+
+    if (query.language) {
+      filters.push({ language: query.language });
+    }
+
+    if (query.search) {
+      filters.push({
+        OR: [
+          { title: { contains: query.search, mode: 'insensitive' } },
+          { synopsis: { contains: query.search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    return filters.length > 0 ? { AND: filters } : {};
   }
 
   private async ensureCourseExists(id: string): Promise<void> {

@@ -2,10 +2,30 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
+
+function resolveCorsOrigin(rawOrigin: string): boolean | string[] {
+  const origins = rawOrigin
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length === 0 || origins.includes('*')) {
+    return true;
+  }
+
+  return origins;
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.enableCors();
+  const configService = app.get(ConfigService);
+  const port = configService.get<number>('PORT') ?? 3000;
+  const corsOrigin = configService.get<string>('CORS_ORIGIN') ?? '*';
+
+  app.enableCors({
+    origin: resolveCorsOrigin(corsOrigin),
+  });
   app.enableShutdownHooks();
   app.useGlobalPipes(
     new ValidationPipe({
@@ -22,11 +42,11 @@ async function bootstrap() {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, swaggerDocument);
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(port);
 }
 bootstrap()
   .then(() => {
-    console.log(`Application is running on: ${process.env.PORT ?? 3000}`);
+    console.log(`Application started successfully.`);
   })
   .catch((error) => {
     console.error('Error starting the application:', error);

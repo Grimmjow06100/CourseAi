@@ -6,6 +6,7 @@ const envSchema = z.object({
   AI_MODEL: z.string().min(1).default('gpt-5.4'),
   OPENAI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   PORT: z.coerce.number().int().positive().default(3000),
+  CORS_ORIGIN: z.string().min(1).default('*'),
   THROTTLE_TTL: z.coerce.number().int().positive().default(60000),
   THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
 });

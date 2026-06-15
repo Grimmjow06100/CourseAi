@@ -1,4 +1,9 @@
 node_modules
 dist
-.*
-AGENTS.MD
+coverage
+src/generated/prisma
+*.log
+.env
+.env.*
+.git
+AGENTS.md

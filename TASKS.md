@@ -22,3 +22,6 @@
 - [x] Finalize the NestJS generation pipeline with Prisma persistence, aligned DTO/schema models, Swagger route documentation, CRUD endpoints, and README updates.
 - [x] Add the lesson content generation step with prompt, DTO validation, Prisma persistence, API documentation, migration, and tests.
 - [x] Complete the backend MVP without auth by adding full pipeline orchestration, status/result/retry endpoints, Zod structured outputs, environment validation, rate limiting, OpenAI retry handling, and parser tests.
+- [x] Add Swagger response DTOs for course CRUD routes and paginated course listing filters.
+- [x] Add backend pagination, filtering, search, and ordering for the courses list endpoint.
+- [x] Prepare backend deployment for Railway with healthcheck, CORS configuration, Docker runtime fixes, migration pre-deploy command, env examples, and newcomer README documentation.
