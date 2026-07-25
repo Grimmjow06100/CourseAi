@@ -25,3 +25,12 @@
 - [x] Add Swagger response DTOs for course CRUD routes and paginated course listing filters.
 - [x] Add backend pagination, filtering, search, and ordering for the courses list endpoint.
 - [x] Prepare backend deployment for Railway with healthcheck, CORS configuration, Docker runtime fixes, migration pre-deploy command, env examples, and newcomer README documentation.
+- [x] Add the backend-go Goose initial SQL migration generated from the Prisma schema and create the local backend-go environment file.
+- [x] Add backend-go database and pgx idle pool environment variables and wire them into the connection pool configuration.
+- [x] Write a vault note describing the recommended backend-go domain model and file organization for Course AI.
+- [x] Write a vault note describing the recommended backend-go repository layer responsibilities and file organization for Course AI.
+- [x] Add backend-go contracts for repositories, auth, AI generation, prompts, transactions, runtime helpers, and the generation pipeline.
+- [x] Implement backend-go infrastructure adapters for PostgreSQL repositories, transactional unit of work, and system clock.
+- [x] Move backend-go JWT and bcrypt auth adapters into the infrastructure layer.
+- [x] Complete backend-go service layer with auth contract alignment, course generation orchestration, and course catalog use cases.
+- [x] Complete backend-go HTTP infrastructure with DTOs, Gin handlers, middlewares, router wiring, and available service integration.
