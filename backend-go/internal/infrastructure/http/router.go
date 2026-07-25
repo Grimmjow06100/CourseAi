@@ -12,7 +12,6 @@ type RouterConfig struct {
 	CourseCatalogService    contract.CourseCatalogService
 	CourseGenerationService contract.CourseGenerationService
 	TokenManager            contract.TokenManager
-
 }
 
 func NewRouter(cfg RouterConfig) *gin.Engine {
@@ -21,12 +20,11 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 	router.Use(gin.Recovery())
 	router.Use(middlewares.ErrorHandler())
 
-	
 	healthHandler := handlers.NewHealthHandler()
 	authHandler := handlers.NewAuthHandler(cfg.AuthService)
 	generationHandler := handlers.NewGenerationHandler(cfg.CourseGenerationService)
 	courseHandler := handlers.NewCourseHandler(cfg.CourseCatalogService)
-	
+
 	router.GET("/health", healthHandler.Health)
 
 	api := router.Group("/api")
@@ -46,6 +44,9 @@ func registerAuthRoutes(router gin.IRouter, handler *handlers.AuthHandler) {
 func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHandler) {
 	generations := router.Group("/generations")
 	generations.POST("", handler.Start)
+	generations.POST("/structure", handler.Structure)
+	generations.POST("/lessons/:lessonID/content", handler.LessonContent)
+	generations.POST("/modules/:moduleID/contents", handler.ModuleLessonContents)
 	generations.GET("/:requestID/status", handler.Status)
 	generations.GET("/:requestID/result", handler.Result)
 	generations.POST("/:requestID/retry", handler.Retry)
@@ -65,4 +66,3 @@ func registerCourseRoutes(router gin.IRouter, handler *handlers.CourseHandler) {
 	lessons := router.Group("/lessons")
 	lessons.GET("/:lessonID", handler.GetLesson)
 }
-

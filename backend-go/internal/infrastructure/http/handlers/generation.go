@@ -36,6 +36,65 @@ func (h *GenerationHandler) Start(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
+func (h *GenerationHandler) Structure(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+
+	var request dto.StartGenerationRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+
+	result, err := h.service.GenerateCourseStructure(c.Request.Context(), contract.StartGenerationParams{Prompt: request.Prompt})
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.GenerationResultFromContract(result))
+}
+
+func (h *GenerationHandler) LessonContent(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+
+	lessonID, ok := parseUUIDParam(c, "lessonID")
+	if !ok {
+		return
+	}
+
+	lesson, err := h.service.GenerateLessonContent(c.Request.Context(), lessonID)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.LessonFromDomain(lesson))
+}
+
+func (h *GenerationHandler) ModuleLessonContents(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+
+	moduleID, ok := parseUUIDParam(c, "moduleID")
+	if !ok {
+		return
+	}
+
+	module, err := h.service.GenerateModuleLessonContents(c.Request.Context(), moduleID)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.ModuleFromDomain(module))
+}
 
 func (h *GenerationHandler) Status(c *gin.Context) {
 	if h.service == nil {

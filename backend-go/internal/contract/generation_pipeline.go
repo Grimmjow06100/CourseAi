@@ -35,6 +35,9 @@ type GenerationResult struct {
 
 type CourseGenerationService interface {
 	StartFullCourseGeneration(ctx context.Context, params StartGenerationParams) (GenerationStarted, error)
+	GenerateCourseStructure(ctx context.Context, params StartGenerationParams) (GenerationResult, error)
+	GenerateLessonContent(ctx context.Context, lessonID uuid.UUID) (domain.Lesson, error)
+	GenerateModuleLessonContents(ctx context.Context, moduleID uuid.UUID) (domain.Module, error)
 	GetGenerationStatus(ctx context.Context, requestID uuid.UUID) (GenerationStatus, error)
 	GetGenerationResult(ctx context.Context, requestID uuid.UUID) (GenerationResult, error)
 	RetryFullCourseGeneration(ctx context.Context, requestID uuid.UUID) (GenerationStarted, error)
