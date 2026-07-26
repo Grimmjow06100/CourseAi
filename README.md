@@ -263,17 +263,3 @@ Depuis la racine :
 docker compose up -d
 docker compose down
 ```
-
-## Prochaines etapes backend
-
-- Ajouter un Dockerfile Go pour le deploiement Railway.
-- Ajouter une configuration Railway dediee au backend Go.
-- Ajouter des tests HTTP sur les handlers principaux.
-- Ajouter des tests d'integration repositories avec PostgreSQL.
-
-## Points d'attention
-
-- Ne jamais commiter les fichiers `.env`.
-- Le port PostgreSQL local utilise `5433` cote hote pour eviter les conflits avec une installation PostgreSQL locale sur `5432`.
-- Les prompts IA sont dans `backend-go/prompts`.
-- La documentation backend detaillee est dans `backend-go/README.md`.
