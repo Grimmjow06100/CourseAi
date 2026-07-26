@@ -34,3 +34,6 @@
 - [x] Move backend-go JWT and bcrypt auth adapters into the infrastructure layer.
 - [x] Complete backend-go service layer with auth contract alignment, course generation orchestration, and course catalog use cases.
 - [x] Complete backend-go HTTP infrastructure with DTOs, Gin handlers, middlewares, router wiring, and available service integration.
+- [x] Update project documentation after removing the NestJS backend and making backend-go the only backend.
+- [x] Implement backend-go OpenAI CourseAIGenerator, move PromptStore to infrastructure, wire generation API, and add partial generation routes.
+- [x] Fix backend-go CourseGenerationService contract to return domain objects instead of HTTP DTOs and remove the import cycle.

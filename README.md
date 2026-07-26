@@ -1,49 +1,77 @@
 # Course AI
 
-Course AI est une API NestJS qui génère automatiquement des formations IT avec l'IA.
+Course AI est une application de generation de formations IT avec l'IA.
 
-Le MVP backend sait aujourd'hui :
+Le backend officiel du projet est le backend Go situe dans `backend-go/`.
 
-- analyser une demande utilisateur brute ;
-- générer l'architecture pédagogique d'une formation ;
-- générer le plan des lessons pour chaque module ;
-- générer le contenu Markdown complet des lessons ;
-- persister chaque étape dans PostgreSQL avec Prisma ;
-- exposer une pipeline complète asynchrone avec suivi de statut ;
-- exposer des routes CRUD pour les formations, modules et lessons ;
-- documenter l'API avec Swagger.
+## Etat actuel
+
+Le backend Go contient aujourd'hui :
+
+- un modele de domaine pour `Course`, `Module`, `Lesson`, `GenerationRequest` et `User` ;
+- des contracts applicatifs pour les repositories, services, auth, transactions et generation IA ;
+- une couche service avec auth, catalogue de cours et orchestration de pipeline de generation ;
+- une infrastructure PostgreSQL basee sur `pgx` ;
+- un adapter OpenAI qui implemente `contract.CourseAIGenerator` avec Structured Outputs ;
+- une implementation `PromptStore` dans l'infrastructure ;
+- des migrations SQL Goose ;
+- une API HTTP Gin avec DTOs, handlers, router et middlewares ;
+- une auth JWT + bcrypt ;
+- une base PostgreSQL locale via Docker Compose.
+
+La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/openai` et les prompts Markdown de `backend-go/prompts`.
 
 ## Stack
 
-- Backend : NestJS, TypeScript, Prisma, PostgreSQL
-- IA : OpenAI SDK avec sorties structurées Zod
-- Validation : `class-validator`, `class-transformer`, validation d'environnement avec Zod
+- Backend : Go, Gin, pgx, Goose
+- Base de donnees : PostgreSQL 16
+- Auth : JWT, bcrypt
+- IA : OpenAI SDK Responses API avec Structured Outputs
+- Frontend : React + Vite dans `frontend/`
 - Infra locale : Docker Compose pour PostgreSQL
-- Déploiement backend prévu : Railway
 
 ## Structure du repo
 
 ```txt
 .
-├── backend/              # API NestJS principale
-│   ├── prisma/           # schema Prisma et migrations
-│   ├── prompts/          # prompts .prompt.md chargés au démarrage
-│   ├── src/              # code source NestJS
-│   ├── Dockerfile        # image backend production
-│   ├── railway.json      # configuration Railway du service backend
-│   └── .env.example      # variables backend attendues
-├── backend-go/           # expérimentation Go, non utilisée par le MVP NestJS
+├── backend-go/           # backend Go officiel
+│   ├── cmd/api/          # point d'entree HTTP
+│   ├── internal/         # code applicatif Go
+│   │   ├── contract/     # interfaces entre couches
+│   │   ├── domain/       # entites et regles metier pures
+│   │   ├── service/      # use cases applicatifs
+│   │   ├── infrastructure/
+│   │   │   ├── auth/     # JWT et bcrypt
+│   │   │   ├── clock/    # horloge systeme
+│   │   │   ├── http/     # Gin router, handlers, DTOs, middlewares
+│   │   │   ├── openai/   # adapter CourseAIGenerator
+│   │   │   ├── postgres/ # repositories pgx et unit of work
+│   │   │   └── prompts/  # implementation PromptStore
+│   │   ├── config/       # chargement des variables d'environnement
+│   │   └── database/     # ouverture du pool PostgreSQL
+│   ├── migrations/       # migrations Goose
+│   ├── prompts/          # prompts IA .prompt.md
+│   ├── .env.example      # variables attendues par le backend Go
+│   └── README.md         # documentation backend detaillee
+├── frontend/             # frontend React/Vite
 ├── docker-compose.yml    # PostgreSQL local
 ├── .env.example          # variables Docker Compose locales
+├── TASKS.md              # historique des taches terminees
 └── README.md
 ```
 
-## Prérequis
+## Prerequis
 
-- Node.js 22+
-- npm
+- Go 1.26+
 - Docker Desktop
-- Une clé API OpenAI valide
+- Goose CLI pour les migrations
+- Une cle OpenAI valide
+
+Installer Goose si besoin :
+
+```powershell
+go install github.com/pressly/goose/v3/cmd/goose@latest
+```
 
 ## Installation locale
 
@@ -54,38 +82,31 @@ Copy-Item .env.example .env
 docker compose up -d
 ```
 
-Puis côté backend :
+Puis cote backend Go :
 
 ```powershell
-cd backend
+cd backend-go
 Copy-Item .env.example .env
-npm install
-npm run db:migrate:deploy
-npm run prisma:generate
-npm run start:dev
+go mod download
+goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" up
+go run ./cmd/api
 ```
 
-L'API démarre par défaut sur :
+L'API demarre par defaut sur :
 
 ```txt
-http://localhost:3000
-```
-
-Swagger :
-
-```txt
-http://localhost:3000/docs
+http://localhost:8080
 ```
 
 Healthcheck :
 
 ```txt
-http://localhost:3000/health
+GET http://localhost:8080/health
 ```
 
 ## Variables d'environnement
 
-Racine du projet, pour PostgreSQL local :
+A la racine du projet, pour PostgreSQL local :
 
 ```env
 POSTGRES_USER=course_ai
@@ -94,201 +115,165 @@ POSTGRES_DB=course_ai
 POSTGRES_PORT=5433
 ```
 
-Backend, dans `backend/.env` :
+Dans `backend-go/.env` :
 
 ```env
-DATABASE_URL=postgresql://course_ai:course_ai_password@localhost:5433/course_ai
+APP_ENV=development
+HTTP_ADDR=:8080
+DATABASE_URL=postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable
+DB_HOST=localhost
+DB_PORT=5433
+DB_NAME=course_ai
+DB_USER=course_ai
+DB_PASSWORD=course_ai_password
+DB_SSLMODE=disable
+DB_MAX_CONNS=10
+DB_MIN_CONNS=1
+DB_MAX_CONN_IDLE_TIME=30m
+DB_MAX_CONN_LIFETIME=1h
+DB_HEALTH_CHECK_PERIOD=1m
+GOOSE_DRIVER=postgres
+GOOSE_DBSTRING=postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable
+GOOSE_MIGRATION_DIR=./migrations
+PROMPTS_DIR=./prompts
+JWT_SECRET=change_me_in_local_env
+JWT_TOKEN_TTL=24h
 OPENAI_API_KEY=sk-your-api-key
-AI_MODEL=gpt-5.4
-OPENAI_MAX_RETRIES=2
-PORT=3000
-CORS_ORIGIN=http://localhost:5173
-THROTTLE_TTL=60000
-THROTTLE_LIMIT=100
+OPENAI_MODEL=gpt-5.6
+OPENAI_MAX_OUTPUT_TOKENS=12000
 ```
 
-`CORS_ORIGIN` accepte `*` ou une liste séparée par des virgules :
+`OPENAI_API_KEY` est requise pour utiliser les routes de generation IA.
 
-```env
-CORS_ORIGIN=https://course-ai-front.vercel.app,http://localhost:5173
-```
+## Routes HTTP
 
-## Pipeline de génération
-
-La route principale démarre une génération complète en arrière-plan :
+Auth :
 
 ```http
-POST /course/generator/full-course
+POST /api/auth/signup
+POST /api/auth/login
 ```
 
-Payload :
+Catalogue de cours :
 
-```json
+```http
+GET    /api/courses
+GET    /api/courses/:courseID
+DELETE /api/courses/:courseID
+GET    /api/courses/:courseID/modules
+GET    /api/modules/:moduleID
+GET    /api/modules/:moduleID/lessons
+GET    /api/lessons/:lessonID
+```
+
+Generation IA :
+
+```http
+POST /api/generations
+POST /api/generations/structure
+POST /api/generations/lessons/:lessonID/content
+POST /api/generations/modules/:moduleID/contents
+GET  /api/generations/:requestID/status
+GET  /api/generations/:requestID/result
+POST /api/generations/:requestID/retry
+```
+
+`POST /api/generations` genere la formation complete avec contenu de toutes les lessons.
+`POST /api/generations/structure` genere seulement la formation, ses modules et ses lessons, sans contenu Markdown.
+`POST /api/generations/lessons/:lessonID/content` genere et persiste le contenu d'une lesson.
+`POST /api/generations/modules/:moduleID/contents` genere et persiste le contenu de toutes les lessons d'un module.
+
+## Exemples rapides
+
+Creer un utilisateur :
+
+```http
+POST /api/auth/signup
+Content-Type: application/json
+
 {
-  "prompt": "Je veux apprendre Docker pour déployer une API Node.js."
+  "username": "samy",
+  "password": "Password!"
 }
 ```
 
-Réponse `202 Accepted` :
+Generer la structure d'une formation :
 
-```json
+```http
+POST /api/generations/structure
+Content-Type: application/json
+
 {
-  "requestId": "uuid",
-  "status": "QUEUED",
-  "statusUrl": "/course/generator/requests/uuid/status",
-  "resultUrl": "/course/generator/requests/uuid/result"
+  "prompt": "Je veux apprendre Docker pour deployer une API backend."
 }
 ```
 
-Suivre le statut :
+Generer le contenu d'une lesson :
 
 ```http
-GET /course/generator/requests/:requestId/status
+POST /api/generations/lessons/:lessonID/content
 ```
 
-Récupérer le résultat :
+Generer le contenu de toutes les lessons d'un module :
 
 ```http
-GET /course/generator/requests/:requestId/result
+POST /api/generations/modules/:moduleID/contents
 ```
 
-Relancer une génération depuis le prompt initial :
+Lister les cours :
 
 ```http
-POST /course/generator/requests/:requestId/retry
+GET /api/courses?page=1&pageSize=20&search=docker&orderBy=created_at&orderDirection=desc
 ```
 
-La pipeline persiste :
+## Migrations
 
-1. `GenerationRequest`
-2. analyse utilisateur
-3. `Course`
-4. `CourseModule[]`
-5. `Lesson[]`
-6. `Lesson.contentMarkdown`
+Appliquer les migrations :
 
-## Routes étape par étape
-
-Ces routes servent au debug ou à une interface guidée :
-
-```http
-POST /course/generator/analysis
-POST /course/generator/architecture
-POST /course/generator/lesson
-POST /course/generator/lesson-content
+```powershell
+cd backend-go
+goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" up
 ```
 
-## CRUD formations
+Rollback d'une migration :
 
-Lister les formations avec pagination et filtres :
-
-```http
-GET /course?page=1&pageSize=20&language=FR&status=COMPLETED&search=docker
+```powershell
+goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" down
 ```
 
-Routes courses :
+Afficher le statut :
 
-```http
-GET    /course
-POST   /course
-GET    /course/:id
-PATCH  /course/:id
-DELETE /course/:id
-```
-
-Routes modules :
-
-```http
-GET    /course/:id/modules
-GET    /course/modules/:moduleId
-PATCH  /course/modules/:moduleId
-DELETE /course/modules/:moduleId
-```
-
-Routes lessons :
-
-```http
-GET    /course/modules/:moduleId/lessons
-GET    /course/lessons/:lessonId
-PATCH  /course/lessons/:lessonId
-DELETE /course/lessons/:lessonId
+```powershell
+goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" status
 ```
 
 ## Commandes utiles
 
-Depuis `backend/` :
+Depuis `backend-go/` :
 
 ```powershell
-npm run build
-npm run lint
-npm test
-npm run test:e2e
-npm run db:migrate:deploy
-npm run prisma:generate
+go test ./...
+go run ./cmd/api
+go fmt ./...
 ```
 
-## Déploiement Railway
+Depuis la racine :
 
-Le backend est prêt pour un service Railway dédié avec Docker.
-
-Dans Railway :
-
-1. Créer un projet Railway.
-2. Ajouter un service PostgreSQL.
-3. Ajouter un service depuis le repo GitHub.
-4. Dans les settings du service backend, définir le root directory sur :
-
-```txt
-/backend
+```powershell
+docker compose up -d
+docker compose down
 ```
 
-5. Définir le chemin du fichier config Railway sur :
+## Prochaines etapes backend
 
-```txt
-/backend/railway.json
-```
-
-6. Ajouter les variables du service backend :
-
-```env
-DATABASE_URL=${{Postgres.DATABASE_URL}}
-OPENAI_API_KEY=sk-your-api-key
-AI_MODEL=gpt-5.4
-OPENAI_MAX_RETRIES=2
-CORS_ORIGIN=https://your-frontend-domain.com
-THROTTLE_TTL=60000
-THROTTLE_LIMIT=100
-```
-
-Railway fournit automatiquement `PORT`. Le code l'utilise déjà au démarrage.
-
-La configuration `backend/railway.json` :
-
-- build avec `backend/Dockerfile` ;
-- lance `npm run db:migrate:deploy` en `preDeployCommand` ;
-- démarre avec `npm run start:prod` ;
-- vérifie `/health` avant d'activer le nouveau déploiement ;
-- redémarre le service en cas d'échec.
+- Ajouter un Dockerfile Go pour le deploiement Railway.
+- Ajouter une configuration Railway dediee au backend Go.
+- Ajouter des tests HTTP sur les handlers principaux.
+- Ajouter des tests d'integration repositories avec PostgreSQL.
 
 ## Points d'attention
 
-- Les prompts doivent rester dans `backend/prompts`, car ils sont lus au démarrage de l'application.
-- Ne jamais commiter `.env`.
-- Les enums Prisma exposées par l'API utilisent les valeurs TypeScript, par exemple `FR`, `EN`, `COMPLETED`, `BEGINNER`.
-- Si PostgreSQL local occupe déjà `5432`, ce projet utilise `5433` côté hôte par défaut.
-- Si `OPENAI_API_KEY` semble incorrecte malgré `backend/.env`, vérifier les variables globales du shell, de l'IDE et de Railway : elles peuvent surcharger le fichier `.env`.
-
-## Vérification rapide
-
-```powershell
-cd backend
-npm run build
-npm run lint
-npm test
-```
-
-Ensuite ouvrir :
-
-```txt
-http://localhost:3000/docs
-```
+- Ne jamais commiter les fichiers `.env`.
+- Le port PostgreSQL local utilise `5433` cote hote pour eviter les conflits avec une installation PostgreSQL locale sur `5432`.
+- Les prompts IA sont dans `backend-go/prompts`.
+- La documentation backend detaillee est dans `backend-go/README.md`.
