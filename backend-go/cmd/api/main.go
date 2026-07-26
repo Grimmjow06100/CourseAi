@@ -4,8 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/config"
@@ -17,6 +15,7 @@ import (
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/postgres"
 	promptinfra "github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/prompts"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/service"
+	"github.com/openai/openai-go/v3"
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )
@@ -31,31 +30,41 @@ func main() {
 	ctx := context.Background()
 	db, err := database.Open(ctx)
 	if err != nil {
-		logger.Error("erreur impossible d'ouvrir la connexion à la bd", "erreur", err)
+		logger.Error(err.Error())
 		return
 	}
 	defer db.Close()
 
 	httpAddr, err := config.GetEnv[string]("HTTP_ADDR")
 	if err != nil {
-		logger.Error("impossible de charger le port http", "erreur", err)
+		logger.Error(err.Error())
 		return
 	}
 
 	jwtSecret, err := config.GetEnv[string]("JWT_SECRET")
 	if err != nil {
-		logger.Error("impossible de charger le secret jwt", "erreur", err)
+		logger.Error(err.Error())
 		return
 	}
-	tokenTTL := durationEnvOrDefault("JWT_TOKEN_TTL", 24*time.Hour, logger)
+	tokenTTL,err := config.GetEnv[time.Duration]("JWT_TOKEN_TTL")
+	if err != nil {
+		logger.Error(err.Error())
+		return
+	}
 
 	tokenManager, err := auth.NewTokenManager(jwtSecret, tokenTTL)
+	
 	if err != nil {
-		logger.Error("impossible d'initialiser le token manager", "erreur", err)
+		logger.Error(err.Error())
 		return
 	}
 
-	promptsDir := stringEnvOrDefault("PROMPTS_DIR", "./prompts")
+
+	promptsDir,err := config.GetEnv[string]("PROMPTS_DIR")
+	if err != nil {
+		logger.Error(err.Error())
+		return
+	}
 	promptStore, err := promptinfra.Load(promptsDir)
 	if err != nil {
 		logger.Error("impossible de charger les prompts", "directory", promptsDir, "erreur", err)
@@ -64,13 +73,13 @@ func main() {
 
 	openAIKey, err := config.GetEnv[string]("OPENAI_API_KEY")
 	if err != nil {
-		logger.Error("impossible de charger la cle OpenAI", "erreur", err)
+		logger.Error(err.Error())
 		return
 	}
 	openAIClient := openaisdk.NewClient(option.WithAPIKey(openAIKey))
 	courseAIGenerator := openaiinfra.NewCourseAIGenerator(&openAIClient, promptStore, openaiinfra.Config{
-		Model:           stringEnvOrDefault("OPENAI_MODEL", "gpt-5.6"),
-		MaxOutputTokens: int64EnvOrDefault("OPENAI_MAX_OUTPUT_TOKENS", 12000, logger),
+		Model:           openai.ChatModelGPT5_6Luna,
+		MaxOutputTokens: 12000,
 	})
 
 	repositories := postgres.NewRepositories(db)
@@ -97,38 +106,3 @@ func main() {
 	}
 }
 
-func stringEnvOrDefault(key string, fallback string) string {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-	return value
-}
-
-func durationEnvOrDefault(key string, fallback time.Duration, logger *slog.Logger) time.Duration {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-
-	duration, err := time.ParseDuration(value)
-	if err != nil {
-		logger.Warn("duration env invalide, utilisation de la valeur par defaut", "key", key, "value", value, "fallback", fallback.String())
-		return fallback
-	}
-	return duration
-}
-
-func int64EnvOrDefault(key string, fallback int64, logger *slog.Logger) int64 {
-	value := strings.TrimSpace(os.Getenv(key))
-	if value == "" {
-		return fallback
-	}
-
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || parsed <= 0 {
-		logger.Warn("int env invalide, utilisation de la valeur par defaut", "key", key, "value", value, "fallback", fallback)
-		return fallback
-	}
-	return parsed
-}
