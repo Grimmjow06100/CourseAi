@@ -1,0 +1,1273 @@
+{
+  "request": {
+    "id": "242988a3-d546-4ee1-8924-d649f03ed146",
+    "initialUserPrompt": "je veux une formation sur linux",
+    "pipelineStatus": "completed",
+    "currentStep": "generation_completed",
+    "progressPercent": 100,
+    "failureMessage": null,
+    "startedAt": "2026-07-27T20:56:43.35Z",
+    "completedAt": "2026-07-27T20:57:39.085Z",
+    "isOutOfScope": false,
+    "errorMessage": null,
+    "warningMessage": null,
+    "suggestedTitle": "Formation Linux : bases et administration système",
+    "shortSynopsis": "Une formation consacrée à Linux, pouvant couvrir la ligne de commande, l’administration système, les outils essentiels et l’automatisation.",
+    "detectedCurrentLevel": "unknown",
+    "detectedTargetLevel": "unknown",
+    "detectedGoal": "unknown",
+    "detectedLanguage": "fr",
+    "clarificationQuestions": [
+      {
+        "id": "goals",
+        "question": "Quel est votre objectif principal avec Linux ?",
+        "options": [
+          "Administrer des serveurs Linux",
+          "Développer et automatiser avec Linux",
+          "Maîtriser la ligne de commande et les outils système",
+          "Préparer une certification Linux"
+        ]
+      },
+      {
+        "id": "currentLevel",
+        "question": "Quel est votre niveau actuel en Linux ?",
+        "options": [
+          "Débutant, aucune expérience",
+          "Notions de base",
+          "Quelques projets ou expériences pratiques",
+          "Expérience avancée"
+        ]
+      },
+      {
+        "id": "targetLevel",
+        "question": "Quel niveau souhaitez-vous atteindre ?",
+        "options": [
+          "Découvrir les bases",
+          "Devenir autonome sur les tâches courantes",
+          "Maîtriser Linux pour des projets professionnels",
+          "Atteindre un niveau d’expertise en administration et architecture"
+        ]
+      }
+    ],
+    "createdAt": "2026-07-26T20:15:57.764Z",
+    "updatedAt": "2026-07-27T20:57:39.085Z"
+  },
+  "course": {
+    "id": "f320ad2e-899d-4ee5-9563-513651298d1a",
+    "requestId": "242988a3-d546-4ee1-8924-d649f03ed146",
+    "language": "fr",
+    "status": "lessons_generated",
+    "initialUserPrompt": "je veux une formation sur linux",
+    "title": "Linux : bases, administration système et automatisation",
+    "synopsis": "Une formation progressive et pratique pour passer des bases de Linux à l’administration autonome d’un serveur. L’apprenant maîtrise le terminal, les fichiers, les permissions, les utilisateurs, les paquets, les processus, les services, le réseau, les journaux et le dépannage, puis automatise les tâches courantes avec Bash et applique les fondamentaux de la sécurisation.",
+    "targetAudience": "Débutants souhaitant acquérir un niveau intermédiaire en Linux, futurs administrateurs système, développeurs, techniciens support et professionnels IT ayant besoin d’administrer des serveurs Linux au quotidien.",
+    "currentLevel": "beginner",
+    "targetLevel": "intermediate",
+    "prerequisites": [
+      "Savoir utiliser un ordinateur et gérer des fichiers de manière générale",
+      "Disposer d’un environnement Linux accessible en machine virtuelle, conteneur ou serveur distant",
+      "Aucune expérience préalable de l’administration système n’est requise"
+    ],
+    "goals": [
+      "Maîtriser la ligne de commande et les outils système",
+      "Administrer des serveurs Linux",
+      "Devenir autonome sur les tâches courantes"
+    ],
+    "acquiredSkills": [
+      "Naviguer efficacement dans un système Linux depuis le terminal",
+      "Manipuler les fichiers, répertoires, permissions et processus",
+      "Installer, configurer et maintenir des logiciels avec un gestionnaire de paquets",
+      "Administrer les utilisateurs, groupes, services et tâches planifiées",
+      "Configurer les bases du réseau et diagnostiquer les incidents courants",
+      "Analyser les journaux et appliquer une méthode de dépannage structurée",
+      "Automatiser des tâches d’administration avec Bash",
+      "Appliquer les bonnes pratiques de sécurisation et de maintenance d’un serveur Linux"
+    ],
+    "finalProjectTitle": "Déployer et automatiser un serveur Linux",
+    "finalProjectDescription": "Mettre en place et administrer un serveur Linux opérationnel hébergeant un service web simple. Le projet couvre la préparation du système, la gestion des comptes et permissions, l’installation de logiciels, la configuration réseau, le durcissement, la supervision de base, le dépannage et l’automatisation des tâches récurrentes.",
+    "finalProjectConstraints": [
+      "Utiliser une distribution Linux serveur récente dans une machine virtuelle ou un environnement cloud",
+      "Créer et administrer plusieurs utilisateurs avec des groupes et des permissions adaptées",
+      "Déployer un service web simple et le gérer avec systemd",
+      "Configurer un pare-feu avec une politique restrictive autorisant uniquement les services nécessaires",
+      "Écrire des scripts Bash pour la sauvegarde, la vérification de l’espace disque et la rotation de journaux",
+      "Documenter l’architecture, les commandes utilisées, les choix de configuration et la procédure de dépannage",
+      "Vérifier le fonctionnement du serveur à l’aide de tests réseau, de journaux et de contrôles de services"
+    ],
+    "totalDurationMinutes": 1365,
+    "modules": [
+      {
+        "id": "10c16ab6-3997-41a1-bfe6-87574e2abc8b",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 1,
+        "title": "Prise en main de Linux et de la ligne de commande",
+        "description": "Découvrir l’environnement Linux, l’organisation du système de fichiers et les principes d’utilisation du terminal. Prendre en main les commandes indispensables pour se déplacer, consulter l’aide et manipuler les fichiers.",
+        "keyLearningPoints": [
+          "Comprendre le rôle du noyau, du shell, des distributions et des utilisateurs",
+          "Naviguer dans l’arborescence avec pwd, cd, ls et les chemins absolus ou relatifs",
+          "Créer, copier, déplacer, renommer et supprimer des fichiers et répertoires",
+          "Utiliser les redirections, les tubes et les commandes grep, find, sort et wc",
+          "Consulter la documentation avec man, info et les options de commande"
+        ],
+        "totalDurationMinutes": 160,
+        "lessons": [
+          {
+            "id": "fdbbeb9f-138a-4589-9a6d-70f006959806",
+            "moduleId": "10c16ab6-3997-41a1-bfe6-87574e2abc8b",
+            "order": 1,
+            "title": "Comprendre l’environnement Linux",
+            "type": "theory",
+            "estimatedDurationMinutes": 20,
+            "learningGoal": "Expliquer le rôle du noyau, du shell, des distributions Linux et des utilisateurs, puis identifier leurs interactions dans l’environnement système.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "noyau",
+              "shell",
+              "distribution Linux",
+              "utilisateur",
+              "terminal"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:02.116Z",
+            "updatedAt": "2026-07-27T20:57:02.116Z"
+          },
+          {
+            "id": "7bcc9c34-5150-48a4-8571-d44c318a20db",
+            "moduleId": "10c16ab6-3997-41a1-bfe6-87574e2abc8b",
+            "order": 2,
+            "title": "Naviguer dans le système de fichiers",
+            "type": "mixed",
+            "estimatedDurationMinutes": 30,
+            "learningGoal": "Se déplacer efficacement dans l’arborescence Linux en utilisant pwd, cd et ls, avec des chemins absolus et relatifs.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "arborescence",
+              "pwd",
+              "cd",
+              "ls",
+              "chemin absolu",
+              "chemin relatif"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:02.116Z",
+            "updatedAt": "2026-07-27T20:57:02.116Z"
+          },
+          {
+            "id": "df26f883-f15d-4f2d-a312-0db7eaffb506",
+            "moduleId": "10c16ab6-3997-41a1-bfe6-87574e2abc8b",
+            "order": 3,
+            "title": "Manipuler fichiers et répertoires",
+            "type": "practice",
+            "estimatedDurationMinutes": 40,
+            "learningGoal": "Créer, copier, déplacer, renommer et supprimer des fichiers et des répertoires avec les commandes de manipulation courantes.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "touch",
+              "mkdir",
+              "cp",
+              "mv",
+              "rm",
+              "rmdir",
+              "fichier",
+              "répertoire"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:02.116Z",
+            "updatedAt": "2026-07-27T20:57:02.116Z"
+          },
+          {
+            "id": "06512b41-ca86-4b5f-9b97-2146e6f290f5",
+            "moduleId": "10c16ab6-3997-41a1-bfe6-87574e2abc8b",
+            "order": 4,
+            "title": "Exploiter les flux et les filtres de commandes",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Combiner des commandes avec les redirections et les tubes afin de filtrer, rechercher, trier et compter des informations dans des fichiers ou des sorties de commandes.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "redirection",
+              "tube",
+              "grep",
+              "find",
+              "sort",
+              "wc",
+              "stdin",
+              "stdout"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:02.116Z",
+            "updatedAt": "2026-07-27T20:57:02.116Z"
+          },
+          {
+            "id": "f9428ce9-093b-467c-bf9b-24b1c0eb3361",
+            "moduleId": "10c16ab6-3997-41a1-bfe6-87574e2abc8b",
+            "order": 5,
+            "title": "Trouver de l’aide dans le terminal",
+            "type": "theory",
+            "estimatedDurationMinutes": 20,
+            "learningGoal": "Consulter de manière autonome la documentation d’une commande avec man, info et ses options afin de choisir la syntaxe appropriée.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "man",
+              "info",
+              "options",
+              "syntaxe",
+              "page de manuel",
+              "aide en ligne"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:02.116Z",
+            "updatedAt": "2026-07-27T20:57:02.116Z"
+          },
+          {
+            "id": "47e3661e-a6c0-48f9-9e17-e9986aeba475",
+            "moduleId": "10c16ab6-3997-41a1-bfe6-87574e2abc8b",
+            "order": 6,
+            "title": "Quiz de validation : bases de la ligne de commande",
+            "type": "quiz",
+            "estimatedDurationMinutes": 15,
+            "learningGoal": "Vérifier sa maîtrise de l’environnement Linux, de la navigation, de la manipulation de fichiers, des filtres, des flux et de la documentation en ligne de commande.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "quiz",
+              "terminal",
+              "navigation",
+              "commandes Linux",
+              "redirections",
+              "documentation"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:02.116Z",
+            "updatedAt": "2026-07-27T20:57:02.116Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      },
+      {
+        "id": "4f9dbbf3-1cf9-4d5f-b17e-3d2a3eccac71",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 2,
+        "title": "Fichiers, permissions et stockage",
+        "description": "Administrer les fichiers et les ressources locales en contrôlant les droits d’accès, les propriétaires et l’utilisation du stockage. Comprendre les mécanismes nécessaires à une gestion fiable des données.",
+        "keyLearningPoints": [
+          "Interpréter les permissions classiques et les droits de lecture, écriture et exécution",
+          "Modifier les propriétaires et permissions avec chown, chgrp et chmod",
+          "Utiliser les liens symboliques et comprendre leurs cas d’usage",
+          "Analyser l’espace disque avec df, du et les outils de recherche de fichiers volumineux",
+          "Comprendre les partitions, les systèmes de fichiers et le montage de volumes"
+        ],
+        "totalDurationMinutes": 165,
+        "lessons": [
+          {
+            "id": "58c4a969-c313-4a18-bd7b-d875ce6dcff6",
+            "moduleId": "4f9dbbf3-1cf9-4d5f-b17e-3d2a3eccac71",
+            "order": 1,
+            "title": "Comprendre les permissions Linux",
+            "type": "theory",
+            "estimatedDurationMinutes": 25,
+            "learningGoal": "Interpréter les permissions de lecture, d’écriture et d’exécution pour un fichier ou un répertoire, puis identifier leur impact sur l’accès aux données.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "permissions",
+              "lecture",
+              "écriture",
+              "exécution",
+              "notation symbolique",
+              "notation octale"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:06.322Z",
+            "updatedAt": "2026-07-27T20:57:06.322Z"
+          },
+          {
+            "id": "115ce50d-09b8-4768-97b9-f28a3b61b040",
+            "moduleId": "4f9dbbf3-1cf9-4d5f-b17e-3d2a3eccac71",
+            "order": 2,
+            "title": "Gérer les propriétaires et les droits d’accès",
+            "type": "practice",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Modifier les propriétaires, les groupes propriétaires et les permissions de fichiers et de répertoires avec chown, chgrp et chmod.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "chown",
+              "chgrp",
+              "chmod",
+              "propriétaire",
+              "groupe propriétaire",
+              "umask"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:06.322Z",
+            "updatedAt": "2026-07-27T20:57:06.322Z"
+          },
+          {
+            "id": "77b52ac1-a4b2-4759-add6-d37b9a03367a",
+            "moduleId": "4f9dbbf3-1cf9-4d5f-b17e-3d2a3eccac71",
+            "order": 3,
+            "title": "Utiliser les liens symboliques",
+            "type": "mixed",
+            "estimatedDurationMinutes": 30,
+            "learningGoal": "Créer, inspecter et utiliser des liens symboliques, puis choisir ce mécanisme pour référencer une ressource sans dupliquer son contenu.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "lien symbolique",
+              "ln",
+              "cible",
+              "chemin relatif",
+              "chemin absolu",
+              "lien cassé"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:06.322Z",
+            "updatedAt": "2026-07-27T20:57:06.322Z"
+          },
+          {
+            "id": "56d95387-9730-450e-b232-6ae6f1c4f8f1",
+            "moduleId": "4f9dbbf3-1cf9-4d5f-b17e-3d2a3eccac71",
+            "order": 4,
+            "title": "Analyser le stockage et les systèmes de fichiers",
+            "type": "practice",
+            "estimatedDurationMinutes": 40,
+            "learningGoal": "Mesurer l’espace disponible et consommé, repérer les fichiers volumineux et interpréter les informations essentielles d’un système de fichiers monté.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "df",
+              "du",
+              "find",
+              "espace disque",
+              "fichier volumineux",
+              "système de fichiers",
+              "inode"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:06.322Z",
+            "updatedAt": "2026-07-27T20:57:06.322Z"
+          },
+          {
+            "id": "386bb442-dc14-4ebf-be14-bea1966754f6",
+            "moduleId": "4f9dbbf3-1cf9-4d5f-b17e-3d2a3eccac71",
+            "order": 5,
+            "title": "Comprendre les partitions et le montage des volumes",
+            "type": "theory",
+            "estimatedDurationMinutes": 20,
+            "learningGoal": "Décrire le rôle des partitions et du montage, puis expliquer le parcours d’accès à un volume depuis son périphérique jusqu’à son point de montage.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "partition",
+              "montage",
+              "mount",
+              "point de montage",
+              "fstab",
+              "périphérique bloc"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:06.322Z",
+            "updatedAt": "2026-07-27T20:57:06.322Z"
+          },
+          {
+            "id": "ac85563a-1bcb-4438-9237-52bede4e0806",
+            "moduleId": "4f9dbbf3-1cf9-4d5f-b17e-3d2a3eccac71",
+            "order": 6,
+            "title": "Quiz de validation : fichiers, permissions et stockage",
+            "type": "quiz",
+            "estimatedDurationMinutes": 15,
+            "learningGoal": "Valider sa capacité à interpréter et modifier les permissions, gérer les liens et diagnostiquer l’utilisation du stockage dans un scénario d’administration Linux.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "permissions",
+              "chmod",
+              "chown",
+              "lien symbolique",
+              "df",
+              "du",
+              "montage"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:06.322Z",
+            "updatedAt": "2026-07-27T20:57:06.322Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      },
+      {
+        "id": "1656e7a8-e09f-4c3f-968f-502ae5b4e47c",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 3,
+        "title": "Utilisateurs, groupes et gestion des logiciels",
+        "description": "Gérer les identités locales et les logiciels installés sur un serveur Linux. Mettre en place une organisation cohérente des comptes et maintenir le système à jour.",
+        "keyLearningPoints": [
+          "Créer, modifier et supprimer des utilisateurs et des groupes",
+          "Configurer les profils, le répertoire personnel, le shell et les limites de comptes",
+          "Comprendre les fichiers locaux de gestion des utilisateurs et des groupes",
+          "Installer, mettre à jour et supprimer des paquets avec le gestionnaire adapté à la distribution",
+          "Identifier les dépendances, les dépôts et les bonnes pratiques de mise à jour"
+        ],
+        "totalDurationMinutes": 150,
+        "lessons": [
+          {
+            "id": "17161838-0097-4944-9c85-c0f980878212",
+            "moduleId": "1656e7a8-e09f-4c3f-968f-502ae5b4e47c",
+            "order": 1,
+            "title": "Administrer les utilisateurs et les groupes locaux",
+            "type": "theory",
+            "estimatedDurationMinutes": 25,
+            "learningGoal": "Créer, modifier et supprimer des utilisateurs et des groupes en appliquant une organisation cohérente des identités locales.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "useradd",
+              "usermod",
+              "userdel",
+              "groupadd",
+              "groupmod",
+              "groupdel",
+              "UID",
+              "GID"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:12.274Z",
+            "updatedAt": "2026-07-27T20:57:12.274Z"
+          },
+          {
+            "id": "29033da2-996b-427a-b284-1ab4186f31ad",
+            "moduleId": "1656e7a8-e09f-4c3f-968f-502ae5b4e47c",
+            "order": 2,
+            "title": "Configurer les profils et les limites des comptes",
+            "type": "mixed",
+            "estimatedDurationMinutes": 30,
+            "learningGoal": "Configurer le répertoire personnel, le shell par défaut, les informations de profil et les limites d’un compte utilisateur.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "/etc/passwd",
+              "/etc/shadow",
+              "/etc/group",
+              "/etc/skel",
+              "chage",
+              "ulimit",
+              "nologin"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:12.274Z",
+            "updatedAt": "2026-07-27T20:57:12.274Z"
+          },
+          {
+            "id": "d87897b3-f865-44be-a0e0-2013eafd1201",
+            "moduleId": "1656e7a8-e09f-4c3f-968f-502ae5b4e47c",
+            "order": 3,
+            "title": "Atelier : mettre en place une organisation de comptes",
+            "type": "practice",
+            "estimatedDurationMinutes": 45,
+            "learningGoal": "Créer une structure de comptes complète, vérifier les appartenances aux groupes et appliquer des paramètres adaptés à plusieurs profils d’utilisateurs.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "sudo",
+              "gpasswd",
+              "id",
+              "groups",
+              "passwd",
+              "chage",
+              "usermod"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:12.274Z",
+            "updatedAt": "2026-07-27T20:57:12.274Z"
+          },
+          {
+            "id": "4a0362e4-1d30-4eb0-86bd-ef7024cfa0df",
+            "moduleId": "1656e7a8-e09f-4c3f-968f-502ae5b4e47c",
+            "order": 4,
+            "title": "Gérer les logiciels et les dépôts",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Installer, mettre à jour et supprimer des paquets en identifiant le gestionnaire, les dépôts et les dépendances adaptés à la distribution Linux utilisée.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "APT",
+              "DNF",
+              "RPM",
+              "dpkg",
+              "dépôts",
+              "dépendances",
+              "mise à jour",
+              "cache des paquets"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:12.274Z",
+            "updatedAt": "2026-07-27T20:57:12.274Z"
+          },
+          {
+            "id": "a22a33d5-6ec3-44a1-a12f-2f2d2ebf3429",
+            "moduleId": "1656e7a8-e09f-4c3f-968f-502ae5b4e47c",
+            "order": 5,
+            "title": "Quiz : valider la gestion des identités et des logiciels",
+            "type": "quiz",
+            "estimatedDurationMinutes": 15,
+            "learningGoal": "Évaluer sa capacité à administrer les comptes locaux et à maintenir les logiciels d’un serveur Linux en choisissant les commandes et pratiques appropriées.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "utilisateurs",
+              "groupes",
+              "permissions",
+              "gestionnaire de paquets",
+              "dépendances",
+              "dépôts"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:12.274Z",
+            "updatedAt": "2026-07-27T20:57:12.274Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      },
+      {
+        "id": "186ec37a-926e-4eb1-89f1-fc412d0a0b5a",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 4,
+        "title": "Processus, services et planification",
+        "description": "Contrôler les processus et les services du système afin de démarrer, arrêter, diagnostiquer et automatiser le fonctionnement des composants logiciels.",
+        "keyLearningPoints": [
+          "Identifier les processus et analyser leur consommation de ressources",
+          "Gérer les processus avec ps, top, kill et les signaux Unix",
+          "Comprendre systemd, les unités, les cibles et les dépendances de services",
+          "Démarrer, arrêter, redémarrer, activer et vérifier un service",
+          "Planifier des tâches récurrentes avec cron et les minuteurs systemd"
+        ],
+        "totalDurationMinutes": 185,
+        "lessons": [
+          {
+            "id": "79f875af-57a9-40d7-959a-9842f08118cf",
+            "moduleId": "186ec37a-926e-4eb1-89f1-fc412d0a0b5a",
+            "order": 1,
+            "title": "Observer les processus et les ressources système",
+            "type": "theory",
+            "estimatedDurationMinutes": 25,
+            "learningGoal": "Identifier les processus actifs, interpréter leur état et analyser leur consommation de processeur et de mémoire avec les outils adaptés.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "processus",
+              "PID",
+              "ps",
+              "top",
+              "CPU",
+              "mémoire",
+              "état du processus"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:16.249Z",
+            "updatedAt": "2026-07-27T20:57:16.249Z"
+          },
+          {
+            "id": "ec4c0cab-ae9f-4551-8b7b-84cedccf2879",
+            "moduleId": "186ec37a-926e-4eb1-89f1-fc412d0a0b5a",
+            "order": 2,
+            "title": "Gérer les processus et les signaux Unix",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Contrôler un processus en envoyant des signaux appropriés avec kill, puis gérer les situations de blocage ou de consommation excessive de ressources.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "kill",
+              "signaux Unix",
+              "SIGTERM",
+              "SIGKILL",
+              "jobs",
+              "processus en arrière-plan"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:16.249Z",
+            "updatedAt": "2026-07-27T20:57:16.249Z"
+          },
+          {
+            "id": "930f89cb-3286-40e7-8e60-e825d490cbe4",
+            "moduleId": "186ec37a-926e-4eb1-89f1-fc412d0a0b5a",
+            "order": 3,
+            "title": "Comprendre systemd et le cycle de vie des services",
+            "type": "theory",
+            "estimatedDurationMinutes": 30,
+            "learningGoal": "Expliquer le rôle de systemd, distinguer unités et cibles, et identifier les dépendances qui déterminent le démarrage des services.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "systemd",
+              "unités",
+              "cibles",
+              "targets",
+              "dépendances",
+              "daemon",
+              "cycle de vie"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:16.249Z",
+            "updatedAt": "2026-07-27T20:57:16.249Z"
+          },
+          {
+            "id": "1886f9e6-cf77-497c-b1e7-b0e56c43f888",
+            "moduleId": "186ec37a-926e-4eb1-89f1-fc412d0a0b5a",
+            "order": 4,
+            "title": "Administrer un service avec systemctl",
+            "type": "practice",
+            "estimatedDurationMinutes": 45,
+            "learningGoal": "Démarrer, arrêter, redémarrer, activer et diagnostiquer un service systemd en vérifiant son état et ses dépendances.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "systemctl",
+              "start",
+              "stop",
+              "restart",
+              "enable",
+              "status",
+              "service",
+              "journalctl"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:16.249Z",
+            "updatedAt": "2026-07-27T20:57:16.249Z"
+          },
+          {
+            "id": "06fd7d4e-63d6-477e-a01a-2ce20e51ecb2",
+            "moduleId": "186ec37a-926e-4eb1-89f1-fc412d0a0b5a",
+            "order": 5,
+            "title": "Planifier des tâches récurrentes",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Créer et choisir une planification adaptée pour exécuter une tâche récurrente avec cron ou un minuteur systemd, puis vérifier son exécution.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "cron",
+              "crontab",
+              "timer systemd",
+              "OnCalendar",
+              "service associé",
+              "planification"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:16.249Z",
+            "updatedAt": "2026-07-27T20:57:16.249Z"
+          },
+          {
+            "id": "0debe737-5cd4-4067-9ebf-27f6aa38fd69",
+            "moduleId": "186ec37a-926e-4eb1-89f1-fc412d0a0b5a",
+            "order": 6,
+            "title": "Quiz de validation : processus, services et planification",
+            "type": "quiz",
+            "estimatedDurationMinutes": 15,
+            "learningGoal": "Valider la capacité à observer et contrôler les processus, administrer les services systemd et choisir une solution de planification adaptée.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "processus",
+              "signaux Unix",
+              "systemd",
+              "systemctl",
+              "cron",
+              "minuteur systemd"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:16.249Z",
+            "updatedAt": "2026-07-27T20:57:16.249Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      },
+      {
+        "id": "9d171cf3-d43c-4ecd-bd1d-a09650c588a2",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 5,
+        "title": "Réseau et administration distante",
+        "description": "Configurer les fondamentaux du réseau Linux et utiliser les outils de diagnostic nécessaires à l’administration quotidienne d’un serveur.",
+        "keyLearningPoints": [
+          "Lire et modifier la configuration des interfaces, routes et résolveurs DNS",
+          "Utiliser ip, ss, ping, traceroute, dig et curl pour diagnostiquer la connectivité",
+          "Comprendre les adresses IP, les ports, les sockets et les principaux protocoles réseau",
+          "Configurer un accès distant sécurisé avec SSH et gérer les clés d’authentification",
+          "Contrôler l’exposition des services et vérifier les ports à l’écoute"
+        ],
+        "totalDurationMinutes": 170,
+        "lessons": [
+          {
+            "id": "52a7a46a-d7f9-4899-84c9-503dcca5748e",
+            "moduleId": "9d171cf3-d43c-4ecd-bd1d-a09650c588a2",
+            "order": 1,
+            "title": "Comprendre les fondamentaux du réseau Linux",
+            "type": "theory",
+            "estimatedDurationMinutes": 25,
+            "learningGoal": "Expliquer le rôle des adresses IP, des ports, des sockets et des principaux protocoles réseau afin d’interpréter la communication entre un client et un serveur Linux.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "adresse IP",
+              "port",
+              "socket",
+              "TCP",
+              "UDP",
+              "DNS",
+              "HTTP",
+              "HTTPS"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:20.753Z",
+            "updatedAt": "2026-07-27T20:57:20.753Z"
+          },
+          {
+            "id": "3daaa3a6-148f-4973-8a6f-656a41cc2a9f",
+            "moduleId": "9d171cf3-d43c-4ecd-bd1d-a09650c588a2",
+            "order": 2,
+            "title": "Configurer les interfaces, les routes et le DNS",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Lire et modifier la configuration des interfaces réseau, des routes et des résolveurs DNS avec les outils Linux adaptés.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "ip",
+              "interface réseau",
+              "route",
+              "table de routage",
+              "resolv.conf",
+              "résolveur DNS",
+              "passerelle"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:20.753Z",
+            "updatedAt": "2026-07-27T20:57:20.753Z"
+          },
+          {
+            "id": "2eef771f-310d-4e16-bc48-784791adfa38",
+            "moduleId": "9d171cf3-d43c-4ecd-bd1d-a09650c588a2",
+            "order": 3,
+            "title": "Diagnostiquer la connectivité réseau",
+            "type": "practice",
+            "estimatedDurationMinutes": 45,
+            "learningGoal": "Diagnostiquer méthodiquement un problème de connectivité en utilisant ping, traceroute, dig, ss et curl, puis interpréter les résultats obtenus.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "ping",
+              "traceroute",
+              "dig",
+              "ss",
+              "curl",
+              "connectivité",
+              "résolution DNS",
+              "latence"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:20.753Z",
+            "updatedAt": "2026-07-27T20:57:20.753Z"
+          },
+          {
+            "id": "21ebfe84-70fa-46a3-9bcd-6aa4fa5a6398",
+            "moduleId": "9d171cf3-d43c-4ecd-bd1d-a09650c588a2",
+            "order": 4,
+            "title": "Administrer un serveur à distance avec SSH",
+            "type": "mixed",
+            "estimatedDurationMinutes": 50,
+            "learningGoal": "Configurer un accès SSH sécurisé avec authentification par clés, vérifier les services accessibles à distance et contrôler les ports à l’écoute.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "SSH",
+              "sshd",
+              "clé publique",
+              "clé privée",
+              "authorized_keys",
+              "port à l’écoute",
+              "authentification",
+              "exposition réseau"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:20.753Z",
+            "updatedAt": "2026-07-27T20:57:20.753Z"
+          },
+          {
+            "id": "0bf796ed-69e7-4ba4-8076-11627dafa8b9",
+            "moduleId": "9d171cf3-d43c-4ecd-bd1d-a09650c588a2",
+            "order": 5,
+            "title": "Quiz : réseau et administration distante",
+            "type": "quiz",
+            "estimatedDurationMinutes": 15,
+            "learningGoal": "Évaluer ses connaissances sur la configuration réseau Linux, le diagnostic de connectivité, SSH et le contrôle de l’exposition des services.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "réseau Linux",
+              "DNS",
+              "routage",
+              "diagnostic",
+              "SSH",
+              "ports",
+              "sécurité réseau"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:20.753Z",
+            "updatedAt": "2026-07-27T20:57:20.753Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      },
+      {
+        "id": "e0ef6dbd-c469-46e0-92c6-af4399075521",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 6,
+        "title": "Journaux, supervision et dépannage",
+        "description": "Appliquer une démarche de dépannage reproductible en s’appuyant sur les journaux, l’état des services, les ressources système et des tests ciblés.",
+        "keyLearningPoints": [
+          "Consulter et filtrer les journaux avec journalctl et les fichiers de logs classiques",
+          "Relier un symptôme à une hypothèse puis isoler la cause d’un incident",
+          "Diagnostiquer les problèmes de démarrage, de permissions, de disque, de mémoire et de réseau",
+          "Utiliser les codes de sortie, les traces et les commandes de vérification",
+          "Documenter les actions correctives et mettre en place des contrôles préventifs"
+        ],
+        "totalDurationMinutes": 160,
+        "lessons": [
+          {
+            "id": "273106f5-6b83-4b27-b432-6d45a3acf86c",
+            "moduleId": "e0ef6dbd-c469-46e0-92c6-af4399075521",
+            "order": 1,
+            "title": "Explorer les journaux Linux",
+            "type": "theory",
+            "estimatedDurationMinutes": 25,
+            "learningGoal": "Consulter, rechercher et filtrer les événements système avec journalctl et les fichiers de journaux classiques afin d’identifier les informations pertinentes.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "journalctl",
+              "syslog",
+              "/var/log",
+              "grep",
+              "tail",
+              "less"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:24.746Z",
+            "updatedAt": "2026-07-27T20:57:24.746Z"
+          },
+          {
+            "id": "9599af54-7997-4595-88a5-564a966471d3",
+            "moduleId": "e0ef6dbd-c469-46e0-92c6-af4399075521",
+            "order": 2,
+            "title": "Construire une méthode de dépannage",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Relier un symptôme observable à des hypothèses techniques, puis construire une démarche de diagnostic fondée sur des vérifications ciblées.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "symptôme",
+              "hypothèse",
+              "cause racine",
+              "méthode de dépannage",
+              "tests ciblés",
+              "corrélation"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:24.746Z",
+            "updatedAt": "2026-07-27T20:57:24.746Z"
+          },
+          {
+            "id": "20807d0a-0131-41e1-9952-a4c39ab54231",
+            "moduleId": "e0ef6dbd-c469-46e0-92c6-af4399075521",
+            "order": 3,
+            "title": "Diagnostiquer les incidents système courants",
+            "type": "practice",
+            "estimatedDurationMinutes": 45,
+            "learningGoal": "Diagnostiquer un incident courant affectant le démarrage, les permissions, le disque, la mémoire ou le réseau en utilisant des commandes et des traces adaptées.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "systemctl",
+              "dmesg",
+              "df",
+              "du",
+              "free",
+              "ss",
+              "ip",
+              "permissions",
+              "codes de sortie"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:24.746Z",
+            "updatedAt": "2026-07-27T20:57:24.746Z"
+          },
+          {
+            "id": "e359c3f0-869e-4b5d-87d7-6e7778aaa195",
+            "moduleId": "e0ef6dbd-c469-46e0-92c6-af4399075521",
+            "order": 4,
+            "title": "Confirmer et valider une correction",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Utiliser les codes de sortie, les traces et les commandes de vérification pour confirmer une cause, appliquer une correction et vérifier le retour à un état fonctionnel.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "code de sortie",
+              "$?",
+              "strace",
+              "tests de santé",
+              "validation",
+              "régression"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:24.746Z",
+            "updatedAt": "2026-07-27T20:57:24.746Z"
+          },
+          {
+            "id": "78304d57-5c73-4daf-950f-21165d300541",
+            "moduleId": "e0ef6dbd-c469-46e0-92c6-af4399075521",
+            "order": 5,
+            "title": "Quiz : journaux, supervision et dépannage",
+            "type": "quiz",
+            "estimatedDurationMinutes": 20,
+            "learningGoal": "Analyser un scénario d’incident, sélectionner les vérifications pertinentes, proposer une correction documentée et définir des contrôles préventifs.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "journalisation",
+              "contrôles préventifs",
+              "documentation",
+              "plan d’action",
+              "supervision",
+              "post-mortem"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:24.746Z",
+            "updatedAt": "2026-07-27T20:57:24.746Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      },
+      {
+        "id": "635af0cb-849a-4c78-9a95-3fcb062e139b",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 7,
+        "title": "Automatisation avec Bash",
+        "description": "Automatiser les opérations répétitives avec Bash en produisant des scripts lisibles, robustes et adaptés à l’administration système.",
+        "keyLearningPoints": [
+          "Structurer un script Bash avec variables, conditions, boucles et fonctions",
+          "Manipuler les arguments, les codes de retour, les entrées et les sorties",
+          "Utiliser les substitutions, les expressions régulières et les outils awk, sed et xargs",
+          "Gérer les erreurs, les journaux d’exécution et les interruptions",
+          "Créer des scripts de sauvegarde, de contrôle d’espace disque et de vérification de services"
+        ],
+        "totalDurationMinutes": 210,
+        "lessons": [
+          {
+            "id": "d2ec29db-8cf9-4cda-b9d3-9f9295fb60ff",
+            "moduleId": "635af0cb-849a-4c78-9a95-3fcb062e139b",
+            "order": 1,
+            "title": "Structurer un script Bash",
+            "type": "theory",
+            "estimatedDurationMinutes": 25,
+            "learningGoal": "Structurer un script Bash lisible en déclarant des variables et en utilisant des conditions, des boucles et des fonctions pour automatiser une tâche simple.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "Bash",
+              "variables",
+              "conditions",
+              "boucles",
+              "fonctions",
+              "shebang"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:29.051Z",
+            "updatedAt": "2026-07-27T20:57:29.051Z"
+          },
+          {
+            "id": "dd0e1e02-9c00-48c7-b2ea-5a797cd5010b",
+            "moduleId": "635af0cb-849a-4c78-9a95-3fcb062e139b",
+            "order": 2,
+            "title": "Entrées, sorties et contrôle d’exécution",
+            "type": "mixed",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Écrire un script qui traite des arguments, des entrées utilisateur et des sorties, puis interpréter les codes de retour pour contrôler le déroulement de l’exécution.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "arguments positionnels",
+              "stdin",
+              "stdout",
+              "stderr",
+              "codes de retour",
+              "exit",
+              "read"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:29.051Z",
+            "updatedAt": "2026-07-27T20:57:29.051Z"
+          },
+          {
+            "id": "6ef75e0a-102e-4f22-b52c-3e4dcb01c91c",
+            "moduleId": "635af0cb-849a-4c78-9a95-3fcb062e139b",
+            "order": 3,
+            "title": "Traiter des données avec les outils Unix",
+            "type": "practice",
+            "estimatedDurationMinutes": 45,
+            "learningGoal": "Transformer et filtrer des données système dans un script en combinant substitutions, expressions régulières, awk, sed et xargs.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "substitution de commande",
+              "expressions régulières",
+              "awk",
+              "sed",
+              "xargs",
+              "pipeline"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:29.051Z",
+            "updatedAt": "2026-07-27T20:57:29.051Z"
+          },
+          {
+            "id": "fa97336d-eda4-499f-8fbc-1711b4f14917",
+            "moduleId": "635af0cb-849a-4c78-9a95-3fcb062e139b",
+            "order": 4,
+            "title": "Fiabiliser et journaliser un script",
+            "type": "mixed",
+            "estimatedDurationMinutes": 40,
+            "learningGoal": "Rendre un script robuste en détectant les erreurs, en produisant des journaux d’exécution et en réagissant proprement aux interruptions.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "gestion des erreurs",
+              "journalisation",
+              "trap",
+              "signaux",
+              "interruptions",
+              "set -e",
+              "set -u"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:29.051Z",
+            "updatedAt": "2026-07-27T20:57:29.051Z"
+          },
+          {
+            "id": "08b61076-a8f2-430f-acd9-7049bc1922aa",
+            "moduleId": "635af0cb-849a-4c78-9a95-3fcb062e139b",
+            "order": 5,
+            "title": "Construire des scripts d’administration",
+            "type": "practice",
+            "estimatedDurationMinutes": 50,
+            "learningGoal": "Développer des scripts Bash opérationnels pour sauvegarder des données, contrôler l’espace disque et vérifier l’état de services Linux.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "sauvegarde",
+              "espace disque",
+              "df",
+              "systemctl",
+              "vérification de service",
+              "scripts d’administration"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:29.051Z",
+            "updatedAt": "2026-07-27T20:57:29.051Z"
+          },
+          {
+            "id": "3c7a117d-2122-428b-9dac-06eca0b1791d",
+            "moduleId": "635af0cb-849a-4c78-9a95-3fcb062e139b",
+            "order": 6,
+            "title": "Quiz de validation : automatisation avec Bash",
+            "type": "quiz",
+            "estimatedDurationMinutes": 15,
+            "learningGoal": "Évaluer sa capacité à concevoir des scripts Bash structurés, robustes et adaptés aux tâches courantes d’administration système.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "Bash",
+              "automatisation",
+              "codes de retour",
+              "journalisation",
+              "sauvegarde",
+              "systemctl"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:29.051Z",
+            "updatedAt": "2026-07-27T20:57:29.051Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      },
+      {
+        "id": "fff1ff9e-18f7-4c84-8170-1ca77f58bc2d",
+        "courseId": "f320ad2e-899d-4ee5-9563-513651298d1a",
+        "order": 8,
+        "title": "Sécurisation et maintenance d’un serveur Linux",
+        "description": "Sécuriser et maintenir un serveur Linux en appliquant des mesures pragmatiques de durcissement, de sauvegarde et de contrôle opérationnel.",
+        "keyLearningPoints": [
+          "Réduire la surface d’exposition et désactiver les services inutiles",
+          "Configurer un pare-feu et limiter les accès aux ports nécessaires",
+          "Renforcer SSH avec les clés, des comptes dédiés et une politique d’accès appropriée",
+          "Appliquer les mises à jour, gérer les sauvegardes et vérifier leur restauration",
+          "Mettre en place une checklist de maintenance et de contrôle de sécurité"
+        ],
+        "totalDurationMinutes": 165,
+        "lessons": [
+          {
+            "id": "72c4a8ab-595b-4745-8ad9-1fee196c786e",
+            "moduleId": "fff1ff9e-18f7-4c84-8170-1ca77f58bc2d",
+            "order": 1,
+            "title": "Réduire la surface d’exposition du serveur",
+            "type": "mixed",
+            "estimatedDurationMinutes": 25,
+            "learningGoal": "Identifier les services actifs et désactiver proprement les services inutiles afin de réduire la surface d’exposition d’un serveur Linux.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "surface d’exposition",
+              "services actifs",
+              "systemctl",
+              "ports réseau",
+              "durcissement"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:38.98Z",
+            "updatedAt": "2026-07-27T20:57:38.98Z"
+          },
+          {
+            "id": "6729dd87-e527-49f3-b80d-51e89556609c",
+            "moduleId": "fff1ff9e-18f7-4c84-8170-1ca77f58bc2d",
+            "order": 2,
+            "title": "Filtrer les accès réseau avec un pare-feu",
+            "type": "practice",
+            "estimatedDurationMinutes": 35,
+            "learningGoal": "Configurer un pare-feu avec une politique restrictive et autoriser uniquement les ports nécessaires au fonctionnement et à l’administration du serveur.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "pare-feu",
+              "UFW",
+              "iptables",
+              "ports",
+              "règles entrantes",
+              "politique restrictive"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:38.98Z",
+            "updatedAt": "2026-07-27T20:57:38.98Z"
+          },
+          {
+            "id": "e9373ff5-418b-4277-9179-4055ebdc62d0",
+            "moduleId": "fff1ff9e-18f7-4c84-8170-1ca77f58bc2d",
+            "order": 3,
+            "title": "Renforcer l’administration distante avec SSH",
+            "type": "mixed",
+            "estimatedDurationMinutes": 30,
+            "learningGoal": "Sécuriser l’accès SSH en utilisant des clés, des comptes dédiés et une configuration limitant les accès privilégiés et les méthodes d’authentification risquées.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "SSH",
+              "clés publiques",
+              "sshd_config",
+              "PermitRootLogin",
+              "authentification par clé",
+              "comptes dédiés"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:38.98Z",
+            "updatedAt": "2026-07-27T20:57:38.98Z"
+          },
+          {
+            "id": "9f0ae479-5fa2-4ab9-a5e7-0d15938e4046",
+            "moduleId": "fff1ff9e-18f7-4c84-8170-1ca77f58bc2d",
+            "order": 4,
+            "title": "Maintenir le système et valider les sauvegardes",
+            "type": "practice",
+            "estimatedDurationMinutes": 40,
+            "learningGoal": "Appliquer les mises à jour, réaliser une sauvegarde cohérente et vérifier concrètement qu’elle permet de restaurer les données nécessaires.",
+            "requiresDiagram": true,
+            "technicalKeywords": [
+              "mises à jour",
+              "apt",
+              "sauvegarde",
+              "restauration",
+              "intégrité",
+              "RPO",
+              "RTO"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:38.98Z",
+            "updatedAt": "2026-07-27T20:57:38.98Z"
+          },
+          {
+            "id": "4ae3579c-62fd-4b80-9d8c-6f0a2344d0f2",
+            "moduleId": "fff1ff9e-18f7-4c84-8170-1ca77f58bc2d",
+            "order": 5,
+            "title": "Mettre en place une routine de contrôle opérationnel",
+            "type": "mixed",
+            "estimatedDurationMinutes": 20,
+            "learningGoal": "Construire et utiliser une checklist récurrente pour contrôler l’état de sécurité, la disponibilité, les sauvegardes et la maintenance d’un serveur Linux.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "checklist",
+              "maintenance préventive",
+              "contrôle de sécurité",
+              "disponibilité",
+              "audit",
+              "traçabilité"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:38.98Z",
+            "updatedAt": "2026-07-27T20:57:38.98Z"
+          },
+          {
+            "id": "46927fc8-12c8-4a6b-9517-35bdcedf9c09",
+            "moduleId": "fff1ff9e-18f7-4c84-8170-1ca77f58bc2d",
+            "order": 6,
+            "title": "Quiz de validation : sécurisation et maintenance",
+            "type": "quiz",
+            "estimatedDurationMinutes": 15,
+            "learningGoal": "Évaluer sa capacité à sécuriser et maintenir un serveur Linux en choisissant les mesures adaptées à différents scénarios d’administration.",
+            "requiresDiagram": false,
+            "technicalKeywords": [
+              "durcissement",
+              "pare-feu",
+              "SSH",
+              "sauvegarde",
+              "restauration",
+              "maintenance"
+            ],
+            "contentMarkdown": null,
+            "hasContent": false,
+            "createdAt": "2026-07-27T20:57:38.98Z",
+            "updatedAt": "2026-07-27T20:57:38.98Z"
+          }
+        ],
+        "createdAt": "2026-07-27T20:56:57.837Z",
+        "updatedAt": "2026-07-27T20:56:57.837Z"
+      }
+    ],
+    "createdAt": "2026-07-27T20:56:57.837Z",
+    "updatedAt": "2026-07-27T20:57:39.042Z"
+  }
+}
