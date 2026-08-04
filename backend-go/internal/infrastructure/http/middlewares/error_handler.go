@@ -4,6 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"log/slog"
+	"runtime/debug"
+
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/dto"
@@ -60,9 +63,20 @@ func ErrorHandler() gin.HandlerFunc {
 
 func writeError(c *gin.Context, err error) {
 	status, code, message := classifyError(err)
+
+	slog.ErrorContext(
+		c.Request.Context(),
+		"request failed",
+		"status", status,
+		"code", code,
+		"error", err.Error(),
+		"method", c.Request.Method,
+		"path", c.Request.URL.Path,
+		"stack", string(debug.Stack()),
+	)
+
 	c.JSON(status, dto.ErrorResponse{Code: code, Message: message})
 }
-
 func classifyError(err error) (int, string, string) {
 	var httpErr HTTPError
 	if errors.As(err, &httpErr) {
@@ -90,8 +104,14 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusUnprocessableEntity, "generation_out_of_scope", err.Error()
 	case errors.Is(err, service.ErrGenerationNotCompleted):
 		return http.StatusConflict, "generation_not_completed", err.Error()
+	case errors.Is(err, service.ErrGenerationAnalysisRequired):
+		return http.StatusConflict, "generation_analysis_required", err.Error()
 	case errors.Is(err, service.ErrGenerationNotRetryable):
 		return http.StatusConflict, "generation_not_retryable", err.Error()
+	case errors.Is(err, service.ErrGenerationStructureRetryNotAllowed):
+		return http.StatusConflict, "structure_retry_not_allowed", err.Error()
+	case errors.Is(err, service.ErrGenerationStructureRetryStepMismatch):
+		return http.StatusConflict, "structure_retry_step_mismatch", err.Error()
 	case errors.Is(err, service.ErrCourseCatalogDependency), errors.Is(err, service.ErrCourseGeneratorDependency):
 		return http.StatusServiceUnavailable, "service_unavailable", err.Error()
 	case errors.Is(err, domain.ErrBlankField),
@@ -106,7 +126,8 @@ func classifyError(err error) (int, string, string) {
 		errors.Is(err, domain.ErrInvalidDuration),
 		errors.Is(err, domain.ErrInvalidPassword),
 		errors.Is(err, domain.ErrInvalidUsername),
-		errors.Is(err, domain.ErrInvalidClarification):
+		errors.Is(err, domain.ErrInvalidClarification),
+		errors.Is(err, domain.ErrGenerationRequestNotReady):
 		return http.StatusBadRequest, "validation_error", err.Error()
 	default:
 		return http.StatusInternalServerError, "internal_error", "internal server error"

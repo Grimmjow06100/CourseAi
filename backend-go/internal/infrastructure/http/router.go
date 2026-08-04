@@ -44,7 +44,9 @@ func registerAuthRoutes(router gin.IRouter, handler *handlers.AuthHandler) {
 func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHandler) {
 	generations := router.Group("/generations")
 	generations.POST("", handler.Start)
-	generations.POST("/structure", handler.Structure)
+	generations.POST("/analyze", handler.Analyze)
+	generations.POST("/:requestID/structure", handler.Structure)
+	generations.POST("/:requestID/structure/retry", handler.RetryStructure)
 	generations.POST("/lessons/:lessonID/content", handler.LessonContent)
 	generations.POST("/modules/:moduleID/contents", handler.ModuleLessonContents)
 	generations.GET("/:requestID/status", handler.Status)

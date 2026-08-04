@@ -240,6 +240,17 @@ func (r *CourseRepository) ListCourses(ctx context.Context, filters contract.Cou
 	}, nil
 }
 
+func (r *CourseRepository) DeleteCourseByRequestID(ctx context.Context, requestID uuid.UUID) error {
+	commandTag, err := r.db.Exec(ctx, `DELETE FROM courses WHERE request_id = $1`, requestID)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return ErrCourseNotFound
+	}
+	return nil
+}
+
 func (r *CourseRepository) DeleteCourse(ctx context.Context, id uuid.UUID) error {
 	commandTag, err := r.db.Exec(ctx, `DELETE FROM courses WHERE id = $1`, id)
 	if err != nil {

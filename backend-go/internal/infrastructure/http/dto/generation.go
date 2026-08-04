@@ -11,6 +11,19 @@ type StartGenerationRequest struct {
 	Prompt string `json:"prompt" binding:"required"`
 }
 
+type AnalyzeGenerationRequest struct {
+	Prompt string `json:"prompt" binding:"required"`
+}
+
+type GenerateStructureRequest struct {
+	Title        string   `json:"title" binding:"required"`
+	Synopsis     string   `json:"synopsis" binding:"required"`
+	CurrentLevel string   `json:"currentLevel" binding:"required"`
+	TargetLevel  string   `json:"targetLevel" binding:"required"`
+	Goals        []string `json:"goals" binding:"required"`
+	Language     string   `json:"language" binding:"required"`
+}
+
 type GenerationStartedResponse struct {
 	RequestID string `json:"requestId"`
 	Status    string `json:"status"`
@@ -26,6 +39,10 @@ type GenerationStatusResponse struct {
 	CurrentStep     *string `json:"currentStep"`
 	ProgressPercent int     `json:"progressPercent"`
 	FailureMessage  *string `json:"failureMessage"`
+}
+
+type GenerationAnalysisResponse struct {
+	Request GenerationRequestResponse `json:"request"`
 }
 
 type GenerationResultResponse struct {
@@ -93,6 +110,10 @@ func GenerationStatusFromContract(status contract.GenerationStatus) GenerationSt
 		ProgressPercent: status.ProgressPercent,
 		FailureMessage:  status.FailureMessage,
 	}
+}
+
+func GenerationAnalysisFromContract(result contract.GenerationAnalysisResult) GenerationAnalysisResponse {
+	return GenerationAnalysisResponse{Request: GenerationRequestFromDomain(result.Request)}
 }
 
 func GenerationResultFromContract(result contract.GenerationResult) GenerationResultResponse {

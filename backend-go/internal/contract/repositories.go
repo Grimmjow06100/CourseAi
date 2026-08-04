@@ -46,6 +46,7 @@ type CourseRepository interface {
 	FindCourseByRequestID(ctx context.Context, requestID uuid.UUID) (domain.Course, error)
 	ListCourses(ctx context.Context, filters CourseFilters) (Page[domain.Course], error)
 	DeleteCourse(ctx context.Context, id uuid.UUID) error
+	DeleteCourseByRequestID(ctx context.Context, requestID uuid.UUID) error
 }
 
 type ModuleRepository interface {

@@ -109,7 +109,9 @@ Generation IA :
 
 ```http
 POST /api/generations
-POST /api/generations/structure
+POST /api/generations/analyze
+POST /api/generations/:requestID/structure
+POST /api/generations/:requestID/structure/retry
 POST /api/generations/lessons/:lessonID/content
 POST /api/generations/modules/:moduleID/contents
 GET  /api/generations/:requestID/status
@@ -117,7 +119,10 @@ GET  /api/generations/:requestID/result
 POST /api/generations/:requestID/retry
 ```
 
-`POST /api/generations/structure` persiste la formation avec modules et lessons sans contenu Markdown.
+`POST /api/generations` conserve le mode automatique complet : prompt -> analyse -> structure -> contenu de toutes les lessons.
+`POST /api/generations/analyze` cree une `GenerationRequest`, analyse le prompt, puis retourne le premier jet : hors scope eventuel, titre, synopsis, niveaux detectes, objectif, langue et questions de clarification.
+`POST /api/generations/:requestID/structure` persiste la formation avec modules et plans de lessons a partir d'une analyse existante et du contexte confirme par l'utilisateur. Cette route ne genere pas le contenu Markdown.
+`POST /api/generations/:requestID/structure/retry` relance uniquement l'etape structure sur une request `failed` dont l'echec vient de `architecture_generation` ou `lesson_plan_generation`; le body est le meme que `/structure` et les donnees partielles sont supprimees avant relance.
 `POST /api/generations/lessons/:lessonID/content` genere et persiste le contenu d'une lesson.
 `POST /api/generations/modules/:moduleID/contents` genere et persiste le contenu de toutes les lessons du module.
 
@@ -150,13 +155,14 @@ go fmt ./...
 
 ## Pipeline IA
 
-`CourseGeneratorService` orchestre :
+Le flux interactif du MVP est separe en trois frontieres claires :
 
-1. creation de `GenerationRequest` ;
-2. analyse du prompt utilisateur ;
-3. generation d'architecture de cours ;
-4. generation des plans de lessons ;
-5. generation optionnelle du contenu Markdown ;
-6. persistance progressive dans PostgreSQL.
+1. `POST /api/generations/analyze` : l'utilisateur envoie un prompt brut. Le backend persiste une `GenerationRequest`, appelle le prompt d'analyse, puis retourne soit un hors scope, soit un premier jet avec titre, synopsis, niveaux, objectif, langue et questions de clarification.
+2. `POST /api/generations/:requestID/structure` : le frontend renvoie le contexte confirme par l'utilisateur. Le backend genere et persiste `Course`, `Module` et les plans de `Lesson`. Les lessons ont un `module_id` cree par le backend et `content_markdown = null`.
+   En cas d'echec sur `architecture_generation` ou `lesson_plan_generation`, `POST /api/generations/:requestID/structure/retry` peut relancer cette seule frontiere avec le meme payload confirme.
+3. `POST /api/generations/lessons/:lessonID/content` ou `POST /api/generations/modules/:moduleID/contents` : le backend genere et persiste le contenu Markdown d'une lesson ou de toutes les lessons d'un module.
+
+`POST /api/generations` reste disponible comme mode automatique complet pour enchainer toute la pipeline sans confirmation intermediaire.
 
 L'implementation concrete de l'IA est dans `internal/infrastructure/openai` et elle est injectee dans `cmd/api/main.go`. Les prompts sont charges depuis `PROMPTS_DIR` par `internal/infrastructure/prompts`.
+

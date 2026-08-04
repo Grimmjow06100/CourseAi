@@ -17,7 +17,13 @@ type AnalysisOutput struct {
 }
 
 type ArchitectureInput struct {
-	Request domain.GenerationRequest
+	Request      domain.GenerationRequest
+	Title        string
+	Synopsis     string
+	CurrentLevel domain.Level
+	TargetLevel  domain.Level
+	Goals        []string
+	Language     domain.CourseLanguage
 }
 
 type ArchitectureOutput struct {

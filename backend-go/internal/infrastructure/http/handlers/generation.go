@@ -4,9 +4,11 @@ import (
 	"net/http"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/dto"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/middlewares"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type GenerationHandler struct {
@@ -36,18 +38,50 @@ func (h *GenerationHandler) Start(c *gin.Context) {
 
 	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
+
+func (h *GenerationHandler) Analyze(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+
+	var request dto.AnalyzeGenerationRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+
+	result, err := h.service.AnalyzePrompt(c.Request.Context(), contract.AnalyzePromptParams{Prompt: request.Prompt})
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.GenerationAnalysisFromContract(result))
+}
+
 func (h *GenerationHandler) Structure(c *gin.Context) {
 	if h.service == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
 
-	var request dto.StartGenerationRequest
+	requestID, ok := parseUUIDParam(c, "requestID")
+	if !ok {
+		return
+	}
+
+	var request dto.GenerateStructureRequest
 	if !bindJSON(c, &request) {
 		return
 	}
 
-	result, err := h.service.GenerateCourseStructure(c.Request.Context(), contract.StartGenerationParams{Prompt: request.Prompt})
+	params, err := generateStructureParamsFromRequest(requestID, request)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+
+	result, err := h.service.GenerateCourseStructure(c.Request.Context(), params)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -56,6 +90,36 @@ func (h *GenerationHandler) Structure(c *gin.Context) {
 	c.JSON(http.StatusCreated, dto.GenerationResultFromContract(result))
 }
 
+func (h *GenerationHandler) RetryStructure(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+
+	requestID, ok := parseUUIDParam(c, "requestID")
+	if !ok {
+		return
+	}
+
+	var request dto.GenerateStructureRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+
+	params, err := generateStructureParamsFromRequest(requestID, request)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+
+	result, err := h.service.RetryCourseStructure(c.Request.Context(), params)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusCreated, dto.GenerationResultFromContract(result))
+}
 func (h *GenerationHandler) LessonContent(c *gin.Context) {
 	if h.service == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
@@ -154,4 +218,29 @@ func (h *GenerationHandler) Retry(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
+}
+
+func generateStructureParamsFromRequest(requestID uuid.UUID, request dto.GenerateStructureRequest) (contract.GenerateStructureParams, error) {
+	currentLevel, err := domain.ParseLevel(request.CurrentLevel)
+	if err != nil {
+		return contract.GenerateStructureParams{}, err
+	}
+	targetLevel, err := domain.ParseLevel(request.TargetLevel)
+	if err != nil {
+		return contract.GenerateStructureParams{}, err
+	}
+	language, err := domain.ParseCourseLanguage(request.Language)
+	if err != nil {
+		return contract.GenerateStructureParams{}, err
+	}
+
+	return contract.GenerateStructureParams{
+		RequestID:    requestID,
+		Title:        request.Title,
+		Synopsis:     request.Synopsis,
+		CurrentLevel: currentLevel,
+		TargetLevel:  targetLevel,
+		Goals:        request.Goals,
+		Language:     language,
+	}, nil
 }

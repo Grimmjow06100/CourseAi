@@ -84,6 +84,10 @@ func NewCourseAt(params NewCourseParams, now time.Time) (Course, error) {
 }
 
 func (c Course) Validate() error {
+	return c.ValidateWithRelations()
+}
+
+func (c Course) ValidateCourseOnly() error {
 	if c.ID == uuid.Nil {
 		return fmt.Errorf("%w: course id", ErrBlankField)
 	}
@@ -111,6 +115,13 @@ func (c Course) Validate() error {
 	if err := c.TargetLevel.Validate(); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c Course) ValidateWithRelations() error {
+	if err := c.ValidateCourseOnly(); err != nil {
+		return err
+	}
 	if err := validateUniqueModuleOrders(c.Modules); err != nil {
 		return err
 	}
@@ -124,7 +135,6 @@ func (c Course) Validate() error {
 	}
 	return nil
 }
-
 func (c *Course) AddModule(module Module) error {
 	if module.CourseID == uuid.Nil {
 		module.CourseID = c.ID

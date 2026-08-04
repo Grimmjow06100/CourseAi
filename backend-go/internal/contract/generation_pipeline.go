@@ -11,6 +11,20 @@ type StartGenerationParams struct {
 	Prompt string
 }
 
+type AnalyzePromptParams struct {
+	Prompt string
+}
+
+type GenerateStructureParams struct {
+	RequestID    uuid.UUID
+	Title        string
+	Synopsis     string
+	CurrentLevel domain.Level
+	TargetLevel  domain.Level
+	Goals        []string
+	Language     domain.CourseLanguage
+}
+
 type GenerationStarted struct {
 	RequestID uuid.UUID
 	Status    domain.GenerationPipelineStatus
@@ -33,9 +47,15 @@ type GenerationResult struct {
 	Course  domain.Course
 }
 
+type GenerationAnalysisResult struct {
+	Request domain.GenerationRequest
+}
+
 type CourseGenerationService interface {
+	AnalyzePrompt(ctx context.Context, params AnalyzePromptParams) (GenerationAnalysisResult, error)
 	StartFullCourseGeneration(ctx context.Context, params StartGenerationParams) (GenerationStarted, error)
-	GenerateCourseStructure(ctx context.Context, params StartGenerationParams) (GenerationResult, error)
+	GenerateCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationResult, error)
+	RetryCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationResult, error)
 	GenerateLessonContent(ctx context.Context, lessonID uuid.UUID) (domain.Lesson, error)
 	GenerateModuleLessonContents(ctx context.Context, moduleID uuid.UUID) (domain.Module, error)
 	GetGenerationStatus(ctx context.Context, requestID uuid.UUID) (GenerationStatus, error)

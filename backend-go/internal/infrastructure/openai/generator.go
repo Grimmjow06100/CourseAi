@@ -11,13 +11,9 @@ import (
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/google/uuid"
 	openaisdk "github.com/openai/openai-go/v3"
-	"github.com/openai/openai-go/v3/responses"
 )
 
-const (
-	defaultModel           = "gpt-5.6"
-	defaultMaxOutputTokens = int64(12000)
-)
+
 
 var (
 	ErrMissingClient      = errors.New("openai client is missing")
@@ -35,26 +31,12 @@ type Config struct {
 type CourseAIGenerator struct {
 	client          *openaisdk.Client
 	prompts         contract.PromptStore
-	model           string
-	maxOutputTokens int64
 }
 
 func NewCourseAIGenerator(client *openaisdk.Client, prompts contract.PromptStore, config Config) *CourseAIGenerator {
-	model := strings.TrimSpace(config.Model)
-	if model == "" {
-		model = defaultModel
-	}
-
-	maxOutputTokens := config.MaxOutputTokens
-	if maxOutputTokens <= 0 {
-		maxOutputTokens = defaultMaxOutputTokens
-	}
-
 	return &CourseAIGenerator{
 		client:          client,
 		prompts:         prompts,
-		model:           model,
-		maxOutputTokens: maxOutputTokens,
 	}
 }
 
@@ -83,7 +65,7 @@ func (g *CourseAIGenerator) AnalyzePrompt(ctx context.Context, input contract.An
 }
 
 func (g *CourseAIGenerator) GenerateArchitecture(ctx context.Context, input contract.ArchitectureInput) (contract.ArchitectureOutput, error) {
-	payload := architecturePromptInputFromRequest(input.Request)
+	payload := architecturePromptInputFromInput(input)
 	raw, err := g.callStructuredJSON(ctx, "architecture", payload, "architecture_response", architectureSchema())
 	if err != nil {
 		return contract.ArchitectureOutput{}, err
@@ -94,7 +76,7 @@ func (g *CourseAIGenerator) GenerateArchitecture(ctx context.Context, input cont
 		return contract.ArchitectureOutput{}, fmt.Errorf("%w: architecture json: %v", ErrInvalidModelOutput, err)
 	}
 
-	course, err := response.toDomain(input.Request)
+	course, err := response.toDomain(input)
 	if err != nil {
 		return contract.ArchitectureOutput{}, err
 	}
@@ -146,58 +128,19 @@ func (g *CourseAIGenerator) GenerateLessonContent(ctx context.Context, input con
 
 	return contract.LessonContentOutput{Lesson: lesson, ContentMarkdown: content, Raw: raw}, nil
 }
+func (g *CourseAIGenerator) GenerateLessonExercice(ctx context.Context, input any) (any, error) {
+	// à compléter ici
+	var zero any
+	return zero,nil
 
-func (g *CourseAIGenerator) callStructuredJSON(ctx context.Context, promptName string, payload any, schemaName string, schema map[string]any) (json.RawMessage, error) {
-	if g == nil || g.client == nil {
-		return nil, ErrMissingClient
-	}
-	if g.prompts == nil {
-		return nil, ErrMissingPromptStore
-	}
-
-	prompt, ok := g.prompts.Get(promptName)
-	if !ok || strings.TrimSpace(prompt) == "" {
-		return nil, fmt.Errorf("%w: %s", ErrPromptNotFound, promptName)
-	}
-
-	inputJSON, err := json.MarshalIndent(payload, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("marshal prompt payload: %w", err)
-	}
-
-	format := responses.ResponseFormatTextConfigParamOfJSONSchema(schemaName, schema)
-	if format.OfJSONSchema != nil {
-		format.OfJSONSchema.Strict = openaisdk.Bool(true)
-	}
-
-	params := responses.ResponseNewParams{
-		Model:        g.model,
-		Instructions: openaisdk.String(prompt),
-		Input: responses.ResponseNewParamsInputUnion{
-			OfString: openaisdk.String(string(inputJSON)),
-		},
-		Store: openaisdk.Bool(false),
-		Text: responses.ResponseTextConfigParam{
-			Format: format,
-		},
-		MaxOutputTokens: openaisdk.Int(g.maxOutputTokens),
-	}
-
-	response, err := g.client.Responses.New(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-
-	output := strings.TrimSpace(response.OutputText())
-	if output == "" {
-		return nil, fmt.Errorf("%w: empty model output", ErrInvalidModelOutput)
-	}
-	if !json.Valid([]byte(output)) {
-		return nil, fmt.Errorf("%w: output is not valid json", ErrInvalidModelOutput)
-	}
-
-	return json.RawMessage(output), nil
 }
+func (g *CourseAIGenerator) GenerateLessonQuizz(ctx context.Context, input any) (any, error) {
+	// à compléter ici
+	var zero any;
+	return zero,nil
+}
+
+
 
 type analysisResponse struct {
 	IsOutOfScope           bool                           `json:"isOutOfScope"`
@@ -269,43 +212,14 @@ type architecturePromptInput struct {
 	Language     string   `json:"language"`
 }
 
-func architecturePromptInputFromRequest(request domain.GenerationRequest) architecturePromptInput {
-	title := request.InitialUserPrompt
-	if request.SuggestedTitle != nil {
-		title = *request.SuggestedTitle
-	}
-
-	synopsis := request.InitialUserPrompt
-	if request.ShortSynopsis != nil {
-		synopsis = *request.ShortSynopsis
-	}
-
-	currentLevel := string(domain.LevelUnknown)
-	if request.DetectedCurrentLevel != nil {
-		currentLevel = string(*request.DetectedCurrentLevel)
-	}
-	targetLevel := string(domain.LevelUnknown)
-	if request.DetectedTargetLevel != nil {
-		targetLevel = string(*request.DetectedTargetLevel)
-	}
-
-	language := string(domain.CourseLanguageFR)
-	if request.DetectedLanguage != nil {
-		language = string(*request.DetectedLanguage)
-	}
-
-	goals := []string{request.InitialUserPrompt}
-	if request.DetectedGoal != nil && !isUnknown(*request.DetectedGoal) {
-		goals = []string{*request.DetectedGoal}
-	}
-
+func architecturePromptInputFromInput(input contract.ArchitectureInput) architecturePromptInput {
 	return architecturePromptInput{
-		Title:        title,
-		Synopsis:     synopsis,
-		CurrentLevel: currentLevel,
-		TargetLevel:  targetLevel,
-		Goals:        goals,
-		Language:     language,
+		Title:        input.Title,
+		Synopsis:     input.Synopsis,
+		CurrentLevel: string(input.CurrentLevel),
+		TargetLevel:  string(input.TargetLevel),
+		Goals:        input.Goals,
+		Language:     string(input.Language),
 	}
 }
 
@@ -333,24 +247,24 @@ type architectureFinalProject struct {
 	Constraints []string `json:"constraints"`
 }
 
-func (r architectureResponse) toDomain(request domain.GenerationRequest) (domain.Course, error) {
-	language := domain.CourseLanguageFR
-	if request.DetectedLanguage != nil {
-		language = *request.DetectedLanguage
+func (r architectureResponse) toDomain(input contract.ArchitectureInput) (domain.Course, error) {
+	language := input.Language
+	if language == "" {
+		language = domain.CourseLanguageFR
 	}
-	currentLevel := domain.LevelUnknown
-	if request.DetectedCurrentLevel != nil {
-		currentLevel = *request.DetectedCurrentLevel
+	currentLevel := input.CurrentLevel
+	if currentLevel == "" {
+		currentLevel = domain.LevelUnknown
 	}
-	targetLevel := domain.LevelUnknown
-	if request.DetectedTargetLevel != nil {
-		targetLevel = *request.DetectedTargetLevel
+	targetLevel := input.TargetLevel
+	if targetLevel == "" {
+		targetLevel = domain.LevelUnknown
 	}
 
 	course := domain.Course{
-		RequestID:               request.ID,
+		RequestID:               input.Request.ID,
 		Language:                language,
-		InitialUserPrompt:       request.InitialUserPrompt,
+		InitialUserPrompt:       input.Request.InitialUserPrompt,
 		Title:                   r.Title,
 		Synopsis:                r.Synopsis,
 		TargetAudience:          stringPtr(r.TargetAudience),
@@ -406,35 +320,7 @@ type lessonPlanModule struct {
 	KeyLearningPoints []string `json:"keyLearningPoints"`
 }
 
-func lessonPlanPromptInputFromDomain(course domain.Course, module domain.Module) lessonPlanPromptInput {
-	summary := make([]string, 0, len(course.Modules))
-	for _, item := range course.Modules {
-		summary = append(summary, fmt.Sprintf("Module %d: %s", item.Order, item.Title))
-	}
 
-	return lessonPlanPromptInput{
-		CourseContext: lessonPlanCourseContext{
-			Title:          course.Title,
-			Synopsis:       course.Synopsis,
-			TargetAudience: course.TargetAudience,
-			Prerequisites:  course.Prerequisites,
-			Goals:          course.Goals,
-			AcquiredSkills: course.AcquiredSkills,
-			FinalProject: lessonPlanFinalProject{
-				Title:       course.FinalProjectTitle,
-				Description: course.FinalProjectDescription,
-				Constraints: course.FinalProjectConstraints,
-			},
-		},
-		ModuleToExpand: lessonPlanModule{
-			Order:             module.Order,
-			Title:             module.Title,
-			Description:       module.Description,
-			KeyLearningPoints: module.KeyLearningPoints,
-		},
-		GlobalPlanSummary: summary,
-	}
-}
 
 type lessonsResponse struct {
 	ModuleOrder int             `json:"moduleOrder"`
@@ -508,67 +394,8 @@ type lessonContentLesson struct {
 	TechnicalKeywords        []string `json:"technicalKeywords"`
 }
 
-func lessonContentPromptInputFromDomain(course domain.Course, module domain.Module, lesson domain.Lesson) lessonContentPromptInput {
-	return lessonContentPromptInput{
-		Course: lessonContentCourse{
-			ID:        course.ID.String(),
-			Language:  string(course.Language),
-			Title:     course.Title,
-			Synopsis:  course.Synopsis,
-			Goals:     course.Goals,
-			LevelFrom: string(course.CurrentLevel),
-			LevelTo:   string(course.TargetLevel),
-		},
-		Module: lessonContentModule{
-			ID:                module.ID.String(),
-			Order:             module.Order,
-			Title:             module.Title,
-			Description:       module.Description,
-			KeyLearningPoints: module.KeyLearningPoints,
-		},
-		Lesson: lessonContentLesson{
-			ID:                       lesson.ID.String(),
-			Order:                    lesson.Order,
-			Title:                    lesson.Title,
-			Type:                     string(lesson.Type),
-			EstimatedDurationMinutes: lesson.EstimatedDurationMinutes,
-			LearningGoal:             lesson.LearningGoal,
-			RequiresDiagram:          lesson.RequiresDiagram,
-			TechnicalKeywords:        lesson.TechnicalKeywords,
-		},
-	}
-}
 
 type lessonContentResponse struct {
 	ContentMarkdown string `json:"contentMarkdown"`
 }
 
-func parseLevel(value string) (domain.Level, error) {
-	value = strings.TrimSpace(strings.ToLower(value))
-	if value == "unknow" {
-		value = "unknown"
-	}
-	return domain.ParseLevel(value)
-}
-
-func cleanStringPtr(value *string) *string {
-	if value == nil {
-		return nil
-	}
-	return stringPtr(*value)
-}
-
-func stringPtr(value string) *string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
-func isUnknown(value string) bool {
-	value = strings.TrimSpace(strings.ToLower(value))
-	return value == "" || value == "unknown" || value == "unknow"
-}
-
-var _ contract.CourseAIGenerator = (*CourseAIGenerator)(nil)

@@ -37,3 +37,11 @@
 - [x] Update project documentation after removing the NestJS backend and making backend-go the only backend.
 - [x] Implement backend-go OpenAI CourseAIGenerator, move PromptStore to infrastructure, wire generation API, and add partial generation routes.
 - [x] Fix backend-go CourseGenerationService contract to return domain objects instead of HTTP DTOs and remove the import cycle.
+- [x] Refactor backend-go generation pipeline into separate analyze, confirmed structure, and lesson content steps with updated routes, docs, and service tests.
+- [x] Harden backend-go OpenAI JSON extraction for architecture generation and remove Markdown-fenced architecture prompt example.
+- [x] Harmonize backend-go prompts with strict raw JSON output guidance and remove fenced JSON examples.
+- [x] Fix backend-go course normalization by separating course-only validation from relation validation before generated module IDs are assigned.
+- [x] Add backend-go partial structure retry route with failed-step guards, partial course cleanup, request restart, docs, and service tests.
+- [x] Add PostgreSQL repository compile-time interface assertions and verify CourseRepository includes DeleteCourseByRequestID.
+- [x] Write a vault strategy note for complete backend-go stack traces on logged errors.
+- [x] Write a vault strategy note for structured lesson quiz and exercise persistence.

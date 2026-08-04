@@ -196,6 +196,27 @@ func (r *GenerationRequest) MarkCompleted(now time.Time) error {
 	return nil
 }
 
+func (r *GenerationRequest) RestartFromFailure(step string, percent int, now time.Time) error {
+	if r.PipelineStatus != PipelineStatusFailed {
+		return ErrGenerationRequestNotReady
+	}
+	if err := validateProgressPercent(percent); err != nil {
+		return err
+	}
+	step = normalizeText(step)
+	if step == "" {
+		return fmt.Errorf("%w: current step", ErrBlankField)
+	}
+
+	r.PipelineStatus = PipelineStatusRunning
+	r.CurrentStep = &step
+	r.ProgressPercent = percent
+	r.FailureMessage = nil
+	r.CompletedAt = nil
+	r.StartedAt = &now
+	r.UpdatedAt = now
+	return nil
+}
 func (r *GenerationRequest) MarkFailed(message string, now time.Time) error {
 	message = normalizeText(message)
 	if message == "" {

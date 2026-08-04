@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// Open initialise le pool de connexions PostgreSQL
 func Open(ctx context.Context) (*pgxpool.Pool, error) {
 	databaseURL, err := config.GetEnv[string]("DATABASE_URL")
 	if err != nil {

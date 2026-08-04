@@ -169,7 +169,9 @@ Generation IA :
 
 ```http
 POST /api/generations
-POST /api/generations/structure
+POST /api/generations/analyze
+POST /api/generations/:requestID/structure
+POST /api/generations/:requestID/structure/retry
 POST /api/generations/lessons/:lessonID/content
 POST /api/generations/modules/:moduleID/contents
 GET  /api/generations/:requestID/status
@@ -177,8 +179,10 @@ GET  /api/generations/:requestID/result
 POST /api/generations/:requestID/retry
 ```
 
-`POST /api/generations` genere la formation complete avec contenu de toutes les lessons.
-`POST /api/generations/structure` genere seulement la formation, ses modules et ses lessons, sans contenu Markdown.
+`POST /api/generations` conserve le mode automatique complet : prompt -> analyse -> structure -> contenu de toutes les lessons.
+`POST /api/generations/analyze` analyse un prompt et retourne le premier jet : hors scope eventuel, titre, synopsis, niveaux detectes, objectif, langue et questions de clarification.
+`POST /api/generations/:requestID/structure` genere la formation, ses modules et le plan des lessons a partir d'une analyse existante et du contexte confirme par l'utilisateur. Cette route ne genere pas le contenu Markdown des lessons.
+`POST /api/generations/:requestID/structure/retry` relance uniquement l'etape structure sur une request `failed` dont l'echec vient de `architecture_generation` ou `lesson_plan_generation`; le body est le meme que `/structure` et les donnees partielles sont supprimees avant relance.
 `POST /api/generations/lessons/:lessonID/content` genere et persiste le contenu d'une lesson.
 `POST /api/generations/modules/:moduleID/contents` genere et persiste le contenu de toutes les lessons d'un module.
 
@@ -196,10 +200,10 @@ Content-Type: application/json
 }
 ```
 
-Generer la structure d'une formation :
+Analyser une demande de formation :
 
 ```http
-POST /api/generations/structure
+POST /api/generations/analyze
 Content-Type: application/json
 
 {
@@ -207,6 +211,37 @@ Content-Type: application/json
 }
 ```
 
+Generer la structure apres confirmation du premier jet :
+
+```http
+POST /api/generations/:requestID/structure
+Content-Type: application/json
+
+{
+  "title": "Formation Docker pour deployer une API backend",
+  "synopsis": "Une progression pratique pour comprendre Docker, creer des images et deployer une API conteneurisee.",
+  "currentLevel": "beginner",
+  "targetLevel": "intermediate",
+  "goals": ["Comprendre Docker", "Conteneuriser une API", "Preparer un deploiement"],
+  "language": "fr"
+}
+```
+
+Relancer uniquement la structure apres un echec `architecture_generation` ou `lesson_plan_generation` :
+
+```http
+POST /api/generations/:requestID/structure/retry
+Content-Type: application/json
+
+{
+  "title": "Formation Docker pour deployer une API backend",
+  "synopsis": "Une progression pratique pour comprendre Docker, creer des images et deployer une API conteneurisee.",
+  "currentLevel": "beginner",
+  "targetLevel": "intermediate",
+  "goals": ["Comprendre Docker", "Conteneuriser une API", "Preparer un deploiement"],
+  "language": "fr"
+}
+```
 Generer le contenu d'une lesson :
 
 ```http
@@ -262,3 +297,4 @@ Depuis la racine :
 docker compose up -d
 docker compose down
 ```
+
