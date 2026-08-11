@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -41,6 +42,7 @@ type Course struct {
 	FinalProjectTitle       *string
 	FinalProjectDescription *string
 	FinalProjectConstraints []string
+	RawArchitectureOutput   json.RawMessage
 	Modules                 []Module
 	CreatedAt               time.Time
 	UpdatedAt               time.Time
@@ -188,7 +190,11 @@ func (c *Course) MarkContentGenerating() error {
 }
 
 func (c *Course) MarkCompleted() error {
-	if !c.HasCompleteContent() {
+	return c.MarkCompletedWithValidatedContent(c.HasCompleteContent())
+}
+
+func (c *Course) MarkCompletedWithValidatedContent(hasCompleteContent bool) error {
+	if !hasCompleteContent {
 		return ErrMissingCourseContent
 	}
 	return c.TransitionTo(CourseStatusCompleted)

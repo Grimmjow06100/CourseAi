@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -45,6 +46,7 @@ type GenerationRequest struct {
 	DetectedGoal           *string
 	DetectedLanguage       *CourseLanguage
 	ClarificationQuestions []ClarificationQuestion
+	RawAnalysisOutput      json.RawMessage
 	CreatedAt              time.Time
 	UpdatedAt              time.Time
 }

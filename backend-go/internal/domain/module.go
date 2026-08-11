@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -16,15 +17,16 @@ type NewModuleParams struct {
 }
 
 type Module struct {
-	ID                uuid.UUID
-	CourseID          uuid.UUID
-	Order             int
-	Title             string
-	Description       string
-	KeyLearningPoints []string
-	Lessons           []Lesson
-	CreatedAt         time.Time
-	UpdatedAt         time.Time
+	ID                   uuid.UUID
+	CourseID             uuid.UUID
+	Order                int
+	Title                string
+	Description          string
+	KeyLearningPoints    []string
+	RawLessonsPlanOutput json.RawMessage
+	Lessons              []Lesson
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 func NewModule(params NewModuleParams) (Module, error) {

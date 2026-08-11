@@ -2,17 +2,20 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
+	dbsqlc "github.com/Grimmjow06100/course-ai/backend-go/internal/db/sqlc"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/google/uuid"
 )
 
 type GenerationRequestRepository struct {
-	db DBTX
+	queries *dbsqlc.Queries
 }
 
 func NewGenerationRequestRepository(db DBTX) *GenerationRequestRepository {
-	return &GenerationRequestRepository{db: db}
+	return &GenerationRequestRepository{queries: dbsqlc.New(db)}
 }
 
 func (r *GenerationRequestRepository) SaveGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
@@ -20,62 +23,15 @@ func (r *GenerationRequestRepository) SaveGenerationRequest(ctx context.Context,
 		return domain.GenerationRequest{}, err
 	}
 
-	questionsJSON, err := clarificationQuestionsJSON(request.ClarificationQuestions)
+	params, err := createGenerationRequestParams(request)
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
-
-	savedRequest, err := scanGenerationRequest(r.db.QueryRow(ctx, `
-		INSERT INTO generation_requests (
-			id,
-			initial_user_prompt,
-			pipeline_status,
-			current_step,
-			progress_percent,
-			failure_message,
-			started_at,
-			completed_at,
-			is_out_of_scope,
-			error_message,
-			warning_message,
-			suggested_title,
-			short_synopsis,
-			detected_current_level,
-			detected_target_level,
-			detected_goal,
-			detected_language,
-			clarification_questions,
-			created_at,
-			updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20)
-		RETURNING `+generationRequestColumns+`
-	`,
-		request.ID,
-		request.InitialUserPrompt,
-		string(request.PipelineStatus),
-		textValue(request.CurrentStep),
-		request.ProgressPercent,
-		textValue(request.FailureMessage),
-		timeValue(request.StartedAt),
-		timeValue(request.CompletedAt),
-		request.IsOutOfScope,
-		textValue(request.ErrorMessage),
-		textValue(request.WarningMessage),
-		textValue(request.SuggestedTitle),
-		textValue(request.ShortSynopsis),
-		levelValue(request.DetectedCurrentLevel),
-		levelValue(request.DetectedTargetLevel),
-		textValue(request.DetectedGoal),
-		languageValue(request.DetectedLanguage),
-		questionsJSON,
-		request.CreatedAt,
-		request.UpdatedAt,
-	))
+	row, err := r.queries.CreateGenerationRequest(ctx, params)
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
-	return savedRequest, nil
+	return generationRequestFromSQLC(row)
 }
 
 func (r *GenerationRequestRepository) UpdateGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
@@ -83,85 +39,112 @@ func (r *GenerationRequestRepository) UpdateGenerationRequest(ctx context.Contex
 		return domain.GenerationRequest{}, err
 	}
 
-	questionsJSON, err := clarificationQuestionsJSON(request.ClarificationQuestions)
+	params, err := updateGenerationRequestParams(request)
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
-
-	updatedRequest, err := scanGenerationRequest(r.db.QueryRow(ctx, `
-		UPDATE generation_requests
-		SET
-			initial_user_prompt = $2,
-			pipeline_status = $3,
-			current_step = $4,
-			progress_percent = $5,
-			failure_message = $6,
-			started_at = $7,
-			completed_at = $8,
-			is_out_of_scope = $9,
-			error_message = $10,
-			warning_message = $11,
-			suggested_title = $12,
-			short_synopsis = $13,
-			detected_current_level = $14,
-			detected_target_level = $15,
-			detected_goal = $16,
-			detected_language = $17,
-			clarification_questions = $18::jsonb,
-			updated_at = $19
-		WHERE id = $1
-		RETURNING `+generationRequestColumns+`
-	`,
-		request.ID,
-		request.InitialUserPrompt,
-		string(request.PipelineStatus),
-		textValue(request.CurrentStep),
-		request.ProgressPercent,
-		textValue(request.FailureMessage),
-		timeValue(request.StartedAt),
-		timeValue(request.CompletedAt),
-		request.IsOutOfScope,
-		textValue(request.ErrorMessage),
-		textValue(request.WarningMessage),
-		textValue(request.SuggestedTitle),
-		textValue(request.ShortSynopsis),
-		levelValue(request.DetectedCurrentLevel),
-		levelValue(request.DetectedTargetLevel),
-		textValue(request.DetectedGoal),
-		languageValue(request.DetectedLanguage),
-		questionsJSON,
-		request.UpdatedAt,
-	))
+	row, err := r.queries.UpdateGenerationRequest(ctx, params)
 	if err != nil {
 		return domain.GenerationRequest{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}
-	return updatedRequest, nil
+	return generationRequestFromSQLC(row)
 }
 
 func (r *GenerationRequestRepository) FindGenerationRequestByID(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error) {
-	request, err := scanGenerationRequest(r.db.QueryRow(ctx, `
-		SELECT `+generationRequestColumns+`
-		FROM generation_requests
-		WHERE id = $1
-	`, id))
+	row, err := r.queries.GetGenerationRequestByID(ctx, dbsqlc.GetGenerationRequestByIDParams{ID: id})
 	if err != nil {
 		return domain.GenerationRequest{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}
-	return request, nil
+	return generationRequestFromSQLC(row)
 }
 
 func (r *GenerationRequestRepository) FindGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (domain.GenerationRequest, error) {
-	request, err := scanGenerationRequest(r.db.QueryRow(ctx, `
-		SELECT `+generationRequestColumns+`
-		FROM generation_requests
-		WHERE id = (
-			SELECT request_id
-			FROM courses
-			WHERE id = $1
-		)
-	`, courseID))
+	row, err := r.queries.GetGenerationRequestByCourseID(ctx, dbsqlc.GetGenerationRequestByCourseIDParams{CourseID: courseID})
 	if err != nil {
 		return domain.GenerationRequest{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}
-	return request, nil
+	return generationRequestFromSQLC(row)
+}
+
+func (r *GenerationRequestRepository) FindGenerationStatusByID(ctx context.Context, id uuid.UUID) (contract.GenerationStatus, error) {
+	row, err := r.queries.GetGenerationStatusByID(ctx, dbsqlc.GetGenerationStatusByIDParams{ID: id})
+	if err != nil {
+		return contract.GenerationStatus{}, mapNoRows(err, ErrGenerationRequestNotFound)
+	}
+
+	status := contract.GenerationStatus{
+		RequestID:       row.RequestID,
+		PipelineStatus:  domain.GenerationPipelineStatus(row.PipelineStatus),
+		CurrentStep:     row.CurrentStep,
+		ProgressPercent: int(row.ProgressPercent),
+		FailureMessage:  row.FailureMessage,
+	}
+	if row.CourseID.Valid {
+		courseID := uuid.UUID(row.CourseID.Bytes)
+		status.CourseID = &courseID
+	}
+	if row.CourseStatus != nil {
+		courseStatus := domain.CourseGenerationStatus(*row.CourseStatus)
+		status.CourseStatus = &courseStatus
+	}
+	return status, nil
+}
+
+func createGenerationRequestParams(request domain.GenerationRequest) (dbsqlc.CreateGenerationRequestParams, error) {
+	questions, err := clarificationQuestionsJSON(request.ClarificationQuestions)
+	if err != nil {
+		return dbsqlc.CreateGenerationRequestParams{}, err
+	}
+	return dbsqlc.CreateGenerationRequestParams{
+		ID:                     request.ID,
+		InitialUserPrompt:      request.InitialUserPrompt,
+		PipelineStatus:         dbsqlc.GenerationPipelineStatus(request.PipelineStatus),
+		CurrentStep:            request.CurrentStep,
+		ProgressPercent:        int32(request.ProgressPercent),
+		FailureMessage:         request.FailureMessage,
+		StartedAt:              request.StartedAt,
+		CompletedAt:            request.CompletedAt,
+		IsOutOfScope:           request.IsOutOfScope,
+		ErrorMessage:           request.ErrorMessage,
+		WarningMessage:         request.WarningMessage,
+		SuggestedTitle:         request.SuggestedTitle,
+		ShortSynopsis:          request.ShortSynopsis,
+		DetectedCurrentLevel:   sqlcLevelPtr(request.DetectedCurrentLevel),
+		DetectedTargetLevel:    sqlcLevelPtr(request.DetectedTargetLevel),
+		DetectedGoal:           request.DetectedGoal,
+		DetectedLanguage:       sqlcLanguagePtr(request.DetectedLanguage),
+		ClarificationQuestions: json.RawMessage(questions),
+		RawAnalysisOutput:      rawJSONFromBytes(request.RawAnalysisOutput),
+		CreatedAt:              request.CreatedAt,
+		UpdatedAt:              request.UpdatedAt,
+	}, nil
+}
+
+func updateGenerationRequestParams(request domain.GenerationRequest) (dbsqlc.UpdateGenerationRequestParams, error) {
+	questions, err := clarificationQuestionsJSON(request.ClarificationQuestions)
+	if err != nil {
+		return dbsqlc.UpdateGenerationRequestParams{}, err
+	}
+	return dbsqlc.UpdateGenerationRequestParams{
+		InitialUserPrompt:      request.InitialUserPrompt,
+		PipelineStatus:         dbsqlc.GenerationPipelineStatus(request.PipelineStatus),
+		CurrentStep:            request.CurrentStep,
+		ProgressPercent:        int32(request.ProgressPercent),
+		FailureMessage:         request.FailureMessage,
+		StartedAt:              request.StartedAt,
+		CompletedAt:            request.CompletedAt,
+		IsOutOfScope:           request.IsOutOfScope,
+		ErrorMessage:           request.ErrorMessage,
+		WarningMessage:         request.WarningMessage,
+		SuggestedTitle:         request.SuggestedTitle,
+		ShortSynopsis:          request.ShortSynopsis,
+		DetectedCurrentLevel:   sqlcLevelPtr(request.DetectedCurrentLevel),
+		DetectedTargetLevel:    sqlcLevelPtr(request.DetectedTargetLevel),
+		DetectedGoal:           request.DetectedGoal,
+		DetectedLanguage:       sqlcLanguagePtr(request.DetectedLanguage),
+		ClarificationQuestions: json.RawMessage(questions),
+		RawAnalysisOutput:      rawJSONFromBytes(request.RawAnalysisOutput),
+		UpdatedAt:              request.UpdatedAt,
+		ID:                     request.ID,
+	}, nil
 }

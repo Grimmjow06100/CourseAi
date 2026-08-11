@@ -45,3 +45,27 @@
 - [x] Add PostgreSQL repository compile-time interface assertions and verify CourseRepository includes DeleteCourseByRequestID.
 - [x] Write a vault strategy note for complete backend-go stack traces on logged errors.
 - [x] Write a vault strategy note for structured lesson quiz and exercise persistence.
+- [x] Reorganize backend-go OpenAI package into generator facade, client, JSON extraction, and DTO files.
+- [x] Move backend-go OpenAI DTOs into the dedicated openai/dto package.
+- [x] Add Goose migration for structured lesson quizzes and exercises.
+- [x] Fix backend-go Goose makefile command order for current CLI syntax.
+- [x] Add backend-go domain entities and business validation for structured quizzes and exercises.
+- [x] Extend backend-go lesson content generation prompt and OpenAI schema to produce structured quizzes and exercises.
+- [x] Persist generated lesson quizzes and exercises into PostgreSQL and expose them through lesson API responses.
+- [x] Write a vault code review for structured lesson activity generation and persistence.
+- [x] Persist raw AI outputs for analysis, architecture, lesson plans, lesson content, quizzes, and exercises.
+- [x] Harden quiz domain validation for option counts, duplicate answers, and contiguous question/option ordering.
+- [x] Move lesson activity pedagogical policy from the OpenAI DTO layer into the domain and enforce it in generation.
+- [x] Add sqlc configuration, optimized query files, generated Go query package, and Makefile targets for backend-go database access.
+- [x] Migrate all backend-go PostgreSQL repositories to sqlc-generated methods and batch-load course relations without N+1 queries.
+- [x] Document potential PostgreSQL read-path optimizations, use-case projections, join tradeoffs, and repository improvements in the vault.
+- [x] Write a dedicated vault lesson explaining N+1 queries, PostgreSQL ANY arrays, batch loading, and Go graph reconstruction.
+- [x] Document the complete Course AI pagination flow from HTTP query parsing through sqlc LIMIT/OFFSET and response metadata.
+- [x] Review and document prioritized PostgreSQL, HTTP orchestration, and OpenAI optimizations for faster course generation.
+- [x] Verify that the pipeline optimization review links to the official OpenAI latency, prompt caching, and model guidance.
+- [x] Explain why generation writes should avoid automatic relation hydration and use bulk inserts for generated collections.
+- [x] Write a detailed vault note tracing SaveLesson hydration queries and explaining bulk inserts, PostgreSQL COPY, and sqlc :copyfrom.
+- [x] Optimize backend-go persistence with write-only repositories, sqlc CopyFrom bulk inserts, scalar status projections, atomic lesson content replacement, and document the changes in the vault.
+- [x] Explain the performance tradeoff between single-row INSERT and pgx CopyFrom for generated exercises and quizzes.
+- [x] Explain the role and transactional behavior of ReplaceLessonContent during lesson regeneration.
+- [x] Explain when replacing a lesson requires deleting previously generated exercises and quizzes.

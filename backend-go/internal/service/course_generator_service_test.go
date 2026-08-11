@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -230,6 +231,113 @@ func TestRestartFromFailureClearsFailureState(t *testing.T) {
 	}
 }
 
+func TestAttachGeneratedContentPreservesRawOutput(t *testing.T) {
+	now := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	lesson, err := domain.NewLessonAt(domain.NewLessonParams{
+		ModuleID:                 uuid.New(),
+		Order:                    1,
+		Title:                    "Commandes Linux essentielles",
+		Type:                     domain.LessonTypeMixed,
+		EstimatedDurationMinutes: 45,
+		LearningGoal:             "Utiliser les commandes de base du shell.",
+		RequiresDiagram:          false,
+		TechnicalKeywords:        []string{"shell", "linux"},
+	}, now)
+	if err != nil {
+		t.Fatalf("create lesson: %v", err)
+	}
+
+	exercise, err := domain.NewExerciseAt(domain.NewExerciseParams{
+		LessonID:             lesson.ID,
+		Type:                 domain.ExerciseTypeGuidedLab,
+		Difficulty:           domain.DifficultyBeginner,
+		Title:                "Explorer le systeme de fichiers",
+		Objective:            "Naviguer entre les dossiers.",
+		InstructionsMarkdown: "Utilise `pwd`, `ls` et `cd`.",
+		ContentMarkdown:      "Liste le contenu de ton repertoire courant.",
+		CorrectionMarkdown:   "`pwd` affiche le chemin courant et `ls` liste les fichiers.",
+		Payload:              domain.ExercisePayload{"commands": []string{"pwd", "ls", "cd"}},
+	}, now)
+	if err != nil {
+		t.Fatalf("create exercise: %v", err)
+	}
+
+	answer := "ls"
+	quiz, err := domain.NewQuizAt(domain.NewQuizParams{
+		LessonID:   lesson.ID,
+		Type:       domain.QuizTypeSingleChoice,
+		Difficulty: domain.DifficultyBeginner,
+		Title:      "Quiz shell",
+		Objective:  "Verifier les commandes de base.",
+		Questions: []domain.QuizQuestion{
+			{
+				Order:    1,
+				Type:     domain.QuizQuestionTypeSingleChoice,
+				Question: "Quelle commande liste les fichiers ?",
+				Options: []domain.QuizOption{
+					{Order: 1, Text: "cd"},
+					{Order: 2, Text: "ls"},
+				},
+				Answer:     domain.QuizAnswer{Answer: &answer},
+				Correction: "`ls` liste les fichiers du dossier courant.",
+			},
+		},
+	}, now)
+	if err != nil {
+		t.Fatalf("create quiz: %v", err)
+	}
+
+	raw := json.RawMessage(`{"contentMarkdown":"# Linux","exercises":[{"title":"Explorer"}],"quizzes":[{"title":"Quiz shell"}]}`)
+	service := NewCourseGeneratorService(fakeCourseAI{}, nil, fixedClock{now: now}, CourseGeneratorConfig{})
+
+	lessonWithContent, err := service.attachGeneratedContent(lesson, contract.LessonContentOutput{
+		ContentMarkdown: "# Linux",
+		Exercises:       []domain.Exercise{exercise},
+		Quizzes:         []domain.Quiz{quiz},
+		Raw:             raw,
+	})
+	if err != nil {
+		t.Fatalf("attach generated content: %v", err)
+	}
+
+	if string(lessonWithContent.RawContentOutput) != string(raw) {
+		t.Fatalf("unexpected lesson raw output: %s", string(lessonWithContent.RawContentOutput))
+	}
+	if len(lessonWithContent.Exercises) != 1 || string(lessonWithContent.Exercises[0].RawAIOutput) != string(raw) {
+		t.Fatalf("unexpected exercise raw output: %#v", lessonWithContent.Exercises)
+	}
+	if len(lessonWithContent.Quizzes) != 1 || string(lessonWithContent.Quizzes[0].RawAIOutput) != string(raw) {
+		t.Fatalf("unexpected quiz raw output: %#v", lessonWithContent.Quizzes)
+	}
+}
+
+func TestAttachGeneratedContentRejectsActivityPolicyMismatch(t *testing.T) {
+	now := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	lesson, err := domain.NewLessonAt(domain.NewLessonParams{
+		ModuleID:                 uuid.New(),
+		Order:                    1,
+		Title:                    "Pratique Linux",
+		Type:                     domain.LessonTypePractice,
+		EstimatedDurationMinutes: 45,
+		LearningGoal:             "Pratiquer les commandes de base du shell.",
+		RequiresDiagram:          false,
+		TechnicalKeywords:        []string{"shell", "linux"},
+	}, now)
+	if err != nil {
+		t.Fatalf("create lesson: %v", err)
+	}
+
+	service := NewCourseGeneratorService(fakeCourseAI{}, nil, fixedClock{now: now}, CourseGeneratorConfig{})
+	_, err = service.attachGeneratedContent(lesson, contract.LessonContentOutput{
+		ContentMarkdown: "# Linux",
+		Exercises:       nil,
+		Quizzes:         nil,
+	})
+	if !errors.Is(err, domain.ErrInvalidCollection) {
+		t.Fatalf("expected activity policy error, got: %v", err)
+	}
+}
+
 func validStructureParams(requestID uuid.UUID) contract.GenerateStructureParams {
 	return contract.GenerateStructureParams{
 		RequestID:    requestID,
@@ -336,6 +444,14 @@ func (r fakeRepositories) Lessons() contract.LessonRepository {
 	return nil
 }
 
+func (r fakeRepositories) Exercises() contract.ExerciseRepository {
+	return nil
+}
+
+func (r fakeRepositories) Quizzes() contract.QuizRepository {
+	return nil
+}
+
 type fakeCourseRepository struct {
 	deletedRequestID uuid.UUID
 	deleteErr        error
@@ -354,6 +470,18 @@ func (r *fakeCourseRepository) FindCourseByID(context.Context, uuid.UUID) (domai
 }
 
 func (r *fakeCourseRepository) FindCourseByRequestID(context.Context, uuid.UUID) (domain.Course, error) {
+	panic("not used")
+}
+
+func (r *fakeCourseRepository) FindCourseStateByID(context.Context, uuid.UUID) (domain.Course, error) {
+	panic("not used")
+}
+
+func (r *fakeCourseRepository) FindCourseStateByRequestID(context.Context, uuid.UUID) (domain.Course, error) {
+	panic("not used")
+}
+
+func (r *fakeCourseRepository) IsCourseContentComplete(context.Context, uuid.UUID) (bool, error) {
 	panic("not used")
 }
 
@@ -392,5 +520,9 @@ func (r fakeGenerationRequestRepository) FindGenerationRequestByID(_ context.Con
 }
 
 func (r fakeGenerationRequestRepository) FindGenerationRequestByCourseID(context.Context, uuid.UUID) (domain.GenerationRequest, error) {
+	panic("not used")
+}
+
+func (r fakeGenerationRequestRepository) FindGenerationStatusByID(context.Context, uuid.UUID) (contract.GenerationStatus, error) {
 	panic("not used")
 }

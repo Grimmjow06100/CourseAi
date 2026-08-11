@@ -118,7 +118,7 @@ func GetEnvWithDefault[T EnvParsable](key string,fallback T) (T, error) {
 	
 	valStr := os.Getenv(key)
 	if valStr == "" {
-		return fallback, fmt.Errorf("env %s : la valeur est vide ", key)
+		return fallback, nil
 	}
 
 	var target T
@@ -130,25 +130,25 @@ func GetEnvWithDefault[T EnvParsable](key string,fallback T) (T, error) {
 	case *int:
 		v, err := strconv.Atoi(valStr)
 		if err != nil {
-			return fallback, fmt.Errorf("env %s: impossible de parser %q en int: %w", key, valStr, err)
+			return fallback, nil
 		}
 		*ptr = v
 	case *bool:
 		v, err := strconv.ParseBool(valStr)
 		if err != nil {
-			return fallback, fmt.Errorf("env %s: impossible de parser %q en bool: %w", key, valStr, err)
+			return fallback, nil
 		}
 		*ptr = v
 	case *float64:
 		v, err := strconv.ParseFloat(valStr, 64)
 		if err != nil {
-			return fallback, fmt.Errorf("env %s: impossible de parser %q en float64: %w", key, valStr, err)
+			return fallback, nil
 		}
 		*ptr = v
 	case *time.Duration:
 		v, err := time.ParseDuration(valStr)
 		if err != nil {
-			return fallback, fmt.Errorf("env %s: impossible de parser %q en duration: %w", key, valStr, err)
+			return fallback, nil
 		}
 		*ptr = v
 	}

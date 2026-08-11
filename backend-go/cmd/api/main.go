@@ -7,7 +7,8 @@ import (
 	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/config"
-	"github.com/Grimmjow06100/course-ai/backend-go/internal/database"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/db"
+
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/auth"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/clock"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http"
@@ -15,7 +16,6 @@ import (
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/postgres"
 	promptinfra "github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/prompts"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/service"
-	"github.com/openai/openai-go/v3"
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
 )
@@ -28,7 +28,7 @@ func main() {
 	}
 
 	ctx := context.Background()
-	db, err := database.Open(ctx)
+	db, err := db.Open(ctx)
 	if err != nil {
 		logger.Error(err.Error())
 		return
@@ -76,10 +76,17 @@ func main() {
 		logger.Error(err.Error())
 		return
 	}
+	openaiMaxOutputToken,err:=config.GetEnv[int]("OPENAI_MAX_OUTPUT_TOKENS")
+	if err != nil {
+		logger.Error(err.Error())
+		return
+	}
+	openaiModel,err:=config.GetEnv[string]("OPENAI_MODEL")
+	
 	openAIClient := openaisdk.NewClient(option.WithAPIKey(openAIKey))
 	courseAIGenerator := openaiinfra.NewCourseAIGenerator(&openAIClient, promptStore, openaiinfra.Config{
-		Model:           openai.ChatModelGPT5_6Luna,
-		MaxOutputTokens: 12000,
+		Model:          openaiModel ,
+		MaxOutputTokens: int64(openaiMaxOutputToken),
 	})
 
 	repositories := postgres.NewRepositories(db)

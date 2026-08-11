@@ -9,6 +9,10 @@ func normalizeText(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }
 
+func normalizeMarkdown(value string) string {
+	return strings.TrimSpace(value)
+}
+
 func trimOptionalString(value *string) *string {
 	if value == nil {
 		return nil

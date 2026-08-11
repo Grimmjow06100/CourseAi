@@ -2,12 +2,20 @@ package postgres
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func ensureBulkInsertCount(entity string, expected int, inserted int64) error {
+	if inserted == int64(expected) {
+		return nil
+	}
+	return fmt.Errorf("bulk insert %s: inserted %d of %d rows", entity, inserted, expected)
+}
 
 func mapNoRows(err error, notFound error) error {
 	if errors.Is(err, pgx.ErrNoRows) {

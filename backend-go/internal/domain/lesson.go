@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -30,6 +31,9 @@ type Lesson struct {
 	RequiresDiagram          bool
 	TechnicalKeywords        []string
 	ContentMarkdown          *string
+	RawContentOutput         json.RawMessage
+	Exercises                []Exercise
+	Quizzes                  []Quiz
 	CreatedAt                time.Time
 	UpdatedAt                time.Time
 }
@@ -89,6 +93,22 @@ func (l Lesson) Validate() error {
 	if l.ContentMarkdown != nil && strings.TrimSpace(*l.ContentMarkdown) == "" {
 		return fmt.Errorf("%w: content markdown", ErrBlankField)
 	}
+	for _, exercise := range l.Exercises {
+		if exercise.LessonID != l.ID {
+			return fmt.Errorf("%w: exercise lesson id does not match lesson id", ErrInvalidCollection)
+		}
+		if err := exercise.Validate(); err != nil {
+			return err
+		}
+	}
+	for _, quiz := range l.Quizzes {
+		if quiz.LessonID != l.ID {
+			return fmt.Errorf("%w: quiz lesson id does not match lesson id", ErrInvalidCollection)
+		}
+		if err := quiz.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -103,5 +123,49 @@ func (l *Lesson) AttachContent(markdown string) error {
 }
 
 func (l Lesson) HasContent() bool {
-	return l.ContentMarkdown != nil && strings.TrimSpace(*l.ContentMarkdown) != ""
+	return (l.ContentMarkdown != nil && strings.TrimSpace(*l.ContentMarkdown) != "") ||
+		len(l.Exercises) > 0 ||
+		len(l.Quizzes) > 0
+}
+
+func (l Lesson) HasStructuredActivities() bool {
+	return len(l.Exercises) > 0 || len(l.Quizzes) > 0
+}
+
+func (l Lesson) HasExercise() bool {
+	return len(l.Exercises) > 0
+}
+
+func (l Lesson) HasQuiz() bool {
+	return len(l.Quizzes) > 0
+}
+
+func (l *Lesson) AddExercise(exercise Exercise) error {
+	if exercise.LessonID == uuid.Nil {
+		exercise.LessonID = l.ID
+	}
+	if exercise.LessonID != l.ID {
+		return fmt.Errorf("%w: exercise lesson id does not match lesson id", ErrInvalidCollection)
+	}
+	if err := exercise.Validate(); err != nil {
+		return err
+	}
+	l.Exercises = append(l.Exercises, exercise)
+	l.UpdatedAt = time.Now()
+	return nil
+}
+
+func (l *Lesson) AddQuiz(quiz Quiz) error {
+	if quiz.LessonID == uuid.Nil {
+		quiz.LessonID = l.ID
+	}
+	if quiz.LessonID != l.ID {
+		return fmt.Errorf("%w: quiz lesson id does not match lesson id", ErrInvalidCollection)
+	}
+	if err := quiz.Validate(); err != nil {
+		return err
+	}
+	l.Quizzes = append(l.Quizzes, quiz)
+	l.UpdatedAt = time.Now()
+	return nil
 }

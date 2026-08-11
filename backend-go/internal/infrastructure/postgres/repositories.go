@@ -15,6 +15,8 @@ type Repositories struct {
 	courses            *CourseRepository
 	modules            *ModuleRepository
 	lessons            *LessonRepository
+	exercises          *ExerciseRepository
+	quizzes            *QuizRepository
 }
 
 func NewRepositories(db DBTX) *Repositories {
@@ -24,6 +26,8 @@ func NewRepositories(db DBTX) *Repositories {
 		courses:            NewCourseRepository(db),
 		modules:            NewModuleRepository(db),
 		lessons:            NewLessonRepository(db),
+		exercises:          NewExerciseRepository(db),
+		quizzes:            NewQuizRepository(db),
 	}
 }
 
@@ -45,6 +49,14 @@ func (r *Repositories) Modules() contract.ModuleRepository {
 
 func (r *Repositories) Lessons() contract.LessonRepository {
 	return r.lessons
+}
+
+func (r *Repositories) Exercises() contract.ExerciseRepository {
+	return r.exercises
+}
+
+func (r *Repositories) Quizzes() contract.QuizRepository {
+	return r.quizzes
 }
 
 // UnitOfWork runs repository operations inside a single PostgreSQL transaction.

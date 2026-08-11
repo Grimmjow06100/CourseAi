@@ -15,6 +15,8 @@ type TransactionalRepositories interface {
 	Courses() CourseRepository
 	Modules() ModuleRepository
 	Lessons() LessonRepository
+	Exercises() ExerciseRepository
+	Quizzes() QuizRepository
 }
 
 type UnitOfWork interface {

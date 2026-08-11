@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -326,30 +327,9 @@ func (s *CourseGeneratorService) GetGenerationStatus(ctx context.Context, reques
 
 	var status contract.GenerationStatus
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
-		if err != nil {
-			return err
-		}
-
-		status = contract.GenerationStatus{
-			RequestID:       request.ID,
-			PipelineStatus:  request.PipelineStatus,
-			CurrentStep:     request.CurrentStep,
-			ProgressPercent: request.ProgressPercent,
-			FailureMessage:  request.FailureMessage,
-		}
-
-		course, err := repositories.Courses().FindCourseByRequestID(ctx, request.ID)
-		if err != nil {
-			if errors.Is(err, contract.ErrCourseNotFound) {
-				return nil
-			}
-			return err
-		}
-
-		status.CourseID = &course.ID
-		status.CourseStatus = &course.Status
-		return nil
+		var err error
+		status, err = repositories.GenerationRequests().FindGenerationStatusByID(ctx, requestID)
+		return err
 	})
 	if err != nil {
 		return contract.GenerationStatus{}, err
@@ -461,7 +441,7 @@ func (s *CourseGeneratorService) runPromptAnalysis(ctx context.Context, request 
 		return domain.GenerationRequest{}, fmt.Errorf("analyze prompt: %w", err)
 	}
 
-	request, err = s.persistAnalysis(ctx, request.ID, analysis.Summary)
+	request, err = s.persistAnalysis(ctx, request.ID, analysis.Summary, analysis.Raw)
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
@@ -488,7 +468,7 @@ func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, reque
 		return domain.GenerationRequest{}, domain.Course{}, fmt.Errorf("generate architecture: %w", err)
 	}
 
-	course, err := s.persistArchitecture(ctx, request, architecture.Course)
+	course, err := s.persistArchitecture(ctx, request, architecture.Course, architecture.Raw)
 	if err != nil {
 		return domain.GenerationRequest{}, domain.Course{}, err
 	}
@@ -498,7 +478,7 @@ func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, reque
 		return domain.GenerationRequest{}, domain.Course{}, err
 	}
 
-	course, err = s.transitionCourse(ctx, course.ID, func(course *domain.Course) error {
+	course, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
 		return course.MarkLessonsGenerating()
 	})
 	if err != nil {
@@ -510,7 +490,7 @@ func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, reque
 		return domain.GenerationRequest{}, domain.Course{}, err
 	}
 
-	course, err = s.transitionCourse(ctx, course.ID, func(course *domain.Course) error {
+	course, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
 		return course.MarkLessonsGenerated()
 	})
 	if err != nil {
@@ -564,7 +544,7 @@ func (s *CourseGeneratorService) updateRequestProgress(ctx context.Context, requ
 	return updatedRequest, err
 }
 
-func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID uuid.UUID, summary domain.AnalysisSummary) (domain.GenerationRequest, error) {
+func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID uuid.UUID, summary domain.AnalysisSummary, rawOutput json.RawMessage) (domain.GenerationRequest, error) {
 	var updatedRequest domain.GenerationRequest
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
@@ -576,6 +556,7 @@ func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID 
 		if err := request.ApplyAnalysis(summary, now); err != nil {
 			return err
 		}
+		request.RawAnalysisOutput = cloneRawMessage(rawOutput)
 		if err := request.UpdateProgress(stepAnalysisCompleted, 25, now); err != nil {
 			return err
 		}
@@ -586,11 +567,12 @@ func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID 
 	return updatedRequest, err
 }
 
-func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, request domain.GenerationRequest, generatedCourse domain.Course) (domain.Course, error) {
+func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, request domain.GenerationRequest, generatedCourse domain.Course, rawOutput json.RawMessage) (domain.Course, error) {
 	course, err := s.normalizeGeneratedCourse(request, generatedCourse)
 	if err != nil {
 		return domain.Course{}, err
 	}
+	course.RawArchitectureOutput = cloneRawMessage(rawOutput)
 
 	modules, err := s.normalizeGeneratedModules(course.ID, course.Modules)
 	if err != nil {
@@ -605,13 +587,9 @@ func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, reques
 			return err
 		}
 
-		savedModules := make([]domain.Module, 0, len(modules))
-		for _, module := range modules {
-			savedModule, err := repositories.Modules().SaveModule(ctx, module)
-			if err != nil {
-				return err
-			}
-			savedModules = append(savedModules, savedModule)
+		savedModules, err := repositories.Modules().SaveModules(ctx, modules)
+		if err != nil {
+			return err
 		}
 
 		persistedCourse.Modules = savedModules
@@ -638,7 +616,10 @@ func (s *CourseGeneratorService) generateAndPersistLessonPlans(ctx context.Conte
 			return domain.Course{}, err
 		}
 
-		savedLessons, err := s.persistLessons(ctx, lessons)
+		module.RawLessonsPlanOutput = cloneRawMessage(output.Raw)
+		module.UpdatedAt = s.now()
+
+		savedLessons, err := s.persistLessonPlan(ctx, module, lessons)
 		if err != nil {
 			return domain.Course{}, err
 		}
@@ -651,9 +632,13 @@ func (s *CourseGeneratorService) generateAndPersistLessonPlans(ctx context.Conte
 	return course, nil
 }
 
-func (s *CourseGeneratorService) persistLessons(ctx context.Context, lessons []domain.Lesson) ([]domain.Lesson, error) {
+func (s *CourseGeneratorService) persistLessonPlan(ctx context.Context, module domain.Module, lessons []domain.Lesson) ([]domain.Lesson, error) {
 	var savedLessons []domain.Lesson
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if _, err := repositories.Modules().UpdateModule(ctx, module); err != nil {
+			return err
+		}
+
 		persistedLessons, err := repositories.Lessons().SaveLessons(ctx, lessons)
 		if err != nil {
 			return err
@@ -686,23 +671,26 @@ func (s *CourseGeneratorService) generateAndPersistLessonContents(ctx context.Co
 
 func (s *CourseGeneratorService) persistLessonContent(ctx context.Context, lesson domain.Lesson) error {
 	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		_, err := repositories.Lessons().UpdateLesson(ctx, lesson)
+		if _, err := repositories.Lessons().ReplaceLessonContent(ctx, lesson); err != nil {
+			return err
+		}
+		if _, err := repositories.Exercises().SaveExercises(ctx, lesson.Exercises); err != nil {
+			return err
+		}
+		_, err := repositories.Quizzes().SaveQuizzes(ctx, lesson.Quizzes)
 		return err
 	})
 }
 
-func (s *CourseGeneratorService) transitionCourse(ctx context.Context, courseID uuid.UUID, mutate func(course *domain.Course) error) (domain.Course, error) {
+func (s *CourseGeneratorService) transitionCourse(ctx context.Context, course domain.Course, mutate func(course *domain.Course) error) (domain.Course, error) {
 	var updatedCourse domain.Course
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		course, err := repositories.Courses().FindCourseByID(ctx, courseID)
-		if err != nil {
-			return err
-		}
 		if err := mutate(&course); err != nil {
 			return err
 		}
 		course.UpdatedAt = s.now()
 
+		var err error
 		updatedCourse, err = repositories.Courses().UpdateCourse(ctx, course)
 		return err
 	})
@@ -741,7 +729,7 @@ func (s *CourseGeneratorService) markPipelineFailed(ctx context.Context, request
 			}
 		}
 
-		course, err := repositories.Courses().FindCourseByRequestID(ctx, request.ID)
+		course, err := repositories.Courses().FindCourseStateByRequestID(ctx, request.ID)
 		if err != nil {
 			if errors.Is(err, contract.ErrCourseNotFound) {
 				return nil
@@ -972,12 +960,53 @@ func (s *CourseGeneratorService) attachGeneratedContent(lesson domain.Lesson, ou
 	if content == "" {
 		return domain.Lesson{}, ErrMissingGeneratedContent
 	}
+	if err := domain.ValidateLessonActivitiesForType(lesson.Type, output.Exercises, output.Quizzes); err != nil {
+		return domain.Lesson{}, err
+	}
 
 	if err := lesson.AttachContent(content); err != nil {
 		return domain.Lesson{}, err
 	}
+	lesson.RawContentOutput = cloneRawMessage(output.Raw)
+	lesson.Exercises = attachRawOutputToExercises(output.Exercises, output.Raw)
+	lesson.Quizzes = attachRawOutputToQuizzes(output.Quizzes, output.Raw)
 	lesson.UpdatedAt = s.now()
 	return lesson, nil
+}
+
+func attachRawOutputToExercises(exercises []domain.Exercise, rawOutput json.RawMessage) []domain.Exercise {
+	if len(exercises) == 0 {
+		return nil
+	}
+
+	withRawOutput := make([]domain.Exercise, 0, len(exercises))
+	for _, exercise := range exercises {
+		exercise.RawAIOutput = cloneRawMessage(rawOutput)
+		withRawOutput = append(withRawOutput, exercise)
+	}
+	return withRawOutput
+}
+
+func attachRawOutputToQuizzes(quizzes []domain.Quiz, rawOutput json.RawMessage) []domain.Quiz {
+	if len(quizzes) == 0 {
+		return nil
+	}
+
+	withRawOutput := make([]domain.Quiz, 0, len(quizzes))
+	for _, quiz := range quizzes {
+		quiz.RawAIOutput = cloneRawMessage(rawOutput)
+		withRawOutput = append(withRawOutput, quiz)
+	}
+	return withRawOutput
+}
+
+func cloneRawMessage(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	cloned := make(json.RawMessage, len(raw))
+	copy(cloned, raw)
+	return cloned
 }
 
 func (s *CourseGeneratorService) loadCourseByID(ctx context.Context, courseID uuid.UUID) (domain.Course, error) {
@@ -1069,17 +1098,23 @@ func (s *CourseGeneratorService) ensureCourseContentGenerating(ctx context.Conte
 	if course.Status == domain.CourseStatusCompleted || course.Status == domain.CourseStatusContentGenerating {
 		return course, nil
 	}
-	return s.transitionCourse(ctx, course.ID, func(course *domain.Course) error {
+	return s.transitionCourse(ctx, course, func(course *domain.Course) error {
 		return course.MarkContentGenerating()
 	})
 }
 
 func (s *CourseGeneratorService) completeCourseIfReady(ctx context.Context, courseID uuid.UUID) error {
-	_, err := s.transitionCourse(ctx, courseID, func(course *domain.Course) error {
-		if course.Status == domain.CourseStatusCompleted {
-			return nil
+	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		isComplete, err := repositories.Courses().IsCourseContentComplete(ctx, courseID)
+		if err != nil || !isComplete {
+			return err
 		}
-		if !course.HasCompleteContent() {
+
+		course, err := repositories.Courses().FindCourseStateByID(ctx, courseID)
+		if err != nil {
+			return err
+		}
+		if course.Status == domain.CourseStatusCompleted {
 			return nil
 		}
 		if course.Status != domain.CourseStatusContentGenerating {
@@ -1087,9 +1122,13 @@ func (s *CourseGeneratorService) completeCourseIfReady(ctx context.Context, cour
 				return err
 			}
 		}
-		return course.MarkCompleted()
+		if err := course.MarkCompletedWithValidatedContent(isComplete); err != nil {
+			return err
+		}
+		course.UpdatedAt = s.now()
+		_, err = repositories.Courses().UpdateCourse(ctx, course)
+		return err
 	})
-	return err
 }
 func (s *CourseGeneratorService) generationStarted(requestID uuid.UUID, status domain.GenerationPipelineStatus) contract.GenerationStarted {
 	return contract.GenerationStarted{
