@@ -12,6 +12,7 @@ import (
 type Repositories struct {
 	users              *UserRepository
 	generationRequests *GenerationRequestRepository
+	generationJobs     *GenerationJobRepository
 	courses            *CourseRepository
 	modules            *ModuleRepository
 	lessons            *LessonRepository
@@ -23,6 +24,7 @@ func NewRepositories(db DBTX) *Repositories {
 	return &Repositories{
 		users:              NewUserRepository(db),
 		generationRequests: NewGenerationRequestRepository(db),
+		generationJobs:     NewGenerationJobRepository(db),
 		courses:            NewCourseRepository(db),
 		modules:            NewModuleRepository(db),
 		lessons:            NewLessonRepository(db),
@@ -37,6 +39,10 @@ func (r *Repositories) Users() contract.UserRepository {
 
 func (r *Repositories) GenerationRequests() contract.GenerationRequestRepository {
 	return r.generationRequests
+}
+
+func (r *Repositories) GenerationJobs() contract.GenerationJobQueue {
+	return r.generationJobs
 }
 
 func (r *Repositories) Courses() contract.CourseRepository {

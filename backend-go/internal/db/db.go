@@ -19,6 +19,8 @@ var postgresEnumTypes = []string{
 	"activity_difficulty",
 	"exercise_type",
 	"quiz_type",
+	"generation_job_status",
+	"generation_job_kind",
 }
 
 func Open(ctx context.Context) (*pgxpool.Pool, error) {

@@ -42,6 +42,7 @@ func isUniqueViolation(err error, constraint string) bool {
 var (
 	ErrCourseNotFound            = contract.ErrCourseNotFound
 	ErrGenerationRequestNotFound = contract.ErrGenerationRequestNotFound
+	ErrGenerationJobNotFound     = contract.ErrGenerationJobNotFound
 	ErrLessonNotFound            = contract.ErrLessonNotFound
 	ErrModuleNotFound            = contract.ErrModuleNotFound
 )

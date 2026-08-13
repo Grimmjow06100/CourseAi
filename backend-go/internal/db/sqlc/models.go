@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type ActivityDifficulty string
@@ -194,6 +195,99 @@ func (ns NullExerciseType) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.ExerciseType), nil
+}
+
+type GenerationJobKind string
+
+const (
+	GenerationJobKindFullCourse     GenerationJobKind = "full_course"
+	GenerationJobKindAnalysis       GenerationJobKind = "analysis"
+	GenerationJobKindArchitecture   GenerationJobKind = "architecture"
+	GenerationJobKindLessonPlan     GenerationJobKind = "lesson_plan"
+	GenerationJobKindLessonContent  GenerationJobKind = "lesson_content"
+	GenerationJobKindModuleContent  GenerationJobKind = "module_content"
+	GenerationJobKindFinalizeCourse GenerationJobKind = "finalize_course"
+)
+
+func (e *GenerationJobKind) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = GenerationJobKind(s)
+	case string:
+		*e = GenerationJobKind(s)
+	default:
+		return fmt.Errorf("unsupported scan type for GenerationJobKind: %T", src)
+	}
+	return nil
+}
+
+type NullGenerationJobKind struct {
+	GenerationJobKind GenerationJobKind `json:"generation_job_kind"`
+	Valid             bool              `json:"valid"` // Valid is true if GenerationJobKind is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullGenerationJobKind) Scan(value interface{}) error {
+	if value == nil {
+		ns.GenerationJobKind, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.GenerationJobKind.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullGenerationJobKind) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.GenerationJobKind), nil
+}
+
+type GenerationJobStatus string
+
+const (
+	GenerationJobStatusQueued         GenerationJobStatus = "queued"
+	GenerationJobStatusRunning        GenerationJobStatus = "running"
+	GenerationJobStatusRetryScheduled GenerationJobStatus = "retry_scheduled"
+	GenerationJobStatusCompleted      GenerationJobStatus = "completed"
+	GenerationJobStatusFailed         GenerationJobStatus = "failed"
+	GenerationJobStatusCancelled      GenerationJobStatus = "cancelled"
+)
+
+func (e *GenerationJobStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = GenerationJobStatus(s)
+	case string:
+		*e = GenerationJobStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for GenerationJobStatus: %T", src)
+	}
+	return nil
+}
+
+type NullGenerationJobStatus struct {
+	GenerationJobStatus GenerationJobStatus `json:"generation_job_status"`
+	Valid               bool                `json:"valid"` // Valid is true if GenerationJobStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullGenerationJobStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.GenerationJobStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.GenerationJobStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullGenerationJobStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.GenerationJobStatus), nil
 }
 
 type GenerationPipelineStatus string
@@ -395,6 +489,29 @@ type Course struct {
 	RawArchitectureOutput   json.RawMessage        `db:"raw_architecture_output" json:"raw_architecture_output"`
 	CreatedAt               time.Time              `db:"created_at" json:"created_at"`
 	UpdatedAt               time.Time              `db:"updated_at" json:"updated_at"`
+}
+
+type GenerationJob struct {
+	ID               uuid.UUID           `db:"id" json:"id"`
+	RequestID        uuid.UUID           `db:"request_id" json:"request_id"`
+	ParentJobID      pgtype.UUID         `db:"parent_job_id" json:"parent_job_id"`
+	Kind             GenerationJobKind   `db:"kind" json:"kind"`
+	Status           GenerationJobStatus `db:"status" json:"status"`
+	TargetID         pgtype.UUID         `db:"target_id" json:"target_id"`
+	IdempotencyKey   string              `db:"idempotency_key" json:"idempotency_key"`
+	Payload          json.RawMessage     `db:"payload" json:"payload"`
+	Priority         int32               `db:"priority" json:"priority"`
+	AttemptCount     int32               `db:"attempt_count" json:"attempt_count"`
+	MaxAttempts      int32               `db:"max_attempts" json:"max_attempts"`
+	AvailableAt      time.Time           `db:"available_at" json:"available_at"`
+	LockedBy         *string             `db:"locked_by" json:"locked_by"`
+	LockedUntil      *time.Time          `db:"locked_until" json:"locked_until"`
+	StartedAt        *time.Time          `db:"started_at" json:"started_at"`
+	CompletedAt      *time.Time          `db:"completed_at" json:"completed_at"`
+	LastErrorCode    *string             `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage *string             `db:"last_error_message" json:"last_error_message"`
+	CreatedAt        time.Time           `db:"created_at" json:"created_at"`
+	UpdatedAt        time.Time           `db:"updated_at" json:"updated_at"`
 }
 
 type GenerationRequest struct {

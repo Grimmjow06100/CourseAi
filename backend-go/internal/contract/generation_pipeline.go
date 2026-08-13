@@ -8,7 +8,8 @@ import (
 )
 
 type StartGenerationParams struct {
-	Prompt string
+	Prompt         string
+	IdempotencyKey string
 }
 
 type AnalyzePromptParams struct {
@@ -26,10 +27,13 @@ type GenerateStructureParams struct {
 }
 
 type GenerationStarted struct {
-	RequestID uuid.UUID
-	Status    domain.GenerationPipelineStatus
-	StatusURL string
-	ResultURL string
+	JobID        uuid.UUID
+	RequestID    uuid.UUID
+	Status       domain.GenerationPipelineStatus
+	JobStatus    domain.GenerationJobStatus
+	StatusURL    string
+	JobStatusURL string
+	ResultURL    string
 }
 
 type GenerationStatus struct {
@@ -54,6 +58,11 @@ type GenerationAnalysisResult struct {
 type CourseGenerationService interface {
 	AnalyzePrompt(ctx context.Context, params AnalyzePromptParams) (GenerationAnalysisResult, error)
 	StartFullCourseGeneration(ctx context.Context, params StartGenerationParams) (GenerationStarted, error)
+	EnqueueCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationStarted, error)
+	EnqueueStructureRetry(ctx context.Context, params GenerateStructureParams) (GenerationStarted, error)
+	EnqueueLessonContentGeneration(ctx context.Context, lessonID uuid.UUID) (GenerationStarted, error)
+	EnqueueModuleContentGeneration(ctx context.Context, moduleID uuid.UUID) (GenerationStarted, error)
+	GetGenerationJob(ctx context.Context, jobID uuid.UUID) (domain.GenerationJob, error)
 	GenerateCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationResult, error)
 	RetryCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationResult, error)
 	GenerateLessonContent(ctx context.Context, lessonID uuid.UUID) (domain.Lesson, error)

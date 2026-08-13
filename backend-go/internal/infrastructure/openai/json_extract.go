@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 )
 
 func extractJSONPayload(output string) (json.RawMessage, error) {
@@ -105,7 +107,7 @@ func extractBalancedJSON(output string) (string, bool) {
 }
 
 func outputPreview(value string) string {
-	value = strings.Join(strings.Fields(value), " ")
+	value = textutil.CollapseWhitespace(value)
 	const maxPreviewLength = 240
 	if len(value) <= maxPreviewLength {
 		return value

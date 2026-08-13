@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 )
 
 type AnalysisResponse struct {
@@ -55,10 +56,10 @@ func (r AnalysisResponse) ToDomain() (domain.AnalysisSummary, error) {
 
 	return domain.AnalysisSummary{
 		IsOutOfScope:           r.IsOutOfScope,
-		ErrorMessage:           cleanStringPtr(r.ErrorMessage),
-		WarningMessage:         cleanStringPtr(r.WarningMessage),
-		SuggestedTitle:         stringPtr(r.SuggestedTitle),
-		ShortSynopsis:          stringPtr(r.ShortSynopsis),
+		ErrorMessage:           textutil.TrimmedPointerFrom(r.ErrorMessage),
+		WarningMessage:         textutil.TrimmedPointerFrom(r.WarningMessage),
+		SuggestedTitle:         textutil.TrimmedPointer(r.SuggestedTitle),
+		ShortSynopsis:          textutil.TrimmedPointer(r.ShortSynopsis),
 		DetectedCurrentLevel:   &currentLevel,
 		DetectedTargetLevel:    &targetLevel,
 		DetectedGoal:           &goal,

@@ -10,12 +10,13 @@ Le backend Go contient aujourd'hui :
 
 - un modele de domaine pour `Course`, `Module`, `Lesson`, `GenerationRequest` et `User` ;
 - des contracts applicatifs pour les repositories, services, auth, transactions et generation IA ;
-- une couche service avec auth, catalogue de cours et orchestration de pipeline de generation ;
+- une couche service avec auth, catalogue, commandes de generation et executeur de jobs ;
 - une infrastructure PostgreSQL basee sur `pgx` ;
 - un adapter OpenAI qui implemente `contract.CourseAIGenerator` avec Structured Outputs ;
 - une implementation `PromptStore` dans l'infrastructure ;
 - des migrations SQL Goose ;
-- une API HTTP Gin avec DTOs, handlers, router et middlewares ;
+- une API HTTP Gin avec commandes asynchrones, statut de jobs, CORS et arret gracieux ;
+- une queue PostgreSQL durable avec worker pool, leases, heartbeat, retries et reprise apres redemarrage ;
 - une auth JWT + bcrypt ;
 - une base PostgreSQL locale via Docker Compose.
 
@@ -88,7 +89,7 @@ Puis cote backend Go :
 cd backend-go
 Copy-Item .env.example .env
 go mod download
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" up
+goose up
 go run ./cmd/api
 ```
 
@@ -139,6 +140,9 @@ PROMPTS_DIR=./prompts
 JWT_SECRET=change_me_in_local_env
 JWT_TOKEN_TTL=24h
 OPENAI_API_KEY=sk-your-api-key
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+GENERATION_WORKER_ENABLED=true
+GENERATION_WORKER_CONCURRENCY=1
 
 ```
 
@@ -177,14 +181,16 @@ POST /api/generations/modules/:moduleID/contents
 GET  /api/generations/:requestID/status
 GET  /api/generations/:requestID/result
 POST /api/generations/:requestID/retry
+GET  /api/generation-jobs/:jobID
 ```
 
-`POST /api/generations` conserve le mode automatique complet : prompt -> analyse -> structure -> contenu de toutes les lessons.
+`POST /api/generations` enfile le mode automatique complet et retourne immediatement `202 Accepted` avec un `jobId`.
 `POST /api/generations/analyze` analyse un prompt et retourne le premier jet : hors scope eventuel, titre, synopsis, niveaux detectes, objectif, langue et questions de clarification.
-`POST /api/generations/:requestID/structure` genere la formation, ses modules et le plan des lessons a partir d'une analyse existante et du contexte confirme par l'utilisateur. Cette route ne genere pas le contenu Markdown des lessons.
+`POST /api/generations/:requestID/structure` enfile la formation, ses modules et le plan des lessons. Cette route ne genere pas le contenu Markdown.
 `POST /api/generations/:requestID/structure/retry` relance uniquement l'etape structure sur une request `failed` dont l'echec vient de `architecture_generation` ou `lesson_plan_generation`; le body est le meme que `/structure` et les donnees partielles sont supprimees avant relance.
-`POST /api/generations/lessons/:lessonID/content` genere et persiste le contenu d'une lesson.
-`POST /api/generations/modules/:moduleID/contents` genere et persiste le contenu de toutes les lessons d'un module.
+`POST /api/generations/lessons/:lessonID/content` et `POST /api/generations/modules/:moduleID/contents` retournent aussi `202`; suivre leur etat avec `GET /api/generation-jobs/:jobID`.
+
+Le header `Idempotency-Key` est recommande sur `POST /api/generations`. Les migrations `00001`, `00002` et `00003` doivent etre appliquees avant le demarrage du worker.
 
 ## Exemples rapides
 
@@ -286,10 +292,15 @@ goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@loca
 Depuis `backend-go/` :
 
 ```powershell
-go test ./...
+make test
+make test-race
+make test-integration
+make test-all
 go run ./cmd/api
 go fmt ./...
 ```
+
+Les tests unitaires sont colocalises avec les packages Go. Les tests qui utilisent la base reelle sont regroupes dans `backend-go/tests/integration/postgres`; `make test-integration` les active explicitement et utilise la base definie par `DATABASE_URL`.
 
 Depuis la racine :
 

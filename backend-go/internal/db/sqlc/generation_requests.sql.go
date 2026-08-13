@@ -187,12 +187,8 @@ JOIN courses c ON c.request_id = gr.id
 WHERE c.id = $1
 `
 
-type GetGenerationRequestByCourseIDParams struct {
-	CourseID uuid.UUID `db:"course_id" json:"course_id"`
-}
-
-func (q *Queries) GetGenerationRequestByCourseID(ctx context.Context, arg GetGenerationRequestByCourseIDParams) (GenerationRequest, error) {
-	row := q.db.QueryRow(ctx, getGenerationRequestByCourseID, arg.CourseID)
+func (q *Queries) GetGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (GenerationRequest, error) {
+	row := q.db.QueryRow(ctx, getGenerationRequestByCourseID, courseID)
 	var i GenerationRequest
 	err := row.Scan(
 		&i.ID,
@@ -247,12 +243,8 @@ FROM generation_requests
 WHERE id = $1
 `
 
-type GetGenerationRequestByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) GetGenerationRequestByID(ctx context.Context, arg GetGenerationRequestByIDParams) (GenerationRequest, error) {
-	row := q.db.QueryRow(ctx, getGenerationRequestByID, arg.ID)
+func (q *Queries) GetGenerationRequestByID(ctx context.Context, id uuid.UUID) (GenerationRequest, error) {
+	row := q.db.QueryRow(ctx, getGenerationRequestByID, id)
 	var i GenerationRequest
 	err := row.Scan(
 		&i.ID,
@@ -294,10 +286,6 @@ LEFT JOIN courses c ON c.request_id = gr.id
 WHERE gr.id = $1
 `
 
-type GetGenerationStatusByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
 type GetGenerationStatusByIDRow struct {
 	RequestID       uuid.UUID                `db:"request_id" json:"request_id"`
 	PipelineStatus  GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
@@ -308,8 +296,8 @@ type GetGenerationStatusByIDRow struct {
 	CourseStatus    *CourseGenerationStatus  `db:"course_status" json:"course_status"`
 }
 
-func (q *Queries) GetGenerationStatusByID(ctx context.Context, arg GetGenerationStatusByIDParams) (GetGenerationStatusByIDRow, error) {
-	row := q.db.QueryRow(ctx, getGenerationStatusByID, arg.ID)
+func (q *Queries) GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (GetGenerationStatusByIDRow, error) {
+	row := q.db.QueryRow(ctx, getGenerationStatusByID, id)
 	var i GetGenerationStatusByIDRow
 	err := row.Scan(
 		&i.RequestID,

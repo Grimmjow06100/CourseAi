@@ -5,6 +5,7 @@ sql:
     schema:
       - "migrations/00001_init_schema.sql"
       - "migrations/00002_add_structured_lesson_activities.sql"
+      - "migrations/00003_generation_jobs.sql"
     queries: "internal/db/queries"
     gen:
       go:
@@ -17,7 +18,7 @@ sql:
         emit_empty_slices: true
         emit_exact_table_names: false
         emit_pointers_for_null_types: true
-        query_parameter_limit: 0
+        query_parameter_limit: 1
         overrides:
           - db_type: "uuid"
             go_type:
@@ -51,6 +52,17 @@ sql:
               import: "time"
               type: "Time"
           - db_type: "pg_catalog.timestamp"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+          - db_type: "timestamptz"
+            nullable: false
+            go_type:
+              import: "time"
+              type: "Time"
+          - db_type: "timestamptz"
             nullable: true
             go_type:
               import: "time"

@@ -17,7 +17,7 @@ var (
 	ErrMissingClient      = errors.New("openai client is missing")
 	ErrMissingPromptStore = errors.New("prompt store is missing")
 	ErrPromptNotFound     = errors.New("prompt not found")
-	ErrInvalidModelOutput = errors.New("invalid model output")
+	ErrInvalidModelOutput = retryableSentinel{message: "invalid model output", code: "invalid_model_output"}
 	ErrMissingPromptInput = errors.New("prompt input is missing")
 )
 

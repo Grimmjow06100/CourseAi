@@ -30,7 +30,10 @@ func (h *GenerationHandler) Start(c *gin.Context) {
 		return
 	}
 
-	started, err := h.service.StartFullCourseGeneration(c.Request.Context(), contract.StartGenerationParams{Prompt: request.Prompt})
+	started, err := h.service.StartFullCourseGeneration(c.Request.Context(), contract.StartGenerationParams{
+		Prompt:         request.Prompt,
+		IdempotencyKey: c.GetHeader("Idempotency-Key"),
+	})
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -81,13 +84,13 @@ func (h *GenerationHandler) Structure(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.GenerateCourseStructure(c.Request.Context(), params)
+	started, err := h.service.EnqueueCourseStructure(c.Request.Context(), params)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, dto.GenerationResultFromContract(result))
+	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
 
 func (h *GenerationHandler) RetryStructure(c *gin.Context) {
@@ -112,13 +115,13 @@ func (h *GenerationHandler) RetryStructure(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.RetryCourseStructure(c.Request.Context(), params)
+	started, err := h.service.EnqueueStructureRetry(c.Request.Context(), params)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, dto.GenerationResultFromContract(result))
+	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
 func (h *GenerationHandler) LessonContent(c *gin.Context) {
 	if h.service == nil {
@@ -131,13 +134,13 @@ func (h *GenerationHandler) LessonContent(c *gin.Context) {
 		return
 	}
 
-	lesson, err := h.service.GenerateLessonContent(c.Request.Context(), lessonID)
+	started, err := h.service.EnqueueLessonContentGeneration(c.Request.Context(), lessonID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.LessonFromDomain(lesson))
+	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
 
 func (h *GenerationHandler) ModuleLessonContents(c *gin.Context) {
@@ -151,13 +154,31 @@ func (h *GenerationHandler) ModuleLessonContents(c *gin.Context) {
 		return
 	}
 
-	module, err := h.service.GenerateModuleLessonContents(c.Request.Context(), moduleID)
+	started, err := h.service.EnqueueModuleContentGeneration(c.Request.Context(), moduleID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.ModuleFromDomain(module))
+	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
+}
+
+func (h *GenerationHandler) JobStatus(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+
+	jobID, ok := parseUUIDParam(c, "jobID")
+	if !ok {
+		return
+	}
+	job, err := h.service.GetGenerationJob(c.Request.Context(), jobID)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.GenerationJobFromDomain(job))
 }
 
 func (h *GenerationHandler) Status(c *gin.Context) {

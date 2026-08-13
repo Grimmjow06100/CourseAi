@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 	"github.com/google/uuid"
 )
 
@@ -232,7 +233,7 @@ func (q QuizQuestionResponse) OptionsToDomain() []domain.QuizOption {
 
 func (a QuizAnswerResponse) ToDomain() domain.QuizAnswer {
 	return domain.QuizAnswer{
-		Answer:  cleanStringPtr(a.Answer),
+		Answer:  textutil.TrimmedPointerFrom(a.Answer),
 		Answers: a.Answers,
 	}
 }

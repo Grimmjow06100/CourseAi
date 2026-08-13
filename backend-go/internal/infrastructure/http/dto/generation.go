@@ -5,6 +5,8 @@ import (
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
+	"github.com/google/uuid"
 )
 
 type StartGenerationRequest struct {
@@ -25,10 +27,33 @@ type GenerateStructureRequest struct {
 }
 
 type GenerationStartedResponse struct {
-	RequestID string `json:"requestId"`
-	Status    string `json:"status"`
-	StatusURL string `json:"statusUrl"`
-	ResultURL string `json:"resultUrl"`
+	JobID        string `json:"jobId"`
+	RequestID    string `json:"requestId"`
+	Status       string `json:"status"`
+	JobStatus    string `json:"jobStatus"`
+	StatusURL    string `json:"statusUrl"`
+	JobStatusURL string `json:"jobStatusUrl"`
+	ResultURL    string `json:"resultUrl"`
+}
+
+type GenerationJobResponse struct {
+	ID               string     `json:"id"`
+	RequestID        string     `json:"requestId"`
+	ParentJobID      *string    `json:"parentJobId"`
+	Kind             string     `json:"kind"`
+	Status           string     `json:"status"`
+	TargetID         *string    `json:"targetId"`
+	Priority         int        `json:"priority"`
+	AttemptCount     int        `json:"attemptCount"`
+	MaxAttempts      int        `json:"maxAttempts"`
+	AvailableAt      time.Time  `json:"availableAt"`
+	LockedUntil      *time.Time `json:"lockedUntil"`
+	StartedAt        *time.Time `json:"startedAt"`
+	CompletedAt      *time.Time `json:"completedAt"`
+	LastErrorCode    *string    `json:"lastErrorCode"`
+	LastErrorMessage *string    `json:"lastErrorMessage"`
+	CreatedAt        time.Time  `json:"createdAt"`
+	UpdatedAt        time.Time  `json:"updatedAt"`
 }
 
 type GenerationStatusResponse struct {
@@ -81,31 +106,44 @@ type ClarificationQuestionResponse struct {
 
 func GenerationStartedFromContract(started contract.GenerationStarted) GenerationStartedResponse {
 	return GenerationStartedResponse{
-		RequestID: started.RequestID.String(),
-		Status:    string(started.Status),
-		StatusURL: started.StatusURL,
-		ResultURL: started.ResultURL,
+		JobID:        started.JobID.String(),
+		RequestID:    started.RequestID.String(),
+		Status:       string(started.Status),
+		JobStatus:    string(started.JobStatus),
+		StatusURL:    started.StatusURL,
+		JobStatusURL: started.JobStatusURL,
+		ResultURL:    started.ResultURL,
+	}
+}
+
+func GenerationJobFromDomain(job domain.GenerationJob) GenerationJobResponse {
+	return GenerationJobResponse{
+		ID:               job.ID.String(),
+		RequestID:        job.RequestID.String(),
+		ParentJobID:      pointer.Map(job.ParentJobID, uuid.UUID.String),
+		Kind:             string(job.Kind),
+		Status:           string(job.Status),
+		TargetID:         pointer.Map(job.TargetID, uuid.UUID.String),
+		Priority:         job.Priority,
+		AttemptCount:     job.AttemptCount,
+		MaxAttempts:      job.MaxAttempts,
+		AvailableAt:      job.AvailableAt,
+		LockedUntil:      job.LockedUntil,
+		StartedAt:        job.StartedAt,
+		CompletedAt:      job.CompletedAt,
+		LastErrorCode:    job.LastErrorCode,
+		LastErrorMessage: job.LastErrorMessage,
+		CreatedAt:        job.CreatedAt,
+		UpdatedAt:        job.UpdatedAt,
 	}
 }
 
 func GenerationStatusFromContract(status contract.GenerationStatus) GenerationStatusResponse {
-	var courseID *string
-	if status.CourseID != nil {
-		value := status.CourseID.String()
-		courseID = &value
-	}
-
-	var courseStatus *string
-	if status.CourseStatus != nil {
-		value := string(*status.CourseStatus)
-		courseStatus = &value
-	}
-
 	return GenerationStatusResponse{
 		RequestID:       status.RequestID.String(),
-		CourseID:        courseID,
+		CourseID:        pointer.Map(status.CourseID, uuid.UUID.String),
 		PipelineStatus:  string(status.PipelineStatus),
-		CourseStatus:    courseStatus,
+		CourseStatus:    pointer.Map(status.CourseStatus, func(value domain.CourseGenerationStatus) string { return string(value) }),
 		CurrentStep:     status.CurrentStep,
 		ProgressPercent: status.ProgressPercent,
 		FailureMessage:  status.FailureMessage,
@@ -147,28 +185,12 @@ func GenerationRequestFromDomain(request domain.GenerationRequest) GenerationReq
 		WarningMessage:         request.WarningMessage,
 		SuggestedTitle:         request.SuggestedTitle,
 		ShortSynopsis:          request.ShortSynopsis,
-		DetectedCurrentLevel:   levelPtr(request.DetectedCurrentLevel),
-		DetectedTargetLevel:    levelPtr(request.DetectedTargetLevel),
+		DetectedCurrentLevel:   pointer.Map(request.DetectedCurrentLevel, func(value domain.Level) string { return string(value) }),
+		DetectedTargetLevel:    pointer.Map(request.DetectedTargetLevel, func(value domain.Level) string { return string(value) }),
 		DetectedGoal:           request.DetectedGoal,
-		DetectedLanguage:       languagePtr(request.DetectedLanguage),
+		DetectedLanguage:       pointer.Map(request.DetectedLanguage, func(value domain.CourseLanguage) string { return string(value) }),
 		ClarificationQuestions: questions,
 		CreatedAt:              request.CreatedAt,
 		UpdatedAt:              request.UpdatedAt,
 	}
-}
-
-func levelPtr(level *domain.Level) *string {
-	if level == nil {
-		return nil
-	}
-	value := string(*level)
-	return &value
-}
-
-func languagePtr(language *domain.CourseLanguage) *string {
-	if language == nil {
-		return nil
-	}
-	value := string(*language)
-	return &value
 }

@@ -6,6 +6,10 @@ import (
 
 	dbsqlc "github.com/Grimmjow06100/course-ai/backend-go/internal/db/sqlc"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/jsonutil"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type quizQuestionJSON struct {
@@ -91,6 +95,41 @@ func generationRequestFromSQLC(row dbsqlc.GenerationRequest) (domain.GenerationR
 		return domain.GenerationRequest{}, err
 	}
 	return request, request.Validate()
+}
+
+func generationJobFromSQLC(row dbsqlc.GenerationJob) (domain.GenerationJob, error) {
+	kind, err := domain.ParseGenerationJobKind(string(row.Kind))
+	if err != nil {
+		return domain.GenerationJob{}, err
+	}
+	status, err := domain.ParseGenerationJobStatus(string(row.Status))
+	if err != nil {
+		return domain.GenerationJob{}, err
+	}
+
+	job := domain.GenerationJob{
+		ID:               row.ID,
+		RequestID:        row.RequestID,
+		ParentJobID:      uuidPointerFromPGType(row.ParentJobID),
+		Kind:             kind,
+		Status:           status,
+		TargetID:         uuidPointerFromPGType(row.TargetID),
+		IdempotencyKey:   row.IdempotencyKey,
+		Payload:          rawJSONFromBytes(row.Payload),
+		Priority:         int(row.Priority),
+		AttemptCount:     int(row.AttemptCount),
+		MaxAttempts:      int(row.MaxAttempts),
+		AvailableAt:      row.AvailableAt,
+		LockedBy:         pointer.Clone(row.LockedBy),
+		LockedUntil:      pointer.Clone(row.LockedUntil),
+		StartedAt:        pointer.Clone(row.StartedAt),
+		CompletedAt:      pointer.Clone(row.CompletedAt),
+		LastErrorCode:    pointer.Clone(row.LastErrorCode),
+		LastErrorMessage: pointer.Clone(row.LastErrorMessage),
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
+	}
+	return job, job.Validate()
 }
 
 func courseFromSQLC(row dbsqlc.Course) (domain.Course, error) {
@@ -258,6 +297,18 @@ func coursesFromSQLC(rows []dbsqlc.Course) ([]domain.Course, error) {
 		courses = append(courses, course)
 	}
 	return courses, nil
+}
+
+func generationJobsFromSQLC(rows []dbsqlc.GenerationJob) ([]domain.GenerationJob, error) {
+	jobs := make([]domain.GenerationJob, 0, len(rows))
+	for _, row := range rows {
+		job, err := generationJobFromSQLC(row)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
 }
 
 func modulesFromSQLC(rows []dbsqlc.Module) ([]domain.Module, error) {
@@ -478,7 +529,12 @@ func rawJSONFromBytes(data []byte) json.RawMessage {
 	if len(data) == 0 {
 		return nil
 	}
-	value := make(json.RawMessage, len(data))
-	copy(value, data)
-	return value
+	return jsonutil.Clone(json.RawMessage(data))
+}
+
+func uuidPointerFromPGType(value pgtype.UUID) *uuid.UUID {
+	if !value.Valid {
+		return nil
+	}
+	return pointer.To(uuid.UUID(value.Bytes))
 }

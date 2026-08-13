@@ -2,7 +2,7 @@
 
 Backend Go officiel de Course AI.
 
-Ce service expose l'API HTTP de l'application, gere l'authentification, accede a PostgreSQL via `pgx`, et contient la pipeline applicative de generation de formations.
+Ce service expose l'API HTTP de l'application, gere l'authentification, accede a PostgreSQL via `pgx`, et execute la pipeline de generation dans des workers durables adosses a PostgreSQL.
 
 ## Stack backend
 
@@ -29,7 +29,7 @@ Puis dans ce dossier :
 cd backend-go
 Copy-Item .env.example .env
 go mod download
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" up
+goose up
 go run ./cmd/api
 ```
 
@@ -54,6 +54,9 @@ OPENAI_API_KEY=sk-your-api-key
 OPENAI_MODEL=gpt-5.6
 OPENAI_MAX_OUTPUT_TOKENS=12000
 PROMPTS_DIR=./prompts
+GENERATION_WORKER_ENABLED=true
+GENERATION_WORKER_CONCURRENCY=1
+CORS_ALLOWED_ORIGINS=http://localhost:5173
 ```
 
 `OPENAI_API_KEY` est requise pour les routes de generation IA. `OPENAI_MODEL` et `OPENAI_MAX_OUTPUT_TOKENS` pilotent le modele et la taille maximale des reponses structurees.
@@ -63,19 +66,19 @@ PROMPTS_DIR=./prompts
 Appliquer :
 
 ```powershell
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" up
+goose up
 ```
 
 Rollback :
 
 ```powershell
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" down
+goose down
 ```
 
 Statut :
 
 ```powershell
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" status
+goose status
 ```
 
 ## Routes
@@ -117,52 +120,103 @@ POST /api/generations/modules/:moduleID/contents
 GET  /api/generations/:requestID/status
 GET  /api/generations/:requestID/result
 POST /api/generations/:requestID/retry
+GET  /api/generation-jobs/:jobID
 ```
 
-`POST /api/generations` conserve le mode automatique complet : prompt -> analyse -> structure -> contenu de toutes les lessons.
+`POST /api/generations` persiste atomiquement une request et un job durable pour le mode automatique complet : prompt -> analyse -> structure -> contenu de toutes les lessons.
 `POST /api/generations/analyze` cree une `GenerationRequest`, analyse le prompt, puis retourne le premier jet : hors scope eventuel, titre, synopsis, niveaux detectes, objectif, langue et questions de clarification.
-`POST /api/generations/:requestID/structure` persiste la formation avec modules et plans de lessons a partir d'une analyse existante et du contexte confirme par l'utilisateur. Cette route ne genere pas le contenu Markdown.
-`POST /api/generations/:requestID/structure/retry` relance uniquement l'etape structure sur une request `failed` dont l'echec vient de `architecture_generation` ou `lesson_plan_generation`; le body est le meme que `/structure` et les donnees partielles sont supprimees avant relance.
-`POST /api/generations/lessons/:lessonID/content` genere et persiste le contenu d'une lesson.
-`POST /api/generations/modules/:moduleID/contents` genere et persiste le contenu de toutes les lessons du module.
+`POST /api/generations/:requestID/structure` enfile la generation de la formation, des modules et des plans de lessons a partir du contexte confirme.
+`POST /api/generations/:requestID/structure/retry` nettoie atomiquement les donnees partielles et enfile une nouvelle tentative de structure.
+`POST /api/generations/lessons/:lessonID/content` enfile la generation et la persistance du contenu d'une lesson.
+`POST /api/generations/modules/:moduleID/contents` enfile le contenu manquant des lessons du module.
+
+Toutes les routes longues retournent immediatement `202 Accepted` :
+
+```json
+{
+  "jobId": "uuid",
+  "requestId": "uuid",
+  "status": "queued",
+  "jobStatus": "queued",
+  "statusUrl": "/api/generations/{requestId}/status",
+  "jobStatusUrl": "/api/generation-jobs/{jobId}",
+  "resultUrl": "/api/generations/{requestId}/result"
+}
+```
+
+Envoyer un header `Idempotency-Key` sur `POST /api/generations` permet de rejouer la commande sans creer une seconde request. Utiliser `GET /api/generation-jobs/:jobID` pour suivre `queued`, `running`, `retry_scheduled`, `completed`, `failed` ou `cancelled`.
 
 ## Organisation
 
 ```txt
 cmd/api                         point d'entree HTTP
 internal/config                 chargement .env et variables d'environnement
-internal/database               ouverture du pool PostgreSQL
+internal/db                     ouverture du pool PostgreSQL et code sqlc genere
 internal/domain                 entites et regles metier pures
 internal/contract               interfaces entre couches
 internal/service                use cases applicatifs
+internal/shared                 helpers generiques sans dependance metier ou infrastructure
 internal/infrastructure/auth    JWT et bcrypt
 internal/infrastructure/clock   horloge systeme
 internal/infrastructure/http    router, handlers, DTOs, middlewares Gin
 internal/infrastructure/openai  adapter OpenAI CourseAIGenerator
 internal/infrastructure/postgres repositories pgx et unit of work
 internal/infrastructure/prompts implementation PromptStore
+tests/integration/postgres      tests reels contre PostgreSQL, actives par build tag
+tests/testkit                   setup partage reserve aux tests externes
 prompts                         fichiers .prompt.md utilises par la generation
 migrations                      migrations SQL Goose
 ```
 
+Les tests unitaires restent a cote du code teste afin de conserver l'acces aux details du package et une navigation directe. Les tests qui exigent PostgreSQL sont isoles dans `tests/integration/postgres` et manipulent uniquement les API exportees. Le package `tests/testkit` centralise seulement le cycle de vie du pool et des transactions de test.
+
 ## Commandes utiles
 
 ```powershell
-go test ./...
+make test
+make test-race
+make test-integration
+make test-all
 go run ./cmd/api
 go fmt ./...
 ```
+
+`make test` n'utilise ni Docker ni PostgreSQL. `make test-integration` attend une base disponible via `DATABASE_URL`, active le build tag `integration`, desactive le cache des resultats et annule automatiquement les transactions de test. Le `DATABASE_URL` local par defaut pointe sur le port `5433` du Docker Compose.
 
 ## Pipeline IA
 
 Le flux interactif du MVP est separe en trois frontieres claires :
 
 1. `POST /api/generations/analyze` : l'utilisateur envoie un prompt brut. Le backend persiste une `GenerationRequest`, appelle le prompt d'analyse, puis retourne soit un hors scope, soit un premier jet avec titre, synopsis, niveaux, objectif, langue et questions de clarification.
-2. `POST /api/generations/:requestID/structure` : le frontend renvoie le contexte confirme par l'utilisateur. Le backend genere et persiste `Course`, `Module` et les plans de `Lesson`. Les lessons ont un `module_id` cree par le backend et `content_markdown = null`.
+2. `POST /api/generations/:requestID/structure` : le frontend renvoie le contexte confirme. Le backend enfile un job qui genere et persiste `Course`, `Module` et les plans de `Lesson`. Les lessons ont un `module_id` cree par le backend et `content_markdown = null`.
    En cas d'echec sur `architecture_generation` ou `lesson_plan_generation`, `POST /api/generations/:requestID/structure/retry` peut relancer cette seule frontiere avec le meme payload confirme.
-3. `POST /api/generations/lessons/:lessonID/content` ou `POST /api/generations/modules/:moduleID/contents` : le backend genere et persiste le contenu Markdown d'une lesson ou de toutes les lessons d'un module.
+3. `POST /api/generations/lessons/:lessonID/content` ou `POST /api/generations/modules/:moduleID/contents` : le backend enfile les jobs de contenu. Le worker renouvelle son lease pendant OpenAI, applique une retry policy bornee et persiste les erreurs terminales.
 
 `POST /api/generations` reste disponible comme mode automatique complet pour enchainer toute la pipeline sans confirmation intermediaire.
 
 L'implementation concrete de l'IA est dans `internal/infrastructure/openai` et elle est injectee dans `cmd/api/main.go`. Les prompts sont charges depuis `PROMPTS_DIR` par `internal/infrastructure/prompts`.
+
+## Deploiement Railway
+
+Configurer le service avec une racine `backend-go` et le fichier `railway.toml`. Le `Dockerfile` construit l'API et Goose. Railway execute les migrations en pre-deploy, verifie `/health`, puis lance l'API et le worker dans le meme processus.
+
+Variables minimales :
+
+```env
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+GOOSE_DRIVER=postgres
+GOOSE_DBSTRING=${{Postgres.DATABASE_URL}}
+GOOSE_MIGRATION_DIR=/app/migrations
+OPENAI_API_KEY=...
+OPENAI_MODEL=...
+OPENAI_MAX_OUTPUT_TOKENS=12000
+JWT_SECRET=...
+JWT_TOKEN_TTL=24h
+PROMPTS_DIR=/app/prompts
+CORS_ALLOWED_ORIGINS=https://votre-frontend.example
+GENERATION_WORKER_ENABLED=true
+GENERATION_WORKER_CONCURRENCY=1
+```
+
+Railway fournit `PORT`; le backend ecoute automatiquement sur `:$PORT` lorsque `HTTP_ADDR` n'est pas defini. Garder une seule replica et une concurrence de `1` pour le premier deploiement, puis augmenter apres mesure des limites OpenAI et PostgreSQL.
 

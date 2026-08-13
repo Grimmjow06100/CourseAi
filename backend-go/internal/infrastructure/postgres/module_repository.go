@@ -85,7 +85,7 @@ func (r *ModuleRepository) UpdateModule(ctx context.Context, module domain.Modul
 }
 
 func (r *ModuleRepository) FindModuleByID(ctx context.Context, id uuid.UUID) (domain.Module, error) {
-	row, err := r.queries.GetModuleByID(ctx, dbsqlc.GetModuleByIDParams{ID: id})
+	row, err := r.queries.GetModuleByID(ctx, id)
 	if err != nil {
 		return domain.Module{}, mapNoRows(err, ErrModuleNotFound)
 	}
@@ -97,7 +97,7 @@ func (r *ModuleRepository) FindModuleByID(ctx context.Context, id uuid.UUID) (do
 }
 
 func (r *ModuleRepository) ListModulesByCourseID(ctx context.Context, courseID uuid.UUID) ([]domain.Module, error) {
-	rows, err := r.queries.ListModulesByCourseID(ctx, dbsqlc.ListModulesByCourseIDParams{CourseID: courseID})
+	rows, err := r.queries.ListModulesByCourseID(ctx, courseID)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func (r *ModuleRepository) ListModulesByCourseID(ctx context.Context, courseID u
 }
 
 func (r *ModuleRepository) DeleteModule(ctx context.Context, id uuid.UUID) error {
-	rowsAffected, err := r.queries.DeleteModuleByID(ctx, dbsqlc.DeleteModuleByIDParams{ID: id})
+	rowsAffected, err := r.queries.DeleteModuleByID(ctx, id)
 	if err != nil {
 		return err
 	}

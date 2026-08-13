@@ -3,6 +3,7 @@ package dto
 import (
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 )
 
 type ArchitecturePromptInput struct {
@@ -69,14 +70,14 @@ func (r ArchitectureResponse) ToDomain(input contract.ArchitectureInput) (domain
 		InitialUserPrompt:       input.Request.InitialUserPrompt,
 		Title:                   r.Title,
 		Synopsis:                r.Synopsis,
-		TargetAudience:          stringPtr(r.TargetAudience),
+		TargetAudience:          textutil.TrimmedPointer(r.TargetAudience),
 		CurrentLevel:            currentLevel,
 		TargetLevel:             targetLevel,
 		Prerequisites:           r.Prerequisites,
 		Goals:                   r.Goals,
 		AcquiredSkills:          r.AcquiredSkills,
-		FinalProjectTitle:       stringPtr(r.FinalProject.Title),
-		FinalProjectDescription: stringPtr(r.FinalProject.Description),
+		FinalProjectTitle:       textutil.TrimmedPointer(r.FinalProject.Title),
+		FinalProjectDescription: textutil.TrimmedPointer(r.FinalProject.Description),
 		FinalProjectConstraints: r.FinalProject.Constraints,
 		Modules:                 make([]domain.Module, 0, len(r.Modules)),
 	}

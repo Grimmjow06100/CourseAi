@@ -225,12 +225,8 @@ DELETE FROM lesson_exercises
 WHERE lesson_id = $1
 `
 
-type DeleteLessonExercisesByLessonIDParams struct {
-	LessonID uuid.UUID `db:"lesson_id" json:"lesson_id"`
-}
-
-func (q *Queries) DeleteLessonExercisesByLessonID(ctx context.Context, arg DeleteLessonExercisesByLessonIDParams) error {
-	_, err := q.db.Exec(ctx, deleteLessonExercisesByLessonID, arg.LessonID)
+func (q *Queries) DeleteLessonExercisesByLessonID(ctx context.Context, lessonID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteLessonExercisesByLessonID, lessonID)
 	return err
 }
 
@@ -239,12 +235,8 @@ DELETE FROM lesson_quizzes
 WHERE lesson_id = $1
 `
 
-type DeleteLessonQuizzesByLessonIDParams struct {
-	LessonID uuid.UUID `db:"lesson_id" json:"lesson_id"`
-}
-
-func (q *Queries) DeleteLessonQuizzesByLessonID(ctx context.Context, arg DeleteLessonQuizzesByLessonIDParams) error {
-	_, err := q.db.Exec(ctx, deleteLessonQuizzesByLessonID, arg.LessonID)
+func (q *Queries) DeleteLessonQuizzesByLessonID(ctx context.Context, lessonID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteLessonQuizzesByLessonID, lessonID)
 	return err
 }
 
@@ -268,12 +260,8 @@ WHERE lesson_id = $1
 ORDER BY created_at ASC, id ASC
 `
 
-type ListLessonExercisesByLessonIDParams struct {
-	LessonID uuid.UUID `db:"lesson_id" json:"lesson_id"`
-}
-
-func (q *Queries) ListLessonExercisesByLessonID(ctx context.Context, arg ListLessonExercisesByLessonIDParams) ([]LessonExercise, error) {
-	rows, err := q.db.Query(ctx, listLessonExercisesByLessonID, arg.LessonID)
+func (q *Queries) ListLessonExercisesByLessonID(ctx context.Context, lessonID uuid.UUID) ([]LessonExercise, error) {
+	rows, err := q.db.Query(ctx, listLessonExercisesByLessonID, lessonID)
 	if err != nil {
 		return nil, err
 	}
@@ -326,12 +314,8 @@ WHERE lesson_id = ANY($1::uuid[])
 ORDER BY lesson_id ASC, created_at ASC, id ASC
 `
 
-type ListLessonExercisesByLessonIDsParams struct {
-	LessonIds []uuid.UUID `db:"lesson_ids" json:"lesson_ids"`
-}
-
-func (q *Queries) ListLessonExercisesByLessonIDs(ctx context.Context, arg ListLessonExercisesByLessonIDsParams) ([]LessonExercise, error) {
-	rows, err := q.db.Query(ctx, listLessonExercisesByLessonIDs, arg.LessonIds)
+func (q *Queries) ListLessonExercisesByLessonIDs(ctx context.Context, lessonIds []uuid.UUID) ([]LessonExercise, error) {
+	rows, err := q.db.Query(ctx, listLessonExercisesByLessonIDs, lessonIds)
 	if err != nil {
 		return nil, err
 	}
@@ -381,12 +365,8 @@ WHERE lesson_id = $1
 ORDER BY created_at ASC, id ASC
 `
 
-type ListLessonQuizzesByLessonIDParams struct {
-	LessonID uuid.UUID `db:"lesson_id" json:"lesson_id"`
-}
-
-func (q *Queries) ListLessonQuizzesByLessonID(ctx context.Context, arg ListLessonQuizzesByLessonIDParams) ([]LessonQuiz, error) {
-	rows, err := q.db.Query(ctx, listLessonQuizzesByLessonID, arg.LessonID)
+func (q *Queries) ListLessonQuizzesByLessonID(ctx context.Context, lessonID uuid.UUID) ([]LessonQuiz, error) {
+	rows, err := q.db.Query(ctx, listLessonQuizzesByLessonID, lessonID)
 	if err != nil {
 		return nil, err
 	}
@@ -433,12 +413,8 @@ WHERE lesson_id = ANY($1::uuid[])
 ORDER BY lesson_id ASC, created_at ASC, id ASC
 `
 
-type ListLessonQuizzesByLessonIDsParams struct {
-	LessonIds []uuid.UUID `db:"lesson_ids" json:"lesson_ids"`
-}
-
-func (q *Queries) ListLessonQuizzesByLessonIDs(ctx context.Context, arg ListLessonQuizzesByLessonIDsParams) ([]LessonQuiz, error) {
-	rows, err := q.db.Query(ctx, listLessonQuizzesByLessonIDs, arg.LessonIds)
+func (q *Queries) ListLessonQuizzesByLessonIDs(ctx context.Context, lessonIds []uuid.UUID) ([]LessonQuiz, error) {
+	rows, err := q.db.Query(ctx, listLessonQuizzesByLessonIDs, lessonIds)
 	if err != nil {
 		return nil, err
 	}

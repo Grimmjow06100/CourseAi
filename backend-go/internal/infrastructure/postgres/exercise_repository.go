@@ -60,7 +60,7 @@ func (r *ExerciseRepository) SaveExercises(ctx context.Context, exercises []doma
 }
 
 func (r *ExerciseRepository) ListExercisesByLessonID(ctx context.Context, lessonID uuid.UUID) ([]domain.Exercise, error) {
-	rows, err := r.queries.ListLessonExercisesByLessonID(ctx, dbsqlc.ListLessonExercisesByLessonIDParams{LessonID: lessonID})
+	rows, err := r.queries.ListLessonExercisesByLessonID(ctx, lessonID)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (r *ExerciseRepository) ListExercisesByLessonID(ctx context.Context, lesson
 }
 
 func (r *ExerciseRepository) DeleteExercisesByLessonID(ctx context.Context, lessonID uuid.UUID) error {
-	return r.queries.DeleteLessonExercisesByLessonID(ctx, dbsqlc.DeleteLessonExercisesByLessonIDParams{LessonID: lessonID})
+	return r.queries.DeleteLessonExercisesByLessonID(ctx, lessonID)
 }
 
 func createExerciseParams(exercise domain.Exercise) (dbsqlc.CreateLessonExerciseParams, error) {

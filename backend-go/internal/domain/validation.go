@@ -3,10 +3,12 @@ package domain
 import (
 	"fmt"
 	"strings"
+
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 )
 
 func normalizeText(value string) string {
-	return strings.Join(strings.Fields(value), " ")
+	return textutil.CollapseWhitespace(value)
 }
 
 func normalizeMarkdown(value string) string {
@@ -40,14 +42,7 @@ func validatePositiveInt(fieldName string, value int) error {
 }
 
 func normalizeStringSlice(values []string) []string {
-	normalized := make([]string, 0, len(values))
-	for _, value := range values {
-		cleaned := normalizeText(value)
-		if cleaned != "" {
-			normalized = append(normalized, cleaned)
-		}
-	}
-	return normalized
+	return textutil.NormalizeNonBlank(values)
 }
 
 func validateProgressPercent(progress int) error {

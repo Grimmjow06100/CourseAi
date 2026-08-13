@@ -1,38 +1,20 @@
 //go:build integration
 
-package postgres_test
+package postgresintegration_test
 
 import (
-	"context"
-	"os"
 	"testing"
 	"time"
 
-	appdb "github.com/Grimmjow06100/course-ai/backend-go/internal/db"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/postgres"
+	"github.com/Grimmjow06100/course-ai/backend-go/tests/testkit"
 	"github.com/google/uuid"
 )
 
 func TestBulkPersistenceAgainstPostgres(t *testing.T) {
-	if os.Getenv("COURSE_AI_INTEGRATION_TEST") != "1" {
-		t.Skip("set COURSE_AI_INTEGRATION_TEST=1 to run PostgreSQL integration tests")
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	pool, err := appdb.Open(ctx)
-	if err != nil {
-		t.Fatalf("open database: %v", err)
-	}
-	defer pool.Close()
-
-	tx, err := pool.Begin(ctx)
-	if err != nil {
-		t.Fatalf("begin transaction: %v", err)
-	}
-	defer func() { _ = tx.Rollback(context.Background()) }()
+	ctx, pool := testkit.OpenPostgres(t, 20*time.Second)
+	tx := testkit.BeginRollback(t, ctx, pool)
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	requestID := uuid.New()

@@ -88,6 +88,10 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusNotFound, "course_not_found", "course not found"
 	case errors.Is(err, contract.ErrGenerationRequestNotFound):
 		return http.StatusNotFound, "generation_request_not_found", "generation request not found"
+	case errors.Is(err, contract.ErrGenerationJobNotFound):
+		return http.StatusNotFound, "generation_job_not_found", "generation job not found"
+	case errors.Is(err, contract.ErrGenerationJobIdempotencyConflict):
+		return http.StatusConflict, "idempotency_conflict", "idempotency key is already used by another generation"
 	case errors.Is(err, contract.ErrModuleNotFound):
 		return http.StatusNotFound, "module_not_found", "module not found"
 	case errors.Is(err, contract.ErrLessonNotFound):

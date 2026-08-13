@@ -62,12 +62,8 @@ DELETE FROM users
 WHERE id = $1
 `
 
-type DeleteUserByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) DeleteUserByID(ctx context.Context, arg DeleteUserByIDParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteUserByID, arg.ID)
+func (q *Queries) DeleteUserByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserByID, id)
 	if err != nil {
 		return 0, err
 	}
@@ -80,12 +76,8 @@ FROM users
 WHERE id = $1
 `
 
-type GetUserByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByID, arg.ID)
+func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
 	err := row.Scan(
 		&i.ID,
@@ -103,12 +95,8 @@ FROM users
 WHERE username = $1
 `
 
-type GetUserByUsernameParams struct {
-	Username string `db:"username" json:"username"`
-}
-
-func (q *Queries) GetUserByUsername(ctx context.Context, arg GetUserByUsernameParams) (User, error) {
-	row := q.db.QueryRow(ctx, getUserByUsername, arg.Username)
+func (q *Queries) GetUserByUsername(ctx context.Context, username string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByUsername, username)
 	var i User
 	err := row.Scan(
 		&i.ID,

@@ -60,7 +60,7 @@ func (r *QuizRepository) SaveQuizzes(ctx context.Context, quizzes []domain.Quiz)
 }
 
 func (r *QuizRepository) ListQuizzesByLessonID(ctx context.Context, lessonID uuid.UUID) ([]domain.Quiz, error) {
-	rows, err := r.queries.ListLessonQuizzesByLessonID(ctx, dbsqlc.ListLessonQuizzesByLessonIDParams{LessonID: lessonID})
+	rows, err := r.queries.ListLessonQuizzesByLessonID(ctx, lessonID)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +68,7 @@ func (r *QuizRepository) ListQuizzesByLessonID(ctx context.Context, lessonID uui
 }
 
 func (r *QuizRepository) DeleteQuizzesByLessonID(ctx context.Context, lessonID uuid.UUID) error {
-	return r.queries.DeleteLessonQuizzesByLessonID(ctx, dbsqlc.DeleteLessonQuizzesByLessonIDParams{LessonID: lessonID})
+	return r.queries.DeleteLessonQuizzesByLessonID(ctx, lessonID)
 }
 
 func createQuizParams(quiz domain.Quiz) (dbsqlc.CreateLessonQuizParams, error) {

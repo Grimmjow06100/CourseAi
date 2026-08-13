@@ -72,7 +72,7 @@ func (r *CourseRepository) FindCourseByID(ctx context.Context, id uuid.UUID) (do
 }
 
 func (r *CourseRepository) FindCourseStateByID(ctx context.Context, id uuid.UUID) (domain.Course, error) {
-	row, err := r.queries.GetCourseByID(ctx, dbsqlc.GetCourseByIDParams{ID: id})
+	row, err := r.queries.GetCourseByID(ctx, id)
 	if err != nil {
 		return domain.Course{}, mapNoRows(err, ErrCourseNotFound)
 	}
@@ -88,7 +88,7 @@ func (r *CourseRepository) FindCourseByRequestID(ctx context.Context, requestID 
 }
 
 func (r *CourseRepository) FindCourseStateByRequestID(ctx context.Context, requestID uuid.UUID) (domain.Course, error) {
-	row, err := r.queries.GetCourseByRequestID(ctx, dbsqlc.GetCourseByRequestIDParams{RequestID: requestID})
+	row, err := r.queries.GetCourseByRequestID(ctx, requestID)
 	if err != nil {
 		return domain.Course{}, mapNoRows(err, ErrCourseNotFound)
 	}
@@ -96,7 +96,7 @@ func (r *CourseRepository) FindCourseStateByRequestID(ctx context.Context, reque
 }
 
 func (r *CourseRepository) IsCourseContentComplete(ctx context.Context, id uuid.UUID) (bool, error) {
-	isComplete, err := r.queries.IsCourseContentComplete(ctx, dbsqlc.IsCourseContentCompleteParams{CourseID: id})
+	isComplete, err := r.queries.IsCourseContentComplete(ctx, id)
 	if err != nil {
 		return false, err
 	}
@@ -152,7 +152,7 @@ func (r *CourseRepository) ListCourses(ctx context.Context, filters contract.Cou
 }
 
 func (r *CourseRepository) DeleteCourseByRequestID(ctx context.Context, requestID uuid.UUID) error {
-	rowsAffected, err := r.queries.DeleteCourseByRequestID(ctx, dbsqlc.DeleteCourseByRequestIDParams{RequestID: requestID})
+	rowsAffected, err := r.queries.DeleteCourseByRequestID(ctx, requestID)
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (r *CourseRepository) DeleteCourseByRequestID(ctx context.Context, requestI
 }
 
 func (r *CourseRepository) DeleteCourse(ctx context.Context, id uuid.UUID) error {
-	rowsAffected, err := r.queries.DeleteCourseByID(ctx, dbsqlc.DeleteCourseByIDParams{ID: id})
+	rowsAffected, err := r.queries.DeleteCourseByID(ctx, id)
 	if err != nil {
 		return err
 	}

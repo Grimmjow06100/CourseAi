@@ -13,7 +13,8 @@ import (
 type EnvParsable interface {
 	~string | ~int | ~bool | ~float64 | time.Duration
 }
-func Load() (error) {
+
+func Load() error {
 	if err := loadDotEnv(".env"); err != nil {
 		return fmt.Errorf("load .env: %w", err)
 	}
@@ -71,84 +72,53 @@ func loadDotEnv(path string) error {
 
 	return nil
 }
-
-
 func GetEnv[T EnvParsable](key string) (T, error) {
 	var zero T
-	valStr := os.Getenv(key)
-	if valStr == "" {
-		return zero, fmt.Errorf("env %s : la valeur est vide ", key)
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
+		return zero, fmt.Errorf("env %s: value is missing", key)
 	}
-
-	var target T
-	var anyVal any = &target
-
-	switch ptr := anyVal.(type) {
-	case *string:
-		*ptr = valStr
-	case *int:
-		v, err := strconv.Atoi(valStr)
-		if err != nil {
-			return zero, fmt.Errorf("env %s: impossible de parser %q en int: %w", key, valStr, err)
-		}
-		*ptr = v
-	case *bool:
-		v, err := strconv.ParseBool(valStr)
-		if err != nil {
-			return zero, fmt.Errorf("env %s: impossible de parser %q en bool: %w", key, valStr, err)
-		}
-		*ptr = v
-	case *float64:
-		v, err := strconv.ParseFloat(valStr, 64)
-		if err != nil {
-			return zero, fmt.Errorf("env %s: impossible de parser %q en float64: %w", key, valStr, err)
-		}
-		*ptr = v
-	case *time.Duration:
-		v, err := time.ParseDuration(valStr)
-		if err != nil {
-			return zero, fmt.Errorf("env %s: impossible de parser %q en duration: %w", key, valStr, err)
-		}
-		*ptr = v
-	}
-
-	return target, nil
+	return parseEnvValue[T](key, value)
 }
-func GetEnvWithDefault[T EnvParsable](key string,fallback T) (T, error) {
-	
-	valStr := os.Getenv(key)
-	if valStr == "" {
+
+func GetEnvWithDefault[T EnvParsable](key string, fallback T) (T, error) {
+	value, exists := os.LookupEnv(key)
+	if !exists || value == "" {
 		return fallback, nil
 	}
+	return parseEnvValue[T](key, value)
+}
 
+func parseEnvValue[T EnvParsable](key, value string) (T, error) {
+	var zero T
 	var target T
 	var anyVal any = &target
 
 	switch ptr := anyVal.(type) {
 	case *string:
-		*ptr = valStr
+		*ptr = value
 	case *int:
-		v, err := strconv.Atoi(valStr)
+		v, err := strconv.Atoi(value)
 		if err != nil {
-			return fallback, nil
+			return zero, fmt.Errorf("env %s: parse %q as int: %w", key, value, err)
 		}
 		*ptr = v
 	case *bool:
-		v, err := strconv.ParseBool(valStr)
+		v, err := strconv.ParseBool(value)
 		if err != nil {
-			return fallback, nil
+			return zero, fmt.Errorf("env %s: parse %q as bool: %w", key, value, err)
 		}
 		*ptr = v
 	case *float64:
-		v, err := strconv.ParseFloat(valStr, 64)
+		v, err := strconv.ParseFloat(value, 64)
 		if err != nil {
-			return fallback, nil
+			return zero, fmt.Errorf("env %s: parse %q as float64: %w", key, value, err)
 		}
 		*ptr = v
 	case *time.Duration:
-		v, err := time.ParseDuration(valStr)
+		v, err := time.ParseDuration(value)
 		if err != nil {
-			return fallback, nil
+			return zero, fmt.Errorf("env %s: parse %q as duration: %w", key, value, err)
 		}
 		*ptr = v
 	}

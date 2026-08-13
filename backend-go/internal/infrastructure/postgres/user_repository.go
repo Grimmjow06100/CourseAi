@@ -35,7 +35,7 @@ func (r *UserRepository) SaveUser(ctx context.Context, user domain.User) (domain
 }
 
 func (r *UserRepository) FindUserByID(ctx context.Context, id uuid.UUID) (domain.User, error) {
-	row, err := r.queries.GetUserByID(ctx, dbsqlc.GetUserByIDParams{ID: id})
+	row, err := r.queries.GetUserByID(ctx, id)
 	if err != nil {
 		return domain.User{}, mapNoRows(err, domain.ErrUserNotFound)
 	}
@@ -43,9 +43,7 @@ func (r *UserRepository) FindUserByID(ctx context.Context, id uuid.UUID) (domain
 }
 
 func (r *UserRepository) FindUserByUsername(ctx context.Context, username domain.Username) (domain.User, error) {
-	row, err := r.queries.GetUserByUsername(ctx, dbsqlc.GetUserByUsernameParams{
-		Username: string(username.Normalize()),
-	})
+	row, err := r.queries.GetUserByUsername(ctx, string(username.Normalize()))
 	if err != nil {
 		return domain.User{}, mapNoRows(err, domain.ErrUserNotFound)
 	}
@@ -53,7 +51,7 @@ func (r *UserRepository) FindUserByUsername(ctx context.Context, username domain
 }
 
 func (r *UserRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
-	rowsAffected, err := r.queries.DeleteUserByID(ctx, dbsqlc.DeleteUserByIDParams{ID: id})
+	rowsAffected, err := r.queries.DeleteUserByID(ctx, id)
 	if err != nil {
 		return err
 	}

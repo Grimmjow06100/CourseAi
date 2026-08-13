@@ -51,7 +51,7 @@ func (r *GenerationRequestRepository) UpdateGenerationRequest(ctx context.Contex
 }
 
 func (r *GenerationRequestRepository) FindGenerationRequestByID(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error) {
-	row, err := r.queries.GetGenerationRequestByID(ctx, dbsqlc.GetGenerationRequestByIDParams{ID: id})
+	row, err := r.queries.GetGenerationRequestByID(ctx, id)
 	if err != nil {
 		return domain.GenerationRequest{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}
@@ -59,7 +59,7 @@ func (r *GenerationRequestRepository) FindGenerationRequestByID(ctx context.Cont
 }
 
 func (r *GenerationRequestRepository) FindGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (domain.GenerationRequest, error) {
-	row, err := r.queries.GetGenerationRequestByCourseID(ctx, dbsqlc.GetGenerationRequestByCourseIDParams{CourseID: courseID})
+	row, err := r.queries.GetGenerationRequestByCourseID(ctx, courseID)
 	if err != nil {
 		return domain.GenerationRequest{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}
@@ -67,7 +67,7 @@ func (r *GenerationRequestRepository) FindGenerationRequestByCourseID(ctx contex
 }
 
 func (r *GenerationRequestRepository) FindGenerationStatusByID(ctx context.Context, id uuid.UUID) (contract.GenerationStatus, error) {
-	row, err := r.queries.GetGenerationStatusByID(ctx, dbsqlc.GetGenerationStatusByIDParams{ID: id})
+	row, err := r.queries.GetGenerationStatusByID(ctx, id)
 	if err != nil {
 		return contract.GenerationStatus{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}

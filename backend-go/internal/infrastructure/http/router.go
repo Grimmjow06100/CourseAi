@@ -12,12 +12,14 @@ type RouterConfig struct {
 	CourseCatalogService    contract.CourseCatalogService
 	CourseGenerationService contract.CourseGenerationService
 	TokenManager            contract.TokenManager
+	AllowedOrigins          []string
 }
 
 func NewRouter(cfg RouterConfig) *gin.Engine {
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
+	router.Use(middlewares.CORS(cfg.AllowedOrigins))
 	router.Use(middlewares.ErrorHandler())
 
 	healthHandler := handlers.NewHealthHandler()
@@ -52,6 +54,9 @@ func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHa
 	generations.GET("/:requestID/status", handler.Status)
 	generations.GET("/:requestID/result", handler.Result)
 	generations.POST("/:requestID/retry", handler.Retry)
+
+	jobs := router.Group("/generation-jobs")
+	jobs.GET("/:jobID", handler.JobStatus)
 }
 
 func registerCourseRoutes(router gin.IRouter, handler *handlers.CourseHandler) {

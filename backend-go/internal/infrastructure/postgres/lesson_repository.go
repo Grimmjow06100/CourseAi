@@ -109,7 +109,7 @@ func (r *LessonRepository) ReplaceLessonContent(ctx context.Context, lesson doma
 }
 
 func (r *LessonRepository) FindLessonByID(ctx context.Context, id uuid.UUID) (domain.Lesson, error) {
-	row, err := r.queries.GetLessonByID(ctx, dbsqlc.GetLessonByIDParams{ID: id})
+	row, err := r.queries.GetLessonByID(ctx, id)
 	if err != nil {
 		return domain.Lesson{}, mapNoRows(err, ErrLessonNotFound)
 	}
@@ -121,7 +121,7 @@ func (r *LessonRepository) FindLessonByID(ctx context.Context, id uuid.UUID) (do
 }
 
 func (r *LessonRepository) ListLessonsByModuleID(ctx context.Context, moduleID uuid.UUID) ([]domain.Lesson, error) {
-	rows, err := r.queries.ListLessonsByModuleID(ctx, dbsqlc.ListLessonsByModuleIDParams{ModuleID: moduleID})
+	rows, err := r.queries.ListLessonsByModuleID(ctx, moduleID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (r *LessonRepository) ListLessonsByModuleID(ctx context.Context, moduleID u
 }
 
 func (r *LessonRepository) DeleteLesson(ctx context.Context, id uuid.UUID) error {
-	rowsAffected, err := r.queries.DeleteLessonByID(ctx, dbsqlc.DeleteLessonByIDParams{ID: id})
+	rowsAffected, err := r.queries.DeleteLessonByID(ctx, id)
 	if err != nil {
 		return err
 	}

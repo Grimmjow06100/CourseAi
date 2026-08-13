@@ -1,0 +1,72 @@
+package dto
+
+import (
+	"testing"
+	"time"
+
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/google/uuid"
+)
+
+func TestGenerationDTOConversions(t *testing.T) {
+	t.Parallel()
+
+	requestID := uuid.New()
+	jobID := uuid.New()
+	parentID := uuid.New()
+	targetID := uuid.New()
+	courseID := uuid.New()
+	courseStatus := domain.CourseStatusLessonsGenerated
+	level := domain.LevelIntermediate
+	language := domain.CourseLanguageFR
+	now := time.Unix(100, 0).UTC()
+
+	started := GenerationStartedFromContract(contract.GenerationStarted{
+		JobID: jobID, RequestID: requestID, Status: domain.PipelineStatusQueued,
+		JobStatus: domain.GenerationJobStatusQueued, StatusURL: "/status", JobStatusURL: "/job", ResultURL: "/result",
+	})
+	if started.JobID != jobID.String() || started.RequestID != requestID.String() || started.JobStatusURL != "/job" {
+		t.Fatalf("unexpected started response: %+v", started)
+	}
+
+	job := GenerationJobFromDomain(domain.GenerationJob{
+		ID: jobID, RequestID: requestID, ParentJobID: &parentID, TargetID: &targetID,
+		Kind: domain.GenerationJobKindLessonContent, Status: domain.GenerationJobStatusRunning, CreatedAt: now,
+	})
+	if job.ParentJobID == nil || *job.ParentJobID != parentID.String() || job.TargetID == nil || *job.TargetID != targetID.String() {
+		t.Fatalf("unexpected job response: %+v", job)
+	}
+
+	status := GenerationStatusFromContract(contract.GenerationStatus{
+		RequestID: requestID, CourseID: &courseID, PipelineStatus: domain.PipelineStatusRunning,
+		CourseStatus: &courseStatus, ProgressPercent: 60,
+	})
+	if status.CourseID == nil || *status.CourseID != courseID.String() || status.CourseStatus == nil || *status.CourseStatus != string(courseStatus) {
+		t.Fatalf("unexpected status response: %+v", status)
+	}
+
+	request := domain.GenerationRequest{
+		ID: requestID, PipelineStatus: domain.PipelineStatusRunning,
+		DetectedCurrentLevel: &level, DetectedLanguage: &language,
+		ClarificationQuestions: []domain.ClarificationQuestion{{ID: "goals", Question: "Goal?", Options: []string{"Learn"}}},
+	}
+	requestResponse := GenerationRequestFromDomain(request)
+	if requestResponse.DetectedCurrentLevel == nil || *requestResponse.DetectedCurrentLevel != "intermediate" ||
+		requestResponse.DetectedLanguage == nil || *requestResponse.DetectedLanguage != "fr" || len(requestResponse.ClarificationQuestions) != 1 {
+		t.Fatalf("unexpected request response: %+v", requestResponse)
+	}
+}
+
+func TestGenerationResultWrappers(t *testing.T) {
+	t.Parallel()
+
+	requestID := uuid.New()
+	request := domain.GenerationRequest{ID: requestID}
+	course := domain.Course{ID: uuid.New(), RequestID: requestID}
+	analysis := GenerationAnalysisFromContract(contract.GenerationAnalysisResult{Request: request})
+	result := GenerationResultFromContract(contract.GenerationResult{Request: request, Course: course})
+	if analysis.Request.ID != requestID.String() || result.Request.ID != requestID.String() || result.Course.ID != course.ID.String() {
+		t.Fatalf("unexpected wrapper responses: analysis=%+v result=%+v", analysis, result)
+	}
+}

@@ -9,6 +9,7 @@ import (
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
 	"github.com/google/uuid"
 )
 
@@ -365,8 +366,8 @@ func analyzedGenerationRequest(t *testing.T, now time.Time) domain.GenerationReq
 	goal := "Comprendre Linux"
 	language := domain.CourseLanguageFR
 	if err := request.ApplyAnalysis(domain.AnalysisSummary{
-		SuggestedTitle:       testStringPtr("Formation Linux"),
-		ShortSynopsis:        testStringPtr("Apprendre les bases de Linux."),
+		SuggestedTitle:       pointer.To("Formation Linux"),
+		ShortSynopsis:        pointer.To("Apprendre les bases de Linux."),
 		DetectedCurrentLevel: &level,
 		DetectedTargetLevel:  &targetLevel,
 		DetectedGoal:         &goal,
@@ -378,10 +379,6 @@ func analyzedGenerationRequest(t *testing.T, now time.Time) domain.GenerationReq
 		t.Fatalf("update progress: %v", err)
 	}
 	return request
-}
-
-func testStringPtr(value string) *string {
-	return &value
 }
 
 type fixedClock struct {
@@ -413,15 +410,27 @@ func (fakeCourseAI) GenerateLessonContent(context.Context, contract.LessonConten
 type fakeUnitOfWork struct {
 	requests map[uuid.UUID]domain.GenerationRequest
 	courses  contract.CourseRepository
+	modules  contract.ModuleRepository
+	lessons  contract.LessonRepository
+	jobs     contract.GenerationJobQueue
 }
 
 func (u *fakeUnitOfWork) WithinTx(ctx context.Context, fn func(context.Context, contract.TransactionalRepositories) error) error {
-	return fn(ctx, fakeRepositories{requests: fakeGenerationRequestRepository{requests: u.requests}, courses: u.courses})
+	return fn(ctx, fakeRepositories{
+		requests: fakeGenerationRequestRepository{requests: u.requests},
+		courses:  u.courses,
+		modules:  u.modules,
+		lessons:  u.lessons,
+		jobs:     u.jobs,
+	})
 }
 
 type fakeRepositories struct {
 	requests fakeGenerationRequestRepository
 	courses  contract.CourseRepository
+	modules  contract.ModuleRepository
+	lessons  contract.LessonRepository
+	jobs     contract.GenerationJobQueue
 }
 
 func (r fakeRepositories) Users() contract.UserRepository {
@@ -432,16 +441,20 @@ func (r fakeRepositories) GenerationRequests() contract.GenerationRequestReposit
 	return r.requests
 }
 
+func (r fakeRepositories) GenerationJobs() contract.GenerationJobQueue {
+	return r.jobs
+}
+
 func (r fakeRepositories) Courses() contract.CourseRepository {
 	return r.courses
 }
 
 func (r fakeRepositories) Modules() contract.ModuleRepository {
-	return nil
+	return r.modules
 }
 
 func (r fakeRepositories) Lessons() contract.LessonRepository {
-	return nil
+	return r.lessons
 }
 
 func (r fakeRepositories) Exercises() contract.ExerciseRepository {
@@ -455,6 +468,8 @@ func (r fakeRepositories) Quizzes() contract.QuizRepository {
 type fakeCourseRepository struct {
 	deletedRequestID uuid.UUID
 	deleteErr        error
+	courseByID       map[uuid.UUID]domain.Course
+	findErr          error
 }
 
 func (r *fakeCourseRepository) SaveCourse(context.Context, domain.Course) (domain.Course, error) {
@@ -474,7 +489,13 @@ func (r *fakeCourseRepository) FindCourseByRequestID(context.Context, uuid.UUID)
 }
 
 func (r *fakeCourseRepository) FindCourseStateByID(context.Context, uuid.UUID) (domain.Course, error) {
-	panic("not used")
+	if r.findErr != nil {
+		return domain.Course{}, r.findErr
+	}
+	for _, course := range r.courseByID {
+		return course, nil
+	}
+	return domain.Course{}, contract.ErrCourseNotFound
 }
 
 func (r *fakeCourseRepository) FindCourseStateByRequestID(context.Context, uuid.UUID) (domain.Course, error) {
@@ -502,8 +523,9 @@ type fakeGenerationRequestRepository struct {
 	requests map[uuid.UUID]domain.GenerationRequest
 }
 
-func (r fakeGenerationRequestRepository) SaveGenerationRequest(context.Context, domain.GenerationRequest) (domain.GenerationRequest, error) {
-	panic("not used")
+func (r fakeGenerationRequestRepository) SaveGenerationRequest(_ context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
+	r.requests[request.ID] = request
+	return request, nil
 }
 
 func (r fakeGenerationRequestRepository) UpdateGenerationRequest(_ context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {

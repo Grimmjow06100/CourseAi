@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
 	"github.com/google/uuid"
 )
 
@@ -128,7 +129,7 @@ func TestQuizRejectsOptionCountsThatAreTooLow(t *testing.T) {
 				Options: []QuizOption{
 					{Order: 1, Text: "ls"},
 				},
-				Answer:     QuizAnswer{Answer: stringPtr("ls")},
+				Answer:     QuizAnswer{Answer: pointer.To("ls")},
 				Correction: "`ls` liste les fichiers.",
 			},
 			wantError: ErrInvalidCollection,
@@ -161,7 +162,7 @@ func TestQuizRejectsOptionCountsThatAreTooLow(t *testing.T) {
 					{Order: 2, Text: "Faux"},
 					{Order: 3, Text: "Cela depend"},
 				},
-				Answer:     QuizAnswer{Answer: stringPtr("Vrai")},
+				Answer:     QuizAnswer{Answer: pointer.To("Vrai")},
 				Correction: "Linux designe le noyau du systeme.",
 			},
 			wantError: ErrInvalidCollection,
@@ -246,7 +247,7 @@ func TestQuizRejectsNonContiguousQuestionAndOptionOrders(t *testing.T) {
 					{Order: 1, Text: "pwd"},
 					{Order: 2, Text: "cd"},
 				},
-				Answer:     QuizAnswer{Answer: stringPtr("pwd")},
+				Answer:     QuizAnswer{Answer: pointer.To("pwd")},
 				Correction: "`pwd` affiche le dossier courant.",
 			},
 		},
@@ -270,7 +271,7 @@ func TestQuizRejectsNonContiguousQuestionAndOptionOrders(t *testing.T) {
 					{Order: 1, Text: "pwd"},
 					{Order: 3, Text: "ls"},
 				},
-				Answer:     QuizAnswer{Answer: stringPtr("ls")},
+				Answer:     QuizAnswer{Answer: pointer.To("ls")},
 				Correction: "`ls` liste les fichiers.",
 			},
 		},
@@ -399,6 +400,73 @@ func TestLessonHasContentWithStructuredActivity(t *testing.T) {
 	}
 }
 
-func stringPtr(value string) *string {
-	return &value
+func TestExerciseMutationMethods(t *testing.T) {
+	t.Parallel()
+
+	exercise, err := NewExercise(NewExerciseParams{
+		LessonID: uuid.New(), Type: ExerciseTypeCoding, Difficulty: DifficultyIntermediate,
+		Title: "Code", Objective: "Practice", InstructionsMarkdown: "Implement",
+		ContentMarkdown: "Starter", CorrectionMarkdown: "Solution",
+	})
+	if err != nil {
+		t.Fatalf("NewExercise() error = %v", err)
+	}
+	if err := exercise.AttachCorrection("  Updated solution  "); err != nil || exercise.CorrectionMarkdown != "Updated solution" {
+		t.Fatalf("AttachCorrection() = %q, %v", exercise.CorrectionMarkdown, err)
+	}
+	if err := exercise.AttachCorrection(" "); !errors.Is(err, ErrBlankField) {
+		t.Fatalf("blank correction error = %v", err)
+	}
+	exercise.ReplacePayload(nil)
+	if exercise.Payload == nil {
+		t.Fatal("nil payload should normalize to an empty object")
+	}
+}
+
+func TestQuizAddQuestionAndLessonAddQuiz(t *testing.T) {
+	t.Parallel()
+
+	firstAnswer := "one"
+	quiz, err := NewQuiz(NewQuizParams{
+		LessonID: uuid.New(), Type: QuizTypeShortAnswer, Difficulty: DifficultyBeginner,
+		Title: "Quiz", Objective: "Check", Questions: []QuizQuestion{{
+			Order: 1, Type: QuizQuestionTypeShortAnswer, Question: "First?",
+			Answer: QuizAnswer{Answer: &firstAnswer}, Correction: "one",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewQuiz() error = %v", err)
+	}
+	secondAnswer := "two"
+	if err := quiz.AddQuestion(QuizQuestion{
+		Order: 2, Type: QuizQuestionTypeShortAnswer, Question: " Second? ",
+		Answer: QuizAnswer{Answer: &secondAnswer}, Correction: " two ",
+	}); err != nil {
+		t.Fatalf("AddQuestion() error = %v", err)
+	}
+	if len(quiz.Questions) != 2 || quiz.Questions[1].Question != "Second?" {
+		t.Fatalf("unexpected quiz questions: %+v", quiz.Questions)
+	}
+	if err := quiz.AddQuestion(quiz.Questions[1]); !errors.Is(err, ErrDuplicateQuestionOrder) {
+		t.Fatalf("duplicate question error = %v", err)
+	}
+
+	lesson, err := NewLesson(NewLessonParams{
+		ModuleID: uuid.New(), Order: 1, Title: "Quiz lesson", Type: LessonTypeQuiz,
+		EstimatedDurationMinutes: 10, LearningGoal: "Validate",
+	})
+	if err != nil {
+		t.Fatalf("NewLesson() error = %v", err)
+	}
+	quiz.LessonID = lesson.ID
+	if err := lesson.AddQuiz(quiz); err != nil {
+		t.Fatalf("AddQuiz() error = %v", err)
+	}
+	if !lesson.HasQuiz() || !lesson.HasContent() {
+		t.Fatal("quiz should count as lesson content")
+	}
+	quiz.LessonID = uuid.New()
+	if err := lesson.AddQuiz(quiz); !errors.Is(err, ErrInvalidCollection) {
+		t.Fatalf("foreign quiz error = %v", err)
+	}
 }

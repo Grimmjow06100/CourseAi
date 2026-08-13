@@ -1,18 +1,38 @@
-DATABASE_URL=postgresql://course_ai:course_ai_password@localhost:5433/course_ai?schema=public
+DATABASE_URL ?= postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable
+GOOSE_DRIVER ?= postgres
+GOOSE_DBSTRING ?= $(DATABASE_URL)
+GOOSE_MIGRATION_DIR ?= migrations
 
-.PHONY: migrate-up migrate-down migrate-status migrate-create sqlc-generate sqlc-vet db-generate
+export GOOSE_DRIVER
+export GOOSE_DBSTRING
+export GOOSE_MIGRATION_DIR
+export DATABASE_URL
+
+.PHONY: test test-race test-integration test-all migrate-up migrate-down migrate-status migrate-create sqlc-generate sqlc-vet db-generate
+
+test:
+	go test ./...
+
+test-race:
+	go test -race ./...
+
+test-integration: export COURSE_AI_INTEGRATION_TEST := 1
+test-integration:
+	go test -count=1 -tags=integration ./tests/integration/...
+
+test-all: test test-integration
 
 migrate-up:
-	goose up postgres "$(DATABASE_URL)" -dir migrations
+	goose up
 
 migrate-down:
-	goose down postgres "$(DATABASE_URL)" -dir migrations
+	goose down
 
 migrate-status:
-	goose status postgres "$(DATABASE_URL)" -dir migrations
+	goose status
 
 migrate-create:
-	goose create $(name) sql -dir migrations
+	goose create $(name) sql
 
 sqlc-generate:
 	sqlc generate

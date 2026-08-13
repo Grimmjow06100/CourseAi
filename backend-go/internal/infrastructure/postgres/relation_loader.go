@@ -21,7 +21,7 @@ func (l relationLoader) hydrateCourses(ctx context.Context, courses []domain.Cou
 	for _, course := range courses {
 		courseIDs = append(courseIDs, course.ID)
 	}
-	rows, err := l.queries.ListModulesByCourseIDs(ctx, dbsqlc.ListModulesByCourseIDsParams{CourseIds: courseIDs})
+	rows, err := l.queries.ListModulesByCourseIDs(ctx, courseIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (l relationLoader) hydrateModules(ctx context.Context, modules []domain.Mod
 	for _, module := range modules {
 		moduleIDs = append(moduleIDs, module.ID)
 	}
-	rows, err := l.queries.ListLessonsByModuleIDs(ctx, dbsqlc.ListLessonsByModuleIDsParams{ModuleIds: moduleIDs})
+	rows, err := l.queries.ListLessonsByModuleIDs(ctx, moduleIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -91,11 +91,11 @@ func (l relationLoader) hydrateLessons(ctx context.Context, lessons []domain.Les
 	for _, lesson := range lessons {
 		lessonIDs = append(lessonIDs, lesson.ID)
 	}
-	exerciseRows, err := l.queries.ListLessonExercisesByLessonIDs(ctx, dbsqlc.ListLessonExercisesByLessonIDsParams{LessonIds: lessonIDs})
+	exerciseRows, err := l.queries.ListLessonExercisesByLessonIDs(ctx, lessonIDs)
 	if err != nil {
 		return nil, err
 	}
-	quizRows, err := l.queries.ListLessonQuizzesByLessonIDs(ctx, dbsqlc.ListLessonQuizzesByLessonIDsParams{LessonIds: lessonIDs})
+	quizRows, err := l.queries.ListLessonQuizzesByLessonIDs(ctx, lessonIDs)
 	if err != nil {
 		return nil, err
 	}

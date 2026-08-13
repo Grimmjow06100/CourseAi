@@ -180,12 +180,8 @@ DELETE FROM courses
 WHERE id = $1
 `
 
-type DeleteCourseByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) DeleteCourseByID(ctx context.Context, arg DeleteCourseByIDParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteCourseByID, arg.ID)
+func (q *Queries) DeleteCourseByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCourseByID, id)
 	if err != nil {
 		return 0, err
 	}
@@ -197,12 +193,8 @@ DELETE FROM courses
 WHERE request_id = $1
 `
 
-type DeleteCourseByRequestIDParams struct {
-	RequestID uuid.UUID `db:"request_id" json:"request_id"`
-}
-
-func (q *Queries) DeleteCourseByRequestID(ctx context.Context, arg DeleteCourseByRequestIDParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteCourseByRequestID, arg.RequestID)
+func (q *Queries) DeleteCourseByRequestID(ctx context.Context, requestID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCourseByRequestID, requestID)
 	if err != nil {
 		return 0, err
 	}
@@ -235,12 +227,8 @@ FROM courses
 WHERE id = $1
 `
 
-type GetCourseByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) GetCourseByID(ctx context.Context, arg GetCourseByIDParams) (Course, error) {
-	row := q.db.QueryRow(ctx, getCourseByID, arg.ID)
+func (q *Queries) GetCourseByID(ctx context.Context, id uuid.UUID) (Course, error) {
+	row := q.db.QueryRow(ctx, getCourseByID, id)
 	var i Course
 	err := row.Scan(
 		&i.ID,
@@ -293,12 +281,8 @@ FROM courses
 WHERE request_id = $1
 `
 
-type GetCourseByRequestIDParams struct {
-	RequestID uuid.UUID `db:"request_id" json:"request_id"`
-}
-
-func (q *Queries) GetCourseByRequestID(ctx context.Context, arg GetCourseByRequestIDParams) (Course, error) {
-	row := q.db.QueryRow(ctx, getCourseByRequestID, arg.RequestID)
+func (q *Queries) GetCourseByRequestID(ctx context.Context, requestID uuid.UUID) (Course, error) {
+	row := q.db.QueryRow(ctx, getCourseByRequestID, requestID)
 	var i Course
 	err := row.Scan(
 		&i.ID,
@@ -361,12 +345,8 @@ SELECT
   ) AS is_complete
 `
 
-type IsCourseContentCompleteParams struct {
-	CourseID uuid.UUID `db:"course_id" json:"course_id"`
-}
-
-func (q *Queries) IsCourseContentComplete(ctx context.Context, arg IsCourseContentCompleteParams) (*bool, error) {
-	row := q.db.QueryRow(ctx, isCourseContentComplete, arg.CourseID)
+func (q *Queries) IsCourseContentComplete(ctx context.Context, courseID uuid.UUID) (*bool, error) {
+	row := q.db.QueryRow(ctx, isCourseContentComplete, courseID)
 	var is_complete *bool
 	err := row.Scan(&is_complete)
 	return is_complete, err

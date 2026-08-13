@@ -34,7 +34,7 @@ func (g *CourseAIGenerator) callStructuredJSON(ctx context.Context, promptName s
 	}
 
 	params := responses.ResponseNewParams{
-		Model:g.conf.Model,
+		Model:        g.conf.Model,
 		Instructions: openaisdk.String(prompt),
 		Input: responses.ResponseNewParamsInputUnion{
 			OfString: openaisdk.String(string(inputJSON)),
@@ -43,13 +43,12 @@ func (g *CourseAIGenerator) callStructuredJSON(ctx context.Context, promptName s
 		Text: responses.ResponseTextConfigParam{
 			Format: format,
 		},
-		MaxOutputTokens:openaisdk.Int(g.conf.MaxOutputTokens),
-
+		MaxOutputTokens: openaisdk.Int(g.conf.MaxOutputTokens),
 	}
 
 	response, err := g.client.Responses.New(ctx, params)
 	if err != nil {
-		return nil, err
+		return nil, classifyProviderRequestError(err)
 	}
 
 	output := strings.TrimSpace(response.OutputText())

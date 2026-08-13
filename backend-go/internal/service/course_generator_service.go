@@ -10,6 +10,8 @@ import (
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/jsonutil"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 	"github.com/google/uuid"
 )
 
@@ -38,8 +40,9 @@ var (
 )
 
 type CourseGeneratorConfig struct {
-	StatusURLFormat string
-	ResultURLFormat string
+	StatusURLFormat    string
+	JobStatusURLFormat string
+	ResultURLFormat    string
 }
 
 type CourseGeneratorService struct {
@@ -82,13 +85,14 @@ func (s *CourseGeneratorService) AnalyzePrompt(ctx context.Context, params contr
 		return contract.GenerationAnalysisResult{}, err
 	}
 
-	request, err = s.runPromptAnalysis(ctx, request)
+	analyzedRequest, err := s.runPromptAnalysis(ctx, request)
 	if err != nil {
 		if failErr := s.markPipelineFailed(ctx, request.ID, err); failErr != nil {
 			return contract.GenerationAnalysisResult{}, errors.Join(err, failErr)
 		}
 		return contract.GenerationAnalysisResult{}, err
 	}
+	request = analyzedRequest
 
 	if request.IsOutOfScope {
 		if err := s.completeRequest(ctx, request.ID); err != nil {
@@ -104,39 +108,7 @@ func (s *CourseGeneratorService) AnalyzePrompt(ctx context.Context, params contr
 }
 
 func (s *CourseGeneratorService) StartFullCourseGeneration(ctx context.Context, params contract.StartGenerationParams) (contract.GenerationStarted, error) {
-	if err := s.validateDependencies(); err != nil {
-		return contract.GenerationStarted{}, err
-	}
-
-	prompt := strings.TrimSpace(params.Prompt)
-	if prompt == "" {
-		return contract.GenerationStarted{}, ErrPromptRequired
-	}
-
-	request, err := domain.NewGenerationRequestAt(prompt, s.now())
-	if err != nil {
-		return contract.GenerationStarted{}, err
-	}
-
-	if err := s.persistNewRequest(ctx, request); err != nil {
-		return contract.GenerationStarted{}, err
-	}
-
-	started := s.generationStarted(request.ID, request.PipelineStatus)
-	if err := s.runFullPipeline(ctx, request); err != nil {
-		if failErr := s.markPipelineFailed(ctx, request.ID, err); failErr != nil {
-			return started, errors.Join(err, failErr)
-		}
-		started.Status = domain.PipelineStatusFailed
-		return started, err
-	}
-
-	completedRequest, err := s.loadGenerationRequest(ctx, request.ID)
-	if err != nil {
-		return started, err
-	}
-
-	return s.generationStarted(completedRequest.ID, completedRequest.PipelineStatus), nil
+	return s.enqueueFullCourseGeneration(ctx, params)
 }
 
 func (s *CourseGeneratorService) GenerateCourseStructure(ctx context.Context, params contract.GenerateStructureParams) (contract.GenerationResult, error) {
@@ -450,25 +422,7 @@ func (s *CourseGeneratorService) runPromptAnalysis(ctx context.Context, request 
 }
 
 func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, request domain.GenerationRequest, params contract.GenerateStructureParams) (domain.GenerationRequest, domain.Course, error) {
-	request, err := s.updateRequestProgress(ctx, request.ID, stepArchitecture, 35)
-	if err != nil {
-		return domain.GenerationRequest{}, domain.Course{}, err
-	}
-
-	architecture, err := s.ai.GenerateArchitecture(ctx, contract.ArchitectureInput{
-		Request:      request,
-		Title:        params.Title,
-		Synopsis:     params.Synopsis,
-		CurrentLevel: params.CurrentLevel,
-		TargetLevel:  params.TargetLevel,
-		Goals:        params.Goals,
-		Language:     params.Language,
-	})
-	if err != nil {
-		return domain.GenerationRequest{}, domain.Course{}, fmt.Errorf("generate architecture: %w", err)
-	}
-
-	course, err := s.persistArchitecture(ctx, request, architecture.Course, architecture.Raw)
+	request, course, err := s.generateArchitectureJob(ctx, request, params)
 	if err != nil {
 		return domain.GenerationRequest{}, domain.Course{}, err
 	}
@@ -556,7 +510,7 @@ func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID 
 		if err := request.ApplyAnalysis(summary, now); err != nil {
 			return err
 		}
-		request.RawAnalysisOutput = cloneRawMessage(rawOutput)
+		request.RawAnalysisOutput = jsonutil.Clone(rawOutput)
 		if err := request.UpdateProgress(stepAnalysisCompleted, 25, now); err != nil {
 			return err
 		}
@@ -572,7 +526,7 @@ func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, reques
 	if err != nil {
 		return domain.Course{}, err
 	}
-	course.RawArchitectureOutput = cloneRawMessage(rawOutput)
+	course.RawArchitectureOutput = jsonutil.Clone(rawOutput)
 
 	modules, err := s.normalizeGeneratedModules(course.ID, course.Modules)
 	if err != nil {
@@ -616,7 +570,7 @@ func (s *CourseGeneratorService) generateAndPersistLessonPlans(ctx context.Conte
 			return domain.Course{}, err
 		}
 
-		module.RawLessonsPlanOutput = cloneRawMessage(output.Raw)
+		module.RawLessonsPlanOutput = jsonutil.Clone(output.Raw)
 		module.UpdatedAt = s.now()
 
 		savedLessons, err := s.persistLessonPlan(ctx, module, lessons)
@@ -802,7 +756,7 @@ func (s *CourseGeneratorService) normalizeGeneratedCourse(request domain.Generat
 		course, err := domain.NewCourseAt(domain.NewCourseParams{
 			RequestID:               request.ID,
 			Language:                generatedCourse.Language,
-			InitialUserPrompt:       firstNonBlank(generatedCourse.InitialUserPrompt, request.InitialUserPrompt),
+			InitialUserPrompt:       textutil.FirstNonBlank(generatedCourse.InitialUserPrompt, request.InitialUserPrompt),
 			Title:                   generatedCourse.Title,
 			Synopsis:                generatedCourse.Synopsis,
 			TargetAudience:          generatedCourse.TargetAudience,
@@ -967,7 +921,7 @@ func (s *CourseGeneratorService) attachGeneratedContent(lesson domain.Lesson, ou
 	if err := lesson.AttachContent(content); err != nil {
 		return domain.Lesson{}, err
 	}
-	lesson.RawContentOutput = cloneRawMessage(output.Raw)
+	lesson.RawContentOutput = jsonutil.Clone(output.Raw)
 	lesson.Exercises = attachRawOutputToExercises(output.Exercises, output.Raw)
 	lesson.Quizzes = attachRawOutputToQuizzes(output.Quizzes, output.Raw)
 	lesson.UpdatedAt = s.now()
@@ -981,7 +935,7 @@ func attachRawOutputToExercises(exercises []domain.Exercise, rawOutput json.RawM
 
 	withRawOutput := make([]domain.Exercise, 0, len(exercises))
 	for _, exercise := range exercises {
-		exercise.RawAIOutput = cloneRawMessage(rawOutput)
+		exercise.RawAIOutput = jsonutil.Clone(rawOutput)
 		withRawOutput = append(withRawOutput, exercise)
 	}
 	return withRawOutput
@@ -994,19 +948,10 @@ func attachRawOutputToQuizzes(quizzes []domain.Quiz, rawOutput json.RawMessage) 
 
 	withRawOutput := make([]domain.Quiz, 0, len(quizzes))
 	for _, quiz := range quizzes {
-		quiz.RawAIOutput = cloneRawMessage(rawOutput)
+		quiz.RawAIOutput = jsonutil.Clone(rawOutput)
 		withRawOutput = append(withRawOutput, quiz)
 	}
 	return withRawOutput
-}
-
-func cloneRawMessage(raw json.RawMessage) json.RawMessage {
-	if len(raw) == 0 {
-		return nil
-	}
-	cloned := make(json.RawMessage, len(raw))
-	copy(cloned, raw)
-	return cloned
 }
 
 func (s *CourseGeneratorService) loadCourseByID(ctx context.Context, courseID uuid.UUID) (domain.Course, error) {
@@ -1130,12 +1075,15 @@ func (s *CourseGeneratorService) completeCourseIfReady(ctx context.Context, cour
 		return err
 	})
 }
-func (s *CourseGeneratorService) generationStarted(requestID uuid.UUID, status domain.GenerationPipelineStatus) contract.GenerationStarted {
+func (s *CourseGeneratorService) generationStarted(request domain.GenerationRequest, job domain.GenerationJob) contract.GenerationStarted {
 	return contract.GenerationStarted{
-		RequestID: requestID,
-		Status:    status,
-		StatusURL: formatGenerationURL(s.config.StatusURLFormat, "/api/generations/%s/status", requestID),
-		ResultURL: formatGenerationURL(s.config.ResultURLFormat, "/api/generations/%s/result", requestID),
+		JobID:        job.ID,
+		RequestID:    request.ID,
+		Status:       request.PipelineStatus,
+		JobStatus:    job.Status,
+		StatusURL:    formatGenerationURL(s.config.StatusURLFormat, "/api/generations/%s/status", request.ID),
+		JobStatusURL: formatGenerationURL(s.config.JobStatusURLFormat, "/api/generation-jobs/%s", job.ID),
+		ResultURL:    formatGenerationURL(s.config.ResultURLFormat, "/api/generations/%s/result", request.ID),
 	}
 }
 
@@ -1172,13 +1120,6 @@ func failureMessage(err error) string {
 	return message
 }
 
-func firstNonBlank(primary string, fallback string) string {
-	if strings.TrimSpace(primary) != "" {
-		return primary
-	}
-	return fallback
-}
-
 func normalizeStructureParams(params contract.GenerateStructureParams) (contract.GenerateStructureParams, error) {
 	if params.RequestID == uuid.Nil {
 		return contract.GenerateStructureParams{}, fmt.Errorf("%w: generation request id", domain.ErrBlankField)
@@ -1211,7 +1152,7 @@ func normalizeStructureParams(params contract.GenerateStructureParams) (contract
 		return contract.GenerateStructureParams{}, err
 	}
 
-	params.Goals = normalizeNonEmptyStrings(params.Goals)
+	params.Goals = textutil.TrimNonBlank(params.Goals)
 	if len(params.Goals) == 0 {
 		return contract.GenerateStructureParams{}, fmt.Errorf("%w: goals", domain.ErrInvalidCollection)
 	}
@@ -1240,8 +1181,8 @@ func structureParamsFromAnalysis(request domain.GenerationRequest) (contract.Gen
 
 	return normalizeStructureParams(contract.GenerateStructureParams{
 		RequestID:    request.ID,
-		Title:        optionalStringValue(request.SuggestedTitle, request.InitialUserPrompt),
-		Synopsis:     optionalStringValue(request.ShortSynopsis, request.InitialUserPrompt),
+		Title:        textutil.ValueOr(request.SuggestedTitle, request.InitialUserPrompt),
+		Synopsis:     textutil.ValueOr(request.ShortSynopsis, request.InitialUserPrompt),
 		CurrentLevel: currentLevel,
 		TargetLevel:  targetLevel,
 		Goals:        goals,
@@ -1260,31 +1201,6 @@ func requestHasAnalysis(request domain.GenerationRequest) bool {
 		request.DetectedGoal != nil ||
 		request.DetectedLanguage != nil ||
 		len(request.ClarificationQuestions) > 0
-}
-
-func normalizeNonEmptyStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	normalized := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			normalized = append(normalized, value)
-		}
-	}
-	return normalized
-}
-
-func optionalStringValue(value *string, fallback string) string {
-	if value == nil {
-		return fallback
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return fallback
-	}
-	return trimmed
 }
 
 func isUnknownText(value string) bool {

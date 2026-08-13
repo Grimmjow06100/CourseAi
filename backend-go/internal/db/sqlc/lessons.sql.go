@@ -132,12 +132,8 @@ DELETE FROM lessons
 WHERE id = $1
 `
 
-type DeleteLessonByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) DeleteLessonByID(ctx context.Context, arg DeleteLessonByIDParams) (int64, error) {
-	result, err := q.db.Exec(ctx, deleteLessonByID, arg.ID)
+func (q *Queries) DeleteLessonByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteLessonByID, id)
 	if err != nil {
 		return 0, err
 	}
@@ -163,12 +159,8 @@ FROM lessons
 WHERE id = $1
 `
 
-type GetLessonByIDParams struct {
-	ID uuid.UUID `db:"id" json:"id"`
-}
-
-func (q *Queries) GetLessonByID(ctx context.Context, arg GetLessonByIDParams) (Lesson, error) {
-	row := q.db.QueryRow(ctx, getLessonByID, arg.ID)
+func (q *Queries) GetLessonByID(ctx context.Context, id uuid.UUID) (Lesson, error) {
+	row := q.db.QueryRow(ctx, getLessonByID, id)
 	var i Lesson
 	err := row.Scan(
 		&i.ID,
@@ -208,12 +200,8 @@ WHERE module_id = $1
 ORDER BY lesson_order ASC, id ASC
 `
 
-type ListLessonsByModuleIDParams struct {
-	ModuleID uuid.UUID `db:"module_id" json:"module_id"`
-}
-
-func (q *Queries) ListLessonsByModuleID(ctx context.Context, arg ListLessonsByModuleIDParams) ([]Lesson, error) {
-	rows, err := q.db.Query(ctx, listLessonsByModuleID, arg.ModuleID)
+func (q *Queries) ListLessonsByModuleID(ctx context.Context, moduleID uuid.UUID) ([]Lesson, error) {
+	rows, err := q.db.Query(ctx, listLessonsByModuleID, moduleID)
 	if err != nil {
 		return nil, err
 	}
@@ -266,12 +254,8 @@ WHERE module_id = ANY($1::uuid[])
 ORDER BY module_id ASC, lesson_order ASC, id ASC
 `
 
-type ListLessonsByModuleIDsParams struct {
-	ModuleIds []uuid.UUID `db:"module_ids" json:"module_ids"`
-}
-
-func (q *Queries) ListLessonsByModuleIDs(ctx context.Context, arg ListLessonsByModuleIDsParams) ([]Lesson, error) {
-	rows, err := q.db.Query(ctx, listLessonsByModuleIDs, arg.ModuleIds)
+func (q *Queries) ListLessonsByModuleIDs(ctx context.Context, moduleIds []uuid.UUID) ([]Lesson, error) {
+	rows, err := q.db.Query(ctx, listLessonsByModuleIDs, moduleIds)
 	if err != nil {
 		return nil, err
 	}
