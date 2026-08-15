@@ -61,7 +61,6 @@ type CourseGenerationStatus string
 
 const (
 	CourseGenerationStatusAnalysisPending        CourseGenerationStatus = "analysis_pending"
-	CourseGenerationStatusNeedsClarification     CourseGenerationStatus = "needs_clarification"
 	CourseGenerationStatusAnalysisCompleted      CourseGenerationStatus = "analysis_completed"
 	CourseGenerationStatusArchitectureGenerating CourseGenerationStatus = "architecture_generating"
 	CourseGenerationStatusStructureGenerated     CourseGenerationStatus = "structure_generated"
@@ -200,7 +199,6 @@ func (ns NullExerciseType) Value() (driver.Value, error) {
 type GenerationJobKind string
 
 const (
-	GenerationJobKindFullCourse     GenerationJobKind = "full_course"
 	GenerationJobKindAnalysis       GenerationJobKind = "analysis"
 	GenerationJobKindArchitecture   GenerationJobKind = "architecture"
 	GenerationJobKindLessonPlan     GenerationJobKind = "lesson_plan"
@@ -293,10 +291,11 @@ func (ns NullGenerationJobStatus) Value() (driver.Value, error) {
 type GenerationPipelineStatus string
 
 const (
-	GenerationPipelineStatusQueued    GenerationPipelineStatus = "queued"
-	GenerationPipelineStatusRunning   GenerationPipelineStatus = "running"
-	GenerationPipelineStatusCompleted GenerationPipelineStatus = "completed"
-	GenerationPipelineStatusFailed    GenerationPipelineStatus = "failed"
+	GenerationPipelineStatusQueued                GenerationPipelineStatus = "queued"
+	GenerationPipelineStatusRunning               GenerationPipelineStatus = "running"
+	GenerationPipelineStatusAwaitingClarification GenerationPipelineStatus = "awaiting_clarification"
+	GenerationPipelineStatusCompleted             GenerationPipelineStatus = "completed"
+	GenerationPipelineStatusFailed                GenerationPipelineStatus = "failed"
 )
 
 func (e *GenerationPipelineStatus) Scan(src interface{}) error {
@@ -515,27 +514,38 @@ type GenerationJob struct {
 }
 
 type GenerationRequest struct {
-	ID                     uuid.UUID                `db:"id" json:"id"`
-	InitialUserPrompt      string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
-	PipelineStatus         GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
-	CurrentStep            *string                  `db:"current_step" json:"current_step"`
-	ProgressPercent        int32                    `db:"progress_percent" json:"progress_percent"`
-	FailureMessage         *string                  `db:"failure_message" json:"failure_message"`
-	StartedAt              *time.Time               `db:"started_at" json:"started_at"`
-	CompletedAt            *time.Time               `db:"completed_at" json:"completed_at"`
-	IsOutOfScope           bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
-	ErrorMessage           *string                  `db:"error_message" json:"error_message"`
-	WarningMessage         *string                  `db:"warning_message" json:"warning_message"`
-	SuggestedTitle         *string                  `db:"suggested_title" json:"suggested_title"`
-	ShortSynopsis          *string                  `db:"short_synopsis" json:"short_synopsis"`
-	DetectedCurrentLevel   *Level                   `db:"detected_current_level" json:"detected_current_level"`
-	DetectedTargetLevel    *Level                   `db:"detected_target_level" json:"detected_target_level"`
-	DetectedGoal           *string                  `db:"detected_goal" json:"detected_goal"`
-	DetectedLanguage       *CourseLanguage          `db:"detected_language" json:"detected_language"`
-	ClarificationQuestions json.RawMessage          `db:"clarification_questions" json:"clarification_questions"`
-	RawAnalysisOutput      json.RawMessage          `db:"raw_analysis_output" json:"raw_analysis_output"`
-	CreatedAt              time.Time                `db:"created_at" json:"created_at"`
-	UpdatedAt              time.Time                `db:"updated_at" json:"updated_at"`
+	ID                        uuid.UUID                `db:"id" json:"id"`
+	InitialUserPrompt         string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
+	PipelineStatus            GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
+	CurrentStep               *string                  `db:"current_step" json:"current_step"`
+	ProgressPercent           int32                    `db:"progress_percent" json:"progress_percent"`
+	FailureMessage            *string                  `db:"failure_message" json:"failure_message"`
+	StartedAt                 *time.Time               `db:"started_at" json:"started_at"`
+	CompletedAt               *time.Time               `db:"completed_at" json:"completed_at"`
+	IsOutOfScope              bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
+	ErrorMessage              *string                  `db:"error_message" json:"error_message"`
+	WarningMessage            *string                  `db:"warning_message" json:"warning_message"`
+	SuggestedTitle            *string                  `db:"suggested_title" json:"suggested_title"`
+	ShortSynopsis             *string                  `db:"short_synopsis" json:"short_synopsis"`
+	DetectedCurrentLevel      *Level                   `db:"detected_current_level" json:"detected_current_level"`
+	DetectedTargetLevel       *Level                   `db:"detected_target_level" json:"detected_target_level"`
+	DetectedGoal              *string                  `db:"detected_goal" json:"detected_goal"`
+	DetectedLanguage          *CourseLanguage          `db:"detected_language" json:"detected_language"`
+	ClarificationQuestions    json.RawMessage          `db:"clarification_questions" json:"clarification_questions"`
+	RawAnalysisOutput         json.RawMessage          `db:"raw_analysis_output" json:"raw_analysis_output"`
+	CreatedAt                 time.Time                `db:"created_at" json:"created_at"`
+	UpdatedAt                 time.Time                `db:"updated_at" json:"updated_at"`
+	AnalysisCompletedAt       *time.Time               `db:"analysis_completed_at" json:"analysis_completed_at"`
+	ClarificationAnswers      json.RawMessage          `db:"clarification_answers" json:"clarification_answers"`
+	ConfirmedTitle            *string                  `db:"confirmed_title" json:"confirmed_title"`
+	ConfirmedSynopsis         *string                  `db:"confirmed_synopsis" json:"confirmed_synopsis"`
+	ConfirmedCurrentLevel     *Level                   `db:"confirmed_current_level" json:"confirmed_current_level"`
+	ConfirmedTargetLevel      *Level                   `db:"confirmed_target_level" json:"confirmed_target_level"`
+	ConfirmedGoals            json.RawMessage          `db:"confirmed_goals" json:"confirmed_goals"`
+	ConfirmedLanguage         *CourseLanguage          `db:"confirmed_language" json:"confirmed_language"`
+	BriefConfirmedAt          *time.Time               `db:"brief_confirmed_at" json:"brief_confirmed_at"`
+	ClarificationsSubmittedAt *time.Time               `db:"clarifications_submitted_at" json:"clarifications_submitted_at"`
+	ClarificationVersion      int32                    `db:"clarification_version" json:"clarification_version"`
 }
 
 type Lesson struct {

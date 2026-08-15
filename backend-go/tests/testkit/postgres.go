@@ -4,10 +4,10 @@ package testkit
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
 
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/config"
 	appdb "github.com/Grimmjow06100/course-ai/backend-go/internal/db"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,7 +17,8 @@ import (
 // The test is skipped unless COURSE_AI_INTEGRATION_TEST=1 and all resources are closed automatically.
 func OpenPostgres(t *testing.T, timeout time.Duration) (context.Context, *pgxpool.Pool) {
 	t.Helper()
-	if os.Getenv("COURSE_AI_INTEGRATION_TEST") != "1" {
+
+	if value, _ := config.GetEnv[int]("COURSE_AI_INTEGRATION_TEST"); value != 1 {
 		t.Skip("set COURSE_AI_INTEGRATION_TEST=1 to run PostgreSQL integration tests")
 	}
 

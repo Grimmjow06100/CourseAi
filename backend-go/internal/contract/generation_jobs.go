@@ -30,14 +30,3 @@ type GenerationJobExecutor interface {
 type GenerationJobFailureHandler interface {
 	HandleTerminalFailure(ctx context.Context, job domain.GenerationJob, cause error) error
 }
-
-// ArchitectureJobPayload carries user-confirmed inputs for an architecture job.
-// Empty fields are completed from the persisted prompt analysis.
-type ArchitectureJobPayload struct {
-	Title        string                `json:"title"`
-	Synopsis     string                `json:"synopsis"`
-	CurrentLevel domain.Level          `json:"currentLevel"`
-	TargetLevel  domain.Level          `json:"targetLevel"`
-	Goals        []string              `json:"goals"`
-	Language     domain.CourseLanguage `json:"language"`
-}

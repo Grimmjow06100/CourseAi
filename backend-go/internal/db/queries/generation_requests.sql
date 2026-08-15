@@ -19,6 +19,17 @@ INSERT INTO generation_requests (
   detected_language,
   clarification_questions,
   raw_analysis_output,
+  analysis_completed_at,
+  clarification_answers,
+  confirmed_title,
+  confirmed_synopsis,
+  confirmed_current_level,
+  confirmed_target_level,
+  confirmed_goals,
+  confirmed_language,
+  brief_confirmed_at,
+  clarifications_submitted_at,
+  clarification_version,
   created_at,
   updated_at
 )
@@ -42,31 +53,21 @@ VALUES (
   sqlc.narg('detected_language')::course_language,
   @clarification_questions::jsonb,
   sqlc.narg('raw_analysis_output')::jsonb,
+  sqlc.narg('analysis_completed_at'),
+  @clarification_answers::jsonb,
+  sqlc.narg('confirmed_title'),
+  sqlc.narg('confirmed_synopsis'),
+  sqlc.narg('confirmed_current_level')::level,
+  sqlc.narg('confirmed_target_level')::level,
+  @confirmed_goals::jsonb,
+  sqlc.narg('confirmed_language')::course_language,
+  sqlc.narg('brief_confirmed_at'),
+  sqlc.narg('clarifications_submitted_at'),
+  @clarification_version,
   @created_at,
   @updated_at
 )
-RETURNING
-  id,
-  initial_user_prompt,
-  pipeline_status,
-  current_step,
-  progress_percent,
-  failure_message,
-  started_at,
-  completed_at,
-  is_out_of_scope,
-  error_message,
-  warning_message,
-  suggested_title,
-  short_synopsis,
-  detected_current_level,
-  detected_target_level,
-  detected_goal,
-  detected_language,
-  clarification_questions,
-  raw_analysis_output,
-  created_at,
-  updated_at;
+RETURNING *;
 
 -- name: UpdateGenerationRequest :one
 UPDATE generation_requests
@@ -89,56 +90,31 @@ SET
   detected_language = sqlc.narg('detected_language')::course_language,
   clarification_questions = @clarification_questions::jsonb,
   raw_analysis_output = sqlc.narg('raw_analysis_output')::jsonb,
+  analysis_completed_at = sqlc.narg('analysis_completed_at'),
+  clarification_answers = @clarification_answers::jsonb,
+  confirmed_title = sqlc.narg('confirmed_title'),
+  confirmed_synopsis = sqlc.narg('confirmed_synopsis'),
+  confirmed_current_level = sqlc.narg('confirmed_current_level')::level,
+  confirmed_target_level = sqlc.narg('confirmed_target_level')::level,
+  confirmed_goals = @confirmed_goals::jsonb,
+  confirmed_language = sqlc.narg('confirmed_language')::course_language,
+  brief_confirmed_at = sqlc.narg('brief_confirmed_at'),
+  clarifications_submitted_at = sqlc.narg('clarifications_submitted_at'),
+  clarification_version = @clarification_version,
   updated_at = @updated_at
 WHERE id = @id
-RETURNING
-  id,
-  initial_user_prompt,
-  pipeline_status,
-  current_step,
-  progress_percent,
-  failure_message,
-  started_at,
-  completed_at,
-  is_out_of_scope,
-  error_message,
-  warning_message,
-  suggested_title,
-  short_synopsis,
-  detected_current_level,
-  detected_target_level,
-  detected_goal,
-  detected_language,
-  clarification_questions,
-  raw_analysis_output,
-  created_at,
-  updated_at;
+RETURNING *;
 
 -- name: GetGenerationRequestByID :one
-SELECT
-  id,
-  initial_user_prompt,
-  pipeline_status,
-  current_step,
-  progress_percent,
-  failure_message,
-  started_at,
-  completed_at,
-  is_out_of_scope,
-  error_message,
-  warning_message,
-  suggested_title,
-  short_synopsis,
-  detected_current_level,
-  detected_target_level,
-  detected_goal,
-  detected_language,
-  clarification_questions,
-  raw_analysis_output,
-  created_at,
-  updated_at
+SELECT *
 FROM generation_requests
 WHERE id = @id;
+
+-- name: GetGenerationRequestForUpdate :one
+SELECT *
+FROM generation_requests
+WHERE id = @id
+FOR UPDATE;
 
 -- name: GetGenerationStatusByID :one
 SELECT
@@ -147,6 +123,16 @@ SELECT
   gr.current_step,
   gr.progress_percent,
   gr.failure_message,
+  gr.is_out_of_scope,
+	gr.error_message,
+	gr.warning_message,
+	gr.suggested_title,
+	gr.short_synopsis,
+	gr.detected_current_level,
+	gr.detected_target_level,
+	gr.detected_goal,
+	gr.detected_language,
+  gr.clarification_questions,
   c.id AS course_id,
   c.status AS course_status
 FROM generation_requests gr
@@ -154,27 +140,7 @@ LEFT JOIN courses c ON c.request_id = gr.id
 WHERE gr.id = @id;
 
 -- name: GetGenerationRequestByCourseID :one
-SELECT gr.id,
-  gr.initial_user_prompt,
-  gr.pipeline_status,
-  gr.current_step,
-  gr.progress_percent,
-  gr.failure_message,
-  gr.started_at,
-  gr.completed_at,
-  gr.is_out_of_scope,
-  gr.error_message,
-  gr.warning_message,
-  gr.suggested_title,
-  gr.short_synopsis,
-  gr.detected_current_level,
-  gr.detected_target_level,
-  gr.detected_goal,
-  gr.detected_language,
-  gr.clarification_questions,
-  gr.raw_analysis_output,
-  gr.created_at,
-  gr.updated_at
+SELECT gr.*
 FROM generation_requests gr
 JOIN courses c ON c.request_id = gr.id
 WHERE c.id = @course_id;

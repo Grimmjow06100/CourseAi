@@ -245,7 +245,6 @@ func enqueueGenerationJobParams(job domain.GenerationJob) dbsqlc.EnqueueGenerati
 func sameGenerationJobOperation(existing, candidate domain.GenerationJob) bool {
 	return existing.RequestID == candidate.RequestID &&
 		existing.Kind == candidate.Kind &&
-		pointer.Equal(existing.ParentJobID, candidate.ParentJobID) &&
 		pointer.Equal(existing.TargetID, candidate.TargetID) &&
 		jsonutil.EqualObjects(existing.Payload, candidate.Payload)
 }

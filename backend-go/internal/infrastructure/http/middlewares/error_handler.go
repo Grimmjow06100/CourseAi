@@ -110,6 +110,14 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusConflict, "generation_not_completed", err.Error()
 	case errors.Is(err, service.ErrGenerationAnalysisRequired):
 		return http.StatusConflict, "generation_analysis_required", err.Error()
+	case errors.Is(err, service.ErrGenerationBriefRequired):
+		return http.StatusConflict, "generation_brief_required", err.Error()
+	case errors.Is(err, service.ErrGenerationAwaitingClarification):
+		return http.StatusConflict, "generation_awaiting_clarification", err.Error()
+	case errors.Is(err, service.ErrGenerationNotAwaitingClarification):
+		return http.StatusConflict, "generation_not_awaiting_clarification", err.Error()
+	case errors.Is(err, service.ErrClarificationAlreadySubmitted):
+		return http.StatusConflict, "clarification_already_submitted", err.Error()
 	case errors.Is(err, service.ErrGenerationNotRetryable):
 		return http.StatusConflict, "generation_not_retryable", err.Error()
 	case errors.Is(err, service.ErrGenerationStructureRetryNotAllowed):
@@ -131,6 +139,11 @@ func classifyError(err error) (int, string, string) {
 		errors.Is(err, domain.ErrInvalidPassword),
 		errors.Is(err, domain.ErrInvalidUsername),
 		errors.Is(err, domain.ErrInvalidClarification),
+		errors.Is(err, domain.ErrInvalidClarificationAnswer),
+		errors.Is(err, domain.ErrClarificationAnswerMissing),
+		errors.Is(err, domain.ErrClarificationAnswerUnknown),
+		errors.Is(err, domain.ErrClarificationValueNotAllowed),
+		errors.Is(err, domain.ErrGenerationBriefIncomplete),
 		errors.Is(err, domain.ErrGenerationRequestNotReady):
 		return http.StatusBadRequest, "validation_error", err.Error()
 	default:

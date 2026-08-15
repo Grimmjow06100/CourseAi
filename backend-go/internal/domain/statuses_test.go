@@ -44,8 +44,7 @@ func TestCourseGenerationStatusTransitions(t *testing.T) {
 		to   CourseGenerationStatus
 		want bool
 	}{
-		{name: "analysis can request clarification", from: CourseStatusAnalysisPending, to: CourseStatusNeedsClarification, want: true},
-		{name: "clarification can restart analysis", from: CourseStatusNeedsClarification, to: CourseStatusAnalysisPending, want: true},
+		{name: "analysis can complete", from: CourseStatusAnalysisPending, to: CourseStatusAnalysisCompleted, want: true},
 		{name: "content can complete", from: CourseStatusContentGenerating, to: CourseStatusCompleted, want: true},
 		{name: "same status is idempotent", from: CourseStatusStructureGenerated, to: CourseStatusStructureGenerated, want: true},
 		{name: "cannot skip stages", from: CourseStatusAnalysisCompleted, to: CourseStatusCompleted, want: false},
@@ -70,6 +69,9 @@ func TestGenerationPipelineStatusTransitions(t *testing.T) {
 	}
 	if !PipelineStatusRunning.CanTransitionTo(PipelineStatusCompleted) {
 		t.Fatal("running should transition to completed")
+	}
+	if !PipelineStatusRunning.CanTransitionTo(PipelineStatusAwaitingClarification) || !PipelineStatusAwaitingClarification.CanTransitionTo(PipelineStatusQueued) {
+		t.Fatal("clarification pause and resume transitions should be allowed")
 	}
 	if PipelineStatusCompleted.CanTransitionTo(PipelineStatusRunning) {
 		t.Fatal("completed must be terminal")

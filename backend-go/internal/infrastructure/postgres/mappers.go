@@ -49,23 +49,27 @@ func generationRequestFromSQLC(row dbsqlc.GenerationRequest) (domain.GenerationR
 	}
 
 	request := domain.GenerationRequest{
-		ID:                row.ID,
-		InitialUserPrompt: row.InitialUserPrompt,
-		PipelineStatus:    status,
-		CurrentStep:       row.CurrentStep,
-		ProgressPercent:   int(row.ProgressPercent),
-		FailureMessage:    row.FailureMessage,
-		StartedAt:         row.StartedAt,
-		CompletedAt:       row.CompletedAt,
-		IsOutOfScope:      row.IsOutOfScope,
-		ErrorMessage:      row.ErrorMessage,
-		WarningMessage:    row.WarningMessage,
-		SuggestedTitle:    row.SuggestedTitle,
-		ShortSynopsis:     row.ShortSynopsis,
-		DetectedGoal:      row.DetectedGoal,
-		RawAnalysisOutput: rawJSONFromBytes(row.RawAnalysisOutput),
-		CreatedAt:         row.CreatedAt,
-		UpdatedAt:         row.UpdatedAt,
+		ID:                        row.ID,
+		InitialUserPrompt:         row.InitialUserPrompt,
+		PipelineStatus:            status,
+		CurrentStep:               row.CurrentStep,
+		ProgressPercent:           int(row.ProgressPercent),
+		FailureMessage:            row.FailureMessage,
+		StartedAt:                 row.StartedAt,
+		CompletedAt:               row.CompletedAt,
+		IsOutOfScope:              row.IsOutOfScope,
+		ErrorMessage:              row.ErrorMessage,
+		WarningMessage:            row.WarningMessage,
+		SuggestedTitle:            row.SuggestedTitle,
+		ShortSynopsis:             row.ShortSynopsis,
+		DetectedGoal:              row.DetectedGoal,
+		RawAnalysisOutput:         rawJSONFromBytes(row.RawAnalysisOutput),
+		CreatedAt:                 row.CreatedAt,
+		UpdatedAt:                 row.UpdatedAt,
+		AnalysisCompletedAt:       row.AnalysisCompletedAt,
+		BriefConfirmedAt:          row.BriefConfirmedAt,
+		ClarificationsSubmittedAt: row.ClarificationsSubmittedAt,
+		ClarificationVersion:      int(row.ClarificationVersion),
 	}
 
 	if row.DetectedCurrentLevel != nil {
@@ -91,6 +95,14 @@ func generationRequestFromSQLC(row dbsqlc.GenerationRequest) (domain.GenerationR
 	}
 
 	request.ClarificationQuestions, err = clarificationQuestionsFromJSON(row.ClarificationQuestions)
+	if err != nil {
+		return domain.GenerationRequest{}, err
+	}
+	request.ClarificationAnswers, err = clarificationAnswersFromJSON(row.ClarificationAnswers)
+	if err != nil {
+		return domain.GenerationRequest{}, err
+	}
+	request.ConfirmedBrief, err = confirmedBriefFromSQLC(row)
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
@@ -425,6 +437,65 @@ func clarificationQuestionsFromJSON(data []byte) ([]domain.ClarificationQuestion
 		return nil, fmt.Errorf("unmarshal clarification questions: %w", err)
 	}
 	return values, nil
+}
+
+func clarificationAnswersJSON(values []domain.ClarificationAnswer) (string, error) {
+	if values == nil {
+		values = []domain.ClarificationAnswer{}
+	}
+	data, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("marshal clarification answers: %w", err)
+	}
+	return string(data), nil
+}
+
+func clarificationAnswersFromJSON(data []byte) ([]domain.ClarificationAnswer, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	values := make([]domain.ClarificationAnswer, 0)
+	if err := json.Unmarshal(data, &values); err != nil {
+		return nil, fmt.Errorf("unmarshal clarification answers: %w", err)
+	}
+	return values, nil
+}
+
+func confirmedBriefFromSQLC(row dbsqlc.GenerationRequest) (*domain.GenerationBrief, error) {
+	if row.ConfirmedTitle == nil && row.ConfirmedSynopsis == nil && row.ConfirmedCurrentLevel == nil && row.ConfirmedTargetLevel == nil && row.ConfirmedLanguage == nil {
+		return nil, nil
+	}
+	if row.ConfirmedTitle == nil || row.ConfirmedSynopsis == nil || row.ConfirmedCurrentLevel == nil || row.ConfirmedTargetLevel == nil || row.ConfirmedLanguage == nil {
+		return nil, domain.ErrGenerationBriefIncomplete
+	}
+	goals, err := stringSliceFromJSON(row.ConfirmedGoals)
+	if err != nil {
+		return nil, err
+	}
+	currentLevel, err := domain.ParseLevel(string(*row.ConfirmedCurrentLevel))
+	if err != nil {
+		return nil, err
+	}
+	targetLevel, err := domain.ParseLevel(string(*row.ConfirmedTargetLevel))
+	if err != nil {
+		return nil, err
+	}
+	language, err := domain.ParseCourseLanguage(string(*row.ConfirmedLanguage))
+	if err != nil {
+		return nil, err
+	}
+	brief := domain.GenerationBrief{
+		Title:        *row.ConfirmedTitle,
+		Synopsis:     *row.ConfirmedSynopsis,
+		CurrentLevel: currentLevel,
+		TargetLevel:  targetLevel,
+		Goals:        goals,
+		Language:     language,
+	}
+	if err := brief.Validate(); err != nil {
+		return nil, err
+	}
+	return &brief, nil
 }
 
 func exercisePayloadJSON(value domain.ExercisePayload) (string, error) {

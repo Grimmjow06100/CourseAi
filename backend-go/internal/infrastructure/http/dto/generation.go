@@ -26,6 +26,18 @@ type GenerateStructureRequest struct {
 	Language     string   `json:"language" binding:"required"`
 }
 
+type SubmitClarificationsRequest struct {
+	Answers  []ClarificationAnswerRequest `json:"answers" binding:"required,min=1,dive"`
+	Title    string                       `json:"title" binding:"required,max=200"`
+	Synopsis string                       `json:"synopsis" binding:"required,max=2000"`
+	Language string                       `json:"language" binding:"required,oneof=fr en"`
+}
+
+type ClarificationAnswerRequest struct {
+	QuestionID     string   `json:"questionId" binding:"required,oneof=goals currentLevel targetLevel"`
+	SelectedValues []string `json:"selectedValues" binding:"required,min=1,max=4,dive,required"`
+}
+
 type GenerationStartedResponse struct {
 	JobID        string `json:"jobId"`
 	RequestID    string `json:"requestId"`
@@ -57,13 +69,29 @@ type GenerationJobResponse struct {
 }
 
 type GenerationStatusResponse struct {
-	RequestID       string  `json:"requestId"`
-	CourseID        *string `json:"courseId"`
-	PipelineStatus  string  `json:"pipelineStatus"`
-	CourseStatus    *string `json:"courseStatus"`
-	CurrentStep     *string `json:"currentStep"`
-	ProgressPercent int     `json:"progressPercent"`
-	FailureMessage  *string `json:"failureMessage"`
+	RequestID              string                            `json:"requestId"`
+	CourseID               *string                           `json:"courseId"`
+	PipelineStatus         string                            `json:"pipelineStatus"`
+	CourseStatus           *string                           `json:"courseStatus"`
+	CurrentStep            *string                           `json:"currentStep"`
+	ProgressPercent        int                               `json:"progressPercent"`
+	FailureMessage         *string                           `json:"failureMessage"`
+	IsOutOfScope           bool                              `json:"isOutOfScope"`
+	ErrorMessage           *string                           `json:"errorMessage"`
+	WarningMessage         *string                           `json:"warningMessage"`
+	SuggestedTitle         *string                           `json:"suggestedTitle"`
+	ShortSynopsis          *string                           `json:"shortSynopsis"`
+	DetectedCurrentLevel   *string                           `json:"detectedCurrentLevel"`
+	DetectedTargetLevel    *string                           `json:"detectedTargetLevel"`
+	DetectedGoal           *string                           `json:"detectedGoal"`
+	DetectedLanguage       *string                           `json:"detectedLanguage"`
+	ClarificationQuestions []ClarificationQuestionResponse   `json:"clarificationQuestions"`
+	ActionRequired         *GenerationActionRequiredResponse `json:"actionRequired"`
+}
+
+type GenerationActionRequiredResponse struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
 }
 
 type GenerationAnalysisResponse struct {
@@ -76,32 +104,58 @@ type GenerationResultResponse struct {
 }
 
 type GenerationRequestResponse struct {
-	ID                     string                          `json:"id"`
-	InitialUserPrompt      string                          `json:"initialUserPrompt"`
-	PipelineStatus         string                          `json:"pipelineStatus"`
-	CurrentStep            *string                         `json:"currentStep"`
-	ProgressPercent        int                             `json:"progressPercent"`
-	FailureMessage         *string                         `json:"failureMessage"`
-	StartedAt              *time.Time                      `json:"startedAt"`
-	CompletedAt            *time.Time                      `json:"completedAt"`
-	IsOutOfScope           bool                            `json:"isOutOfScope"`
-	ErrorMessage           *string                         `json:"errorMessage"`
-	WarningMessage         *string                         `json:"warningMessage"`
-	SuggestedTitle         *string                         `json:"suggestedTitle"`
-	ShortSynopsis          *string                         `json:"shortSynopsis"`
-	DetectedCurrentLevel   *string                         `json:"detectedCurrentLevel"`
-	DetectedTargetLevel    *string                         `json:"detectedTargetLevel"`
-	DetectedGoal           *string                         `json:"detectedGoal"`
-	DetectedLanguage       *string                         `json:"detectedLanguage"`
-	ClarificationQuestions []ClarificationQuestionResponse `json:"clarificationQuestions"`
-	CreatedAt              time.Time                       `json:"createdAt"`
-	UpdatedAt              time.Time                       `json:"updatedAt"`
+	ID                        string                          `json:"id"`
+	InitialUserPrompt         string                          `json:"initialUserPrompt"`
+	PipelineStatus            string                          `json:"pipelineStatus"`
+	CurrentStep               *string                         `json:"currentStep"`
+	ProgressPercent           int                             `json:"progressPercent"`
+	FailureMessage            *string                         `json:"failureMessage"`
+	StartedAt                 *time.Time                      `json:"startedAt"`
+	CompletedAt               *time.Time                      `json:"completedAt"`
+	IsOutOfScope              bool                            `json:"isOutOfScope"`
+	ErrorMessage              *string                         `json:"errorMessage"`
+	WarningMessage            *string                         `json:"warningMessage"`
+	SuggestedTitle            *string                         `json:"suggestedTitle"`
+	ShortSynopsis             *string                         `json:"shortSynopsis"`
+	DetectedCurrentLevel      *string                         `json:"detectedCurrentLevel"`
+	DetectedTargetLevel       *string                         `json:"detectedTargetLevel"`
+	DetectedGoal              *string                         `json:"detectedGoal"`
+	DetectedLanguage          *string                         `json:"detectedLanguage"`
+	ClarificationQuestions    []ClarificationQuestionResponse `json:"clarificationQuestions"`
+	ClarificationAnswers      []ClarificationAnswerResponse   `json:"clarificationAnswers"`
+	ConfirmedBrief            *GenerationBriefResponse        `json:"confirmedBrief"`
+	AnalysisCompletedAt       *time.Time                      `json:"analysisCompletedAt"`
+	BriefConfirmedAt          *time.Time                      `json:"briefConfirmedAt"`
+	ClarificationsSubmittedAt *time.Time                      `json:"clarificationsSubmittedAt"`
+	ClarificationVersion      int                             `json:"clarificationVersion"`
+	CreatedAt                 time.Time                       `json:"createdAt"`
+	UpdatedAt                 time.Time                       `json:"updatedAt"`
 }
 
 type ClarificationQuestionResponse struct {
-	ID       string   `json:"id"`
-	Question string   `json:"question"`
-	Options  []string `json:"options"`
+	ID            string                        `json:"id"`
+	Question      string                        `json:"question"`
+	Options       []ClarificationOptionResponse `json:"options"`
+	AllowMultiple bool                          `json:"allowMultiple"`
+}
+
+type ClarificationOptionResponse struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+type ClarificationAnswerResponse struct {
+	QuestionID     string   `json:"questionId"`
+	SelectedValues []string `json:"selectedValues"`
+}
+
+type GenerationBriefResponse struct {
+	Title        string   `json:"title"`
+	Synopsis     string   `json:"synopsis"`
+	CurrentLevel string   `json:"currentLevel"`
+	TargetLevel  string   `json:"targetLevel"`
+	Goals        []string `json:"goals"`
+	Language     string   `json:"language"`
 }
 
 func GenerationStartedFromContract(started contract.GenerationStarted) GenerationStartedResponse {
@@ -139,15 +193,29 @@ func GenerationJobFromDomain(job domain.GenerationJob) GenerationJobResponse {
 }
 
 func GenerationStatusFromContract(status contract.GenerationStatus) GenerationStatusResponse {
-	return GenerationStatusResponse{
-		RequestID:       status.RequestID.String(),
-		CourseID:        pointer.Map(status.CourseID, uuid.UUID.String),
-		PipelineStatus:  string(status.PipelineStatus),
-		CourseStatus:    pointer.Map(status.CourseStatus, func(value domain.CourseGenerationStatus) string { return string(value) }),
-		CurrentStep:     status.CurrentStep,
-		ProgressPercent: status.ProgressPercent,
-		FailureMessage:  status.FailureMessage,
+	response := GenerationStatusResponse{
+		RequestID:              status.RequestID.String(),
+		CourseID:               pointer.Map(status.CourseID, uuid.UUID.String),
+		PipelineStatus:         string(status.PipelineStatus),
+		CourseStatus:           pointer.Map(status.CourseStatus, func(value domain.CourseGenerationStatus) string { return string(value) }),
+		CurrentStep:            status.CurrentStep,
+		ProgressPercent:        status.ProgressPercent,
+		FailureMessage:         status.FailureMessage,
+		IsOutOfScope:           status.IsOutOfScope,
+		ErrorMessage:           status.ErrorMessage,
+		WarningMessage:         status.WarningMessage,
+		SuggestedTitle:         status.SuggestedTitle,
+		ShortSynopsis:          status.ShortSynopsis,
+		DetectedCurrentLevel:   pointer.Map(status.DetectedCurrentLevel, func(value domain.Level) string { return string(value) }),
+		DetectedTargetLevel:    pointer.Map(status.DetectedTargetLevel, func(value domain.Level) string { return string(value) }),
+		DetectedGoal:           status.DetectedGoal,
+		DetectedLanguage:       pointer.Map(status.DetectedLanguage, func(value domain.CourseLanguage) string { return string(value) }),
+		ClarificationQuestions: clarificationQuestionsFromDomain(status.ClarificationQuestions),
 	}
+	if status.ActionRequired != nil {
+		response.ActionRequired = &GenerationActionRequiredResponse{Type: status.ActionRequired.Type, URL: status.ActionRequired.URL}
+	}
+	return response
 }
 
 func GenerationAnalysisFromContract(result contract.GenerationAnalysisResult) GenerationAnalysisResponse {
@@ -162,35 +230,69 @@ func GenerationResultFromContract(result contract.GenerationResult) GenerationRe
 }
 
 func GenerationRequestFromDomain(request domain.GenerationRequest) GenerationRequestResponse {
-	questions := make([]ClarificationQuestionResponse, 0, len(request.ClarificationQuestions))
-	for _, question := range request.ClarificationQuestions {
-		questions = append(questions, ClarificationQuestionResponse{
-			ID:       question.ID,
-			Question: question.Question,
-			Options:  question.Options,
-		})
+	questions := clarificationQuestionsFromDomain(request.ClarificationQuestions)
+	answers := make([]ClarificationAnswerResponse, 0, len(request.ClarificationAnswers))
+	for _, answer := range request.ClarificationAnswers {
+		answers = append(answers, ClarificationAnswerResponse{QuestionID: answer.QuestionID, SelectedValues: answer.SelectedValues})
 	}
 
 	return GenerationRequestResponse{
-		ID:                     request.ID.String(),
-		InitialUserPrompt:      request.InitialUserPrompt,
-		PipelineStatus:         string(request.PipelineStatus),
-		CurrentStep:            request.CurrentStep,
-		ProgressPercent:        request.ProgressPercent,
-		FailureMessage:         request.FailureMessage,
-		StartedAt:              request.StartedAt,
-		CompletedAt:            request.CompletedAt,
-		IsOutOfScope:           request.IsOutOfScope,
-		ErrorMessage:           request.ErrorMessage,
-		WarningMessage:         request.WarningMessage,
-		SuggestedTitle:         request.SuggestedTitle,
-		ShortSynopsis:          request.ShortSynopsis,
-		DetectedCurrentLevel:   pointer.Map(request.DetectedCurrentLevel, func(value domain.Level) string { return string(value) }),
-		DetectedTargetLevel:    pointer.Map(request.DetectedTargetLevel, func(value domain.Level) string { return string(value) }),
-		DetectedGoal:           request.DetectedGoal,
-		DetectedLanguage:       pointer.Map(request.DetectedLanguage, func(value domain.CourseLanguage) string { return string(value) }),
-		ClarificationQuestions: questions,
-		CreatedAt:              request.CreatedAt,
-		UpdatedAt:              request.UpdatedAt,
+		ID:                        request.ID.String(),
+		InitialUserPrompt:         request.InitialUserPrompt,
+		PipelineStatus:            string(request.PipelineStatus),
+		CurrentStep:               request.CurrentStep,
+		ProgressPercent:           request.ProgressPercent,
+		FailureMessage:            request.FailureMessage,
+		StartedAt:                 request.StartedAt,
+		CompletedAt:               request.CompletedAt,
+		IsOutOfScope:              request.IsOutOfScope,
+		ErrorMessage:              request.ErrorMessage,
+		WarningMessage:            request.WarningMessage,
+		SuggestedTitle:            request.SuggestedTitle,
+		ShortSynopsis:             request.ShortSynopsis,
+		DetectedCurrentLevel:      pointer.Map(request.DetectedCurrentLevel, func(value domain.Level) string { return string(value) }),
+		DetectedTargetLevel:       pointer.Map(request.DetectedTargetLevel, func(value domain.Level) string { return string(value) }),
+		DetectedGoal:              request.DetectedGoal,
+		DetectedLanguage:          pointer.Map(request.DetectedLanguage, func(value domain.CourseLanguage) string { return string(value) }),
+		ClarificationQuestions:    questions,
+		ClarificationAnswers:      answers,
+		ConfirmedBrief:            generationBriefFromDomain(request.ConfirmedBrief),
+		AnalysisCompletedAt:       request.AnalysisCompletedAt,
+		BriefConfirmedAt:          request.BriefConfirmedAt,
+		ClarificationsSubmittedAt: request.ClarificationsSubmittedAt,
+		ClarificationVersion:      request.ClarificationVersion,
+		CreatedAt:                 request.CreatedAt,
+		UpdatedAt:                 request.UpdatedAt,
+	}
+}
+
+func clarificationQuestionsFromDomain(questions []domain.ClarificationQuestion) []ClarificationQuestionResponse {
+	responses := make([]ClarificationQuestionResponse, 0, len(questions))
+	for _, question := range questions {
+		options := make([]ClarificationOptionResponse, 0, len(question.Options))
+		for _, option := range question.Options {
+			options = append(options, ClarificationOptionResponse{Value: option.Value, Label: option.Label})
+		}
+		responses = append(responses, ClarificationQuestionResponse{
+			ID:            question.ID,
+			Question:      question.Question,
+			Options:       options,
+			AllowMultiple: question.AllowMultiple,
+		})
+	}
+	return responses
+}
+
+func generationBriefFromDomain(brief *domain.GenerationBrief) *GenerationBriefResponse {
+	if brief == nil {
+		return nil
+	}
+	return &GenerationBriefResponse{
+		Title:        brief.Title,
+		Synopsis:     brief.Synopsis,
+		CurrentLevel: string(brief.CurrentLevel),
+		TargetLevel:  string(brief.TargetLevel),
+		Goals:        brief.Goals,
+		Language:     string(brief.Language),
 	}
 }

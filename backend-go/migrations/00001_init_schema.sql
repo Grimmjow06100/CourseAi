@@ -2,7 +2,6 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TYPE "course_generation_status" AS ENUM (
   'analysis_pending',
-  'needs_clarification',
   'analysis_completed',
   'architecture_generating',
   'structure_generated',
@@ -16,6 +15,7 @@ CREATE TYPE "course_generation_status" AS ENUM (
 CREATE TYPE "generation_pipeline_status" AS ENUM (
   'queued',
   'running',
+  'awaiting_clarification',
   'completed',
   'failed'
 );

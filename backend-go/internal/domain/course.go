@@ -204,6 +204,20 @@ func (c *Course) MarkFailed() error {
 	return c.TransitionTo(CourseStatusFailed)
 }
 
+func (c *Course) RestartGenerationFromFailure(next CourseGenerationStatus) error {
+	if c.Status != CourseStatusFailed {
+		return fmt.Errorf("%w: course is not failed", ErrInvalidStatusTransition)
+	}
+	switch next {
+	case CourseStatusStructureGenerated, CourseStatusLessonsGenerating, CourseStatusLessonsGenerated, CourseStatusContentGenerating:
+		c.Status = next
+		c.UpdatedAt = time.Now()
+		return nil
+	default:
+		return fmt.Errorf("%w: %s -> %s", ErrInvalidStatusTransition, c.Status, next)
+	}
+}
+
 func (c Course) TotalDurationMinutes() int {
 	total := 0
 	for _, module := range c.Modules {

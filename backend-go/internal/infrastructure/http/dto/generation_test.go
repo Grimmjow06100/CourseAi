@@ -20,6 +20,9 @@ func TestGenerationDTOConversions(t *testing.T) {
 	courseStatus := domain.CourseStatusLessonsGenerated
 	level := domain.LevelIntermediate
 	language := domain.CourseLanguageFR
+	title := "Linux administration"
+	synopsis := "Learn Linux progressively"
+	goal := "Administer Linux"
 	now := time.Unix(100, 0).UTC()
 
 	started := GenerationStartedFromContract(contract.GenerationStarted{
@@ -40,16 +43,22 @@ func TestGenerationDTOConversions(t *testing.T) {
 
 	status := GenerationStatusFromContract(contract.GenerationStatus{
 		RequestID: requestID, CourseID: &courseID, PipelineStatus: domain.PipelineStatusRunning,
-		CourseStatus: &courseStatus, ProgressPercent: 60,
+		CourseStatus: &courseStatus, ProgressPercent: 60, SuggestedTitle: &title, ShortSynopsis: &synopsis,
+		DetectedCurrentLevel: &level, DetectedGoal: &goal, DetectedLanguage: &language,
 	})
-	if status.CourseID == nil || *status.CourseID != courseID.String() || status.CourseStatus == nil || *status.CourseStatus != string(courseStatus) {
+	if status.CourseID == nil || *status.CourseID != courseID.String() || status.CourseStatus == nil || *status.CourseStatus != string(courseStatus) ||
+		status.SuggestedTitle == nil || *status.SuggestedTitle != title || status.DetectedCurrentLevel == nil || *status.DetectedCurrentLevel != "intermediate" ||
+		status.DetectedLanguage == nil || *status.DetectedLanguage != "fr" {
 		t.Fatalf("unexpected status response: %+v", status)
 	}
 
 	request := domain.GenerationRequest{
 		ID: requestID, PipelineStatus: domain.PipelineStatusRunning,
 		DetectedCurrentLevel: &level, DetectedLanguage: &language,
-		ClarificationQuestions: []domain.ClarificationQuestion{{ID: "goals", Question: "Goal?", Options: []string{"Learn"}}},
+		ClarificationQuestions: []domain.ClarificationQuestion{{
+			ID: "goals", Question: "Goal?", AllowMultiple: true,
+			Options: []domain.ClarificationOption{{Value: "Learn", Label: "Learn"}, {Value: "Build", Label: "Build"}},
+		}},
 	}
 	requestResponse := GenerationRequestFromDomain(request)
 	if requestResponse.DetectedCurrentLevel == nil || *requestResponse.DetectedCurrentLevel != "intermediate" ||

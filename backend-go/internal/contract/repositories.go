@@ -36,6 +36,7 @@ type GenerationRequestRepository interface {
 	SaveGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error)
 	UpdateGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error)
 	FindGenerationRequestByID(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error)
+	FindGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error)
 	FindGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (domain.GenerationRequest, error)
 	FindGenerationStatusByID(ctx context.Context, id uuid.UUID) (GenerationStatus, error)
 }

@@ -66,7 +66,17 @@ Chaque objet dans `clarificationQuestions` doit contenir exactement :
 
 - `id` : une seule valeur parmi `goals`, `currentLevel`, `targetLevel`.
 - `question` : string non vide.
-- `options` : tableau de 2 à 4 strings utiles.
+- `options` : tableau de 2 à 4 objets contenant exactement `value` et `label`.
+- `allowMultiple` : boolean. Utiliser `true` uniquement pour `goals` et `false` pour les niveaux.
+
+Chaque option contient :
+
+- `value` : valeur canonique envoyee au backend ;
+- `label` : texte lisible affiche a l'utilisateur dans la langue detectee.
+
+Pour `currentLevel`, les valeurs d'options autorisees sont exclusivement `beginner`, `intermediate` et `advanced`.
+Pour `targetLevel`, les valeurs d'options autorisees sont exclusivement `beginner`, `intermediate`, `advanced` et `expert`.
+Pour `goals`, utilise une formulation courte et exploitable comme valeur, sans identifiant opaque. Le label peut etre plus descriptif.
 
 ## RÈGLES DE SCOPE
 
@@ -136,6 +146,9 @@ Ne pose une question que si l'information correspondante est inconnue.
 - Si `detectedGoal` vaut `unknown`, ajouter une question avec `id` égal à `goals`.
 - Si `detectedCurrentLevel` vaut `unknown`, ajouter une question avec `id` égal à `currentLevel`.
 - Si `detectedTargetLevel` vaut `unknown`, ajouter une question avec `id` égal à `targetLevel`.
+
+Pour la question `goals`, `allowMultiple` vaut `true`.
+Pour les questions `currentLevel` et `targetLevel`, `allowMultiple` vaut `false`.
 
 Ne pose jamais deux questions avec le même `id`.
 Si toutes les informations sont détectées, `clarificationQuestions` doit être `[]`.

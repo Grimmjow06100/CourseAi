@@ -21,9 +21,15 @@ type AnalysisResponse struct {
 }
 
 type clarificationQuestionPayload struct {
-	ID       string   `json:"id"`
-	Question string   `json:"question"`
-	Options  []string `json:"options"`
+	ID            string                       `json:"id"`
+	Question      string                       `json:"question"`
+	Options       []clarificationOptionPayload `json:"options"`
+	AllowMultiple bool                         `json:"allowMultiple"`
+}
+
+type clarificationOptionPayload struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
 }
 
 func (r AnalysisResponse) ToDomain() (domain.AnalysisSummary, error) {
@@ -42,10 +48,15 @@ func (r AnalysisResponse) ToDomain() (domain.AnalysisSummary, error) {
 
 	questions := make([]domain.ClarificationQuestion, 0, len(r.ClarificationQuestions))
 	for _, question := range r.ClarificationQuestions {
+		options := make([]domain.ClarificationOption, 0, len(question.Options))
+		for _, option := range question.Options {
+			options = append(options, domain.ClarificationOption{Value: option.Value, Label: option.Label})
+		}
 		questions = append(questions, domain.ClarificationQuestion{
-			ID:       question.ID,
-			Question: question.Question,
-			Options:  question.Options,
+			ID:            question.ID,
+			Question:      question.Question,
+			Options:       options,
+			AllowMultiple: question.AllowMultiple,
 		})
 	}
 

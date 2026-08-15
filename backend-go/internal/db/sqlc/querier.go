@@ -42,6 +42,7 @@ type Querier interface {
 	GetGenerationJobByIdempotencyKey(ctx context.Context, idempotencyKey string) (GenerationJob, error)
 	GetGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (GenerationRequest, error)
 	GetGenerationRequestByID(ctx context.Context, id uuid.UUID) (GenerationRequest, error)
+	GetGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (GenerationRequest, error)
 	GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (GetGenerationStatusByIDRow, error)
 	GetLessonByID(ctx context.Context, id uuid.UUID) (Lesson, error)
 	GetModuleByID(ctx context.Context, id uuid.UUID) (Module, error)

@@ -89,7 +89,7 @@ Puis cote backend Go :
 cd backend-go
 Copy-Item .env.example .env
 go mod download
-goose up
+make migrate-up
 go run ./cmd/api
 ```
 
@@ -174,6 +174,7 @@ Generation IA :
 ```http
 POST /api/generations
 POST /api/generations/analyze
+POST /api/generations/:requestID/clarifications
 POST /api/generations/:requestID/structure
 POST /api/generations/:requestID/structure/retry
 POST /api/generations/lessons/:lessonID/content
@@ -184,13 +185,14 @@ POST /api/generations/:requestID/retry
 GET  /api/generation-jobs/:jobID
 ```
 
-`POST /api/generations` enfile le mode automatique complet et retourne immediatement `202 Accepted` avec un `jobId`.
+`POST /api/generations` persiste la demande, enfile un job d'analyse et retourne immediatement `202 Accepted`. Si l'analyse manque d'informations, le statut passe a `awaiting_clarification` sans conserver de worker actif. Sinon, la pipeline enfile automatiquement l'architecture.
 `POST /api/generations/analyze` analyse un prompt et retourne le premier jet : hors scope eventuel, titre, synopsis, niveaux detectes, objectif, langue et questions de clarification.
+`POST /api/generations/:requestID/clarifications` valide et persiste les reponses ainsi que le brief confirme, puis enfile atomiquement le job d'architecture. Les valeurs envoyees doivent correspondre aux champs `value` des options retournees par le statut.
 `POST /api/generations/:requestID/structure` enfile la formation, ses modules et le plan des lessons. Cette route ne genere pas le contenu Markdown.
 `POST /api/generations/:requestID/structure/retry` relance uniquement l'etape structure sur une request `failed` dont l'echec vient de `architecture_generation` ou `lesson_plan_generation`; le body est le meme que `/structure` et les donnees partielles sont supprimees avant relance.
 `POST /api/generations/lessons/:lessonID/content` et `POST /api/generations/modules/:moduleID/contents` retournent aussi `202`; suivre leur etat avec `GET /api/generation-jobs/:jobID`.
 
-Le header `Idempotency-Key` est recommande sur `POST /api/generations`. Les migrations `00001`, `00002` et `00003` doivent etre appliquees avant le demarrage du worker.
+Le header `Idempotency-Key` est recommande sur `POST /api/generations`. Les migrations `00001` a `00004` doivent etre appliquees avant le demarrage du worker.
 
 ## Exemples rapides
 
@@ -216,6 +218,28 @@ Content-Type: application/json
   "prompt": "Je veux apprendre Docker pour deployer une API backend."
 }
 ```
+
+Repondre aux questions retournees lorsque `pipelineStatus` vaut `awaiting_clarification` :
+
+```http
+POST /api/generations/:requestID/clarifications
+Content-Type: application/json
+
+{
+  "answers": [
+    { "questionId": "currentLevel", "selectedValues": ["beginner"] },
+    { "questionId": "targetLevel", "selectedValues": ["intermediate"] },
+    { "questionId": "goals", "selectedValues": ["deploy_applications"] }
+  ],
+  "title": "Formation Docker pour deployer une API backend",
+  "synopsis": "Une progression pratique pour comprendre Docker, creer des images et deployer une API conteneurisee.",
+  "language": "fr"
+}
+```
+
+Le backend reconstruit les niveaux et objectifs du brief a partir des reponses validees. Cette commande retourne le `jobId` du job d'architecture avec un statut `queued`.
+
+Le polling de `GET /api/generations/:requestID/status` expose aussi `suggestedTitle`, `shortSynopsis`, les niveaux, l'objectif et la langue detectes. Le frontend dispose ainsi du premier jet complet avant d'envoyer les clarifications.
 
 Generer la structure apres confirmation du premier jet :
 
@@ -268,23 +292,22 @@ GET /api/courses?page=1&pageSize=20&search=docker&orderBy=created_at&orderDirect
 
 ## Migrations
 
-Appliquer les migrations :
+Appliquer les migrations depuis `backend-go/` :
 
 ```powershell
-cd backend-go
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" up
+make migrate-up
 ```
 
 Rollback d'une migration :
 
 ```powershell
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" down
+make migrate-down
 ```
 
 Afficher le statut :
 
 ```powershell
-goose -dir ./migrations postgres "postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable" status
+make migrate-status
 ```
 
 ## Commandes utiles

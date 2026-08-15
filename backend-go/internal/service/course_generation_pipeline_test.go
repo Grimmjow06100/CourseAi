@@ -13,27 +13,44 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestRunFullCourseJobCompletesPersistedPipeline(t *testing.T) {
+func TestStagedGenerationJobsCompletePersistedPipeline(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.August, 13, 14, 0, 0, 0, time.UTC)
-	request, err := domain.NewGenerationRequestAt("Build a Linux course", now)
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
 	store := newPipelineMemoryStore()
-	store.requests[request.ID] = request
 	ai := &pipelineAIStub{}
 	service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
 
-	if err := service.runFullCourseJob(context.Background(), request.ID); err != nil {
-		t.Fatalf("runFullCourseJob() error = %v", err)
+	started, err := service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
+	if err != nil {
+		t.Fatalf("start generation: %v", err)
 	}
-	completedRequest := store.requests[request.ID]
+	requestID := started.RequestID
+	analysisJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindAnalysis)
+	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+		t.Fatalf("runAnalysisJob() error = %v", err)
+	}
+	architectureJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindArchitecture)
+	if err := service.runArchitectureJob(context.Background(), architectureJob); err != nil {
+		t.Fatalf("runArchitectureJob() error = %v", err)
+	}
+	lessonPlanJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindLessonPlan)
+	if err := service.runLessonPlanJob(context.Background(), lessonPlanJob); err != nil {
+		t.Fatalf("runLessonPlanJob() error = %v", err)
+	}
+	lessonContentJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindLessonContent)
+	if err := service.runLessonContentJob(context.Background(), lessonContentJob); err != nil {
+		t.Fatalf("runLessonContentJob() error = %v", err)
+	}
+	finalizeJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindFinalizeCourse)
+	if err := service.runFinalizeCourseJob(context.Background(), finalizeJob); err != nil {
+		t.Fatalf("runFinalizeCourseJob() error = %v", err)
+	}
+	completedRequest := store.requests[requestID]
 	if completedRequest.PipelineStatus != domain.PipelineStatusCompleted || completedRequest.ProgressPercent != 100 {
 		t.Fatalf("unexpected request state: %+v", completedRequest)
 	}
-	course, err := store.courseByRequestID(request.ID)
+	course, err := store.courseByRequestID(requestID)
 	if err != nil {
 		t.Fatalf("find generated course: %v", err)
 	}
@@ -48,11 +65,110 @@ func TestRunFullCourseJobCompletesPersistedPipeline(t *testing.T) {
 		t.Fatalf("unexpected AI calls: %+v", ai)
 	}
 
-	if err := service.runFullCourseJob(context.Background(), request.ID); err != nil {
-		t.Fatalf("idempotent completed job error = %v", err)
+	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+		t.Fatalf("idempotent completed analysis job error = %v", err)
 	}
 	if ai.lessonContentCalls != 1 {
 		t.Fatalf("completed pipeline should not call AI again, calls=%d", ai.lessonContentCalls)
+	}
+}
+
+func TestAnalysisJobWaitsForClarificationsBeforeEnqueuingArchitecture(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 13, 15, 0, 0, 0, time.UTC)
+	store := newPipelineMemoryStore()
+	ai := &pipelineAIStub{needsClarification: true}
+	service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
+
+	started, err := service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
+	if err != nil {
+		t.Fatalf("start generation: %v", err)
+	}
+	analysisJob := pipelineJobByKind(t, store, started.RequestID, domain.GenerationJobKindAnalysis)
+	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+		t.Fatalf("runAnalysisJob() error = %v", err)
+	}
+
+	waiting := store.requests[started.RequestID]
+	if waiting.PipelineStatus != domain.PipelineStatusAwaitingClarification || len(waiting.ClarificationQuestions) != 1 {
+		t.Fatalf("request should wait for clarification: %+v", waiting)
+	}
+	jobs, err := store.jobs.ListByRequestID(context.Background(), started.RequestID)
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	for _, job := range jobs {
+		if job.Kind == domain.GenerationJobKindArchitecture {
+			t.Fatal("architecture job must not exist before clarification")
+		}
+	}
+	if store.jobs.count() != 1 || ai.analysisCalls != 1 {
+		t.Fatalf("unexpected work while waiting: jobs=%d analysisCalls=%d", store.jobs.count(), ai.analysisCalls)
+	}
+
+	accepted, err := service.SubmitClarifications(context.Background(), contract.SubmitClarificationsParams{
+		RequestID: started.RequestID,
+		Answers: []domain.ClarificationAnswer{{
+			QuestionID:     domain.ClarificationIDCurrentLevel,
+			SelectedValues: []string{"beginner"},
+		}},
+		Title:    "Linux fundamentals",
+		Synopsis: "Learn Linux progressively",
+		Language: domain.CourseLanguageEN,
+	})
+	if err != nil {
+		t.Fatalf("SubmitClarifications() error = %v", err)
+	}
+	architectureJob, err := store.jobs.FindByID(context.Background(), accepted.JobID)
+	if err != nil || architectureJob.Kind != domain.GenerationJobKindArchitecture {
+		t.Fatalf("architecture continuation = %+v, %v", architectureJob, err)
+	}
+	resumed := store.requests[started.RequestID]
+	if resumed.PipelineStatus != domain.PipelineStatusQueued || resumed.ConfirmedBrief == nil || resumed.ClarificationVersion != 1 {
+		t.Fatalf("request was not resumed with a confirmed brief: %+v", resumed)
+	}
+	if ai.analysisCalls != 1 {
+		t.Fatalf("clarification submission should not repeat analysis, calls=%d", ai.analysisCalls)
+	}
+}
+
+func TestRetryResumesPersistedClarificationWithoutCallingAIAgain(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 13, 16, 0, 0, 0, time.UTC)
+	store := newPipelineMemoryStore()
+	ai := &pipelineAIStub{needsClarification: true}
+	service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
+
+	started, err := service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
+	if err != nil {
+		t.Fatalf("start generation: %v", err)
+	}
+	analysisJob := pipelineJobByKind(t, store, started.RequestID, domain.GenerationJobKindAnalysis)
+	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+		t.Fatalf("run analysis: %v", err)
+	}
+	failed := store.requests[started.RequestID]
+	if err := failed.MarkFailed("transition persistence failed", now); err != nil {
+		t.Fatalf("mark failed: %v", err)
+	}
+	store.requests[started.RequestID] = failed
+
+	retry, err := service.RetryFullCourseGeneration(context.Background(), started.RequestID)
+	if err != nil {
+		t.Fatalf("retry generation: %v", err)
+	}
+	retryJob, err := store.jobs.FindByID(context.Background(), retry.JobID)
+	if err != nil || retryJob.Kind != domain.GenerationJobKindAnalysis {
+		t.Fatalf("clarification resume job = %+v, %v", retryJob, err)
+	}
+	if err := service.runAnalysisJob(context.Background(), retryJob); err != nil {
+		t.Fatalf("resume analysis state: %v", err)
+	}
+	resumed := store.requests[started.RequestID]
+	if resumed.PipelineStatus != domain.PipelineStatusAwaitingClarification || ai.analysisCalls != 1 {
+		t.Fatalf("unexpected resumed clarification: request=%+v analysisCalls=%d", resumed, ai.analysisCalls)
 	}
 }
 
@@ -97,6 +213,7 @@ type pipelineAIStub struct {
 	lessonContentCalls int
 	analysisErr        error
 	outOfScope         bool
+	needsClarification bool
 }
 
 func (a *pipelineAIStub) AnalyzePrompt(context.Context, contract.AnalysisInput) (contract.AnalysisOutput, error) {
@@ -105,6 +222,18 @@ func (a *pipelineAIStub) AnalyzePrompt(context.Context, contract.AnalysisInput) 
 		return contract.AnalysisOutput{}, a.analysisErr
 	}
 	current := domain.LevelBeginner
+	questions := []domain.ClarificationQuestion(nil)
+	if a.needsClarification {
+		current = domain.LevelUnknown
+		questions = []domain.ClarificationQuestion{{
+			ID:       domain.ClarificationIDCurrentLevel,
+			Question: "What is your current Linux level?",
+			Options: []domain.ClarificationOption{
+				{Value: "beginner", Label: "Beginner"},
+				{Value: "intermediate", Label: "Intermediate"},
+			},
+		}}
+	}
 	target := domain.LevelIntermediate
 	language := domain.CourseLanguageEN
 	title := "Linux fundamentals"
@@ -114,7 +243,7 @@ func (a *pipelineAIStub) AnalyzePrompt(context.Context, contract.AnalysisInput) 
 		Summary: domain.AnalysisSummary{
 			IsOutOfScope: a.outOfScope, SuggestedTitle: &title, ShortSynopsis: &synopsis,
 			DetectedCurrentLevel: &current, DetectedTargetLevel: &target,
-			DetectedGoal: &goal, DetectedLanguage: &language,
+			DetectedGoal: &goal, DetectedLanguage: &language, ClarificationQuestions: questions,
 		},
 		Raw: json.RawMessage(`{"analysis":true}`),
 	}, nil
@@ -159,6 +288,7 @@ type pipelineMemoryStore struct {
 	lessons   map[uuid.UUID]domain.Lesson
 	exercises map[uuid.UUID][]domain.Exercise
 	quizzes   map[uuid.UUID][]domain.Quiz
+	jobs      *memoryGenerationJobQueue
 }
 
 func newPipelineMemoryStore() *pipelineMemoryStore {
@@ -166,6 +296,7 @@ func newPipelineMemoryStore() *pipelineMemoryStore {
 		requests: make(map[uuid.UUID]domain.GenerationRequest), courses: make(map[uuid.UUID]domain.Course),
 		modules: make(map[uuid.UUID]domain.Module), lessons: make(map[uuid.UUID]domain.Lesson),
 		exercises: make(map[uuid.UUID][]domain.Exercise), quizzes: make(map[uuid.UUID][]domain.Quiz),
+		jobs: newMemoryGenerationJobQueue(),
 	}
 }
 
@@ -241,6 +372,24 @@ func (r pipelineMemoryRepositories) Exercises() contract.ExerciseRepository {
 func (r pipelineMemoryRepositories) Quizzes() contract.QuizRepository {
 	return pipelineQuizRepository{store: r.store}
 }
+func (r pipelineMemoryRepositories) GenerationJobs() contract.GenerationJobQueue {
+	return r.store.jobs
+}
+
+func pipelineJobByKind(t *testing.T, store *pipelineMemoryStore, requestID uuid.UUID, kind domain.GenerationJobKind) domain.GenerationJob {
+	t.Helper()
+	jobs, err := store.jobs.ListByRequestID(context.Background(), requestID)
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	for _, job := range jobs {
+		if job.Kind == kind {
+			return job
+		}
+	}
+	t.Fatalf("job kind %s not found in %+v", kind, jobs)
+	return domain.GenerationJob{}
+}
 
 type pipelineRequestRepository struct {
 	contract.GenerationRequestRepository
@@ -261,6 +410,10 @@ func (r pipelineRequestRepository) FindGenerationRequestByID(_ context.Context, 
 		return domain.GenerationRequest{}, contract.ErrGenerationRequestNotFound
 	}
 	return request, nil
+}
+
+func (r pipelineRequestRepository) FindGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error) {
+	return r.FindGenerationRequestByID(ctx, id)
 }
 
 type pipelineCourseRepository struct {

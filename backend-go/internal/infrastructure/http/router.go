@@ -47,6 +47,7 @@ func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHa
 	generations := router.Group("/generations")
 	generations.POST("", handler.Start)
 	generations.POST("/analyze", handler.Analyze)
+	generations.POST("/:requestID/clarifications", handler.SubmitClarifications)
 	generations.POST("/:requestID/structure", handler.Structure)
 	generations.POST("/:requestID/structure/retry", handler.RetryStructure)
 	generations.POST("/lessons/:lessonID/content", handler.LessonContent)

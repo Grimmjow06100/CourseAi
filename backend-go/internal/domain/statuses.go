@@ -204,7 +204,6 @@ type CourseGenerationStatus string
 
 const (
 	CourseStatusAnalysisPending        CourseGenerationStatus = "analysis_pending"
-	CourseStatusNeedsClarification     CourseGenerationStatus = "needs_clarification"
 	CourseStatusAnalysisCompleted      CourseGenerationStatus = "analysis_completed"
 	CourseStatusArchitectureGenerating CourseGenerationStatus = "architecture_generating"
 	CourseStatusStructureGenerated     CourseGenerationStatus = "structure_generated"
@@ -226,7 +225,6 @@ func ParseCourseGenerationStatus(value string) (CourseGenerationStatus, error) {
 func (s CourseGenerationStatus) Validate() error {
 	switch s {
 	case CourseStatusAnalysisPending,
-		CourseStatusNeedsClarification,
 		CourseStatusAnalysisCompleted,
 		CourseStatusArchitectureGenerating,
 		CourseStatusStructureGenerated,
@@ -255,12 +253,7 @@ func (s CourseGenerationStatus) CanTransitionTo(next CourseGenerationStatus) boo
 
 	allowedTransitions := map[CourseGenerationStatus][]CourseGenerationStatus{
 		CourseStatusAnalysisPending: {
-			CourseStatusNeedsClarification,
 			CourseStatusAnalysisCompleted,
-			CourseStatusFailed,
-		},
-		CourseStatusNeedsClarification: {
-			CourseStatusAnalysisPending,
 			CourseStatusFailed,
 		},
 		CourseStatusAnalysisCompleted: {
@@ -300,10 +293,11 @@ func (s CourseGenerationStatus) CanTransitionTo(next CourseGenerationStatus) boo
 type GenerationPipelineStatus string
 
 const (
-	PipelineStatusQueued    GenerationPipelineStatus = "queued"
-	PipelineStatusRunning   GenerationPipelineStatus = "running"
-	PipelineStatusCompleted GenerationPipelineStatus = "completed"
-	PipelineStatusFailed    GenerationPipelineStatus = "failed"
+	PipelineStatusQueued                GenerationPipelineStatus = "queued"
+	PipelineStatusRunning               GenerationPipelineStatus = "running"
+	PipelineStatusAwaitingClarification GenerationPipelineStatus = "awaiting_clarification"
+	PipelineStatusCompleted             GenerationPipelineStatus = "completed"
+	PipelineStatusFailed                GenerationPipelineStatus = "failed"
 )
 
 func ParseGenerationPipelineStatus(value string) (GenerationPipelineStatus, error) {
@@ -316,7 +310,7 @@ func ParseGenerationPipelineStatus(value string) (GenerationPipelineStatus, erro
 
 func (s GenerationPipelineStatus) Validate() error {
 	switch s {
-	case PipelineStatusQueued, PipelineStatusRunning, PipelineStatusCompleted, PipelineStatusFailed:
+	case PipelineStatusQueued, PipelineStatusRunning, PipelineStatusAwaitingClarification, PipelineStatusCompleted, PipelineStatusFailed:
 		return nil
 	default:
 		return fmt.Errorf("%w: %s", ErrInvalidGenerationStatus, s)
@@ -339,7 +333,9 @@ func (s GenerationPipelineStatus) CanTransitionTo(next GenerationPipelineStatus)
 	case PipelineStatusQueued:
 		return next == PipelineStatusRunning || next == PipelineStatusFailed
 	case PipelineStatusRunning:
-		return next == PipelineStatusCompleted || next == PipelineStatusFailed
+		return next == PipelineStatusAwaitingClarification || next == PipelineStatusCompleted || next == PipelineStatusFailed
+	case PipelineStatusAwaitingClarification:
+		return next == PipelineStatusQueued || next == PipelineStatusFailed
 	default:
 		return false
 	}

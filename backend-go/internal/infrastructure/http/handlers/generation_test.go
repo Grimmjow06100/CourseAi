@@ -79,6 +79,38 @@ func TestGenerationHandlerStructureEnqueuesAndReturnsAccepted(t *testing.T) {
 	}
 }
 
+func TestGenerationHandlerSubmitsClarifications(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	requestID := uuid.New()
+	jobID := uuid.New()
+	service := &generationServiceStub{}
+	service.submitClarifications = func(_ context.Context, params contract.SubmitClarificationsParams) (contract.GenerationStarted, error) {
+		if params.RequestID != requestID || params.Title != "Linux" || params.Language != domain.CourseLanguageFR || len(params.Answers) != 1 {
+			t.Fatalf("unexpected clarification params: %+v", params)
+		}
+		if params.Answers[0].QuestionID != domain.ClarificationIDCurrentLevel || params.Answers[0].SelectedValues[0] != "beginner" {
+			t.Fatalf("unexpected clarification answer: %+v", params.Answers[0])
+		}
+		return acceptedGeneration(jobID, requestID), nil
+	}
+	router := generationTestRouter(service)
+	body := `{
+		"answers":[{"questionId":"currentLevel","selectedValues":["beginner"]}],
+		"title":"Linux",
+		"synopsis":"Linux administration",
+		"language":"fr"
+	}`
+	request := httptest.NewRequest(http.MethodPost, "/api/generations/"+requestID.String()+"/clarifications", bytes.NewBufferString(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestGenerationHandlerRemainingRoutes(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -187,6 +219,7 @@ func generationTestRouter(service contract.CourseGenerationService) *gin.Engine 
 	handler := NewGenerationHandler(service)
 	router.POST("/api/generations", handler.Start)
 	router.POST("/api/generations/analyze", handler.Analyze)
+	router.POST("/api/generations/:requestID/clarifications", handler.SubmitClarifications)
 	router.POST("/api/generations/:requestID/structure", handler.Structure)
 	router.POST("/api/generations/:requestID/structure/retry", handler.RetryStructure)
 	router.POST("/api/generations/lessons/:lessonID/content", handler.LessonContent)
@@ -211,16 +244,17 @@ func acceptedGeneration(jobID, requestID uuid.UUID) contract.GenerationStarted {
 }
 
 type generationServiceStub struct {
-	start            func(context.Context, contract.StartGenerationParams) (contract.GenerationStarted, error)
-	enqueueStructure func(context.Context, contract.GenerateStructureParams) (contract.GenerationStarted, error)
-	analyze          func(context.Context, contract.AnalyzePromptParams) (contract.GenerationAnalysisResult, error)
-	retryStructure   func(context.Context, contract.GenerateStructureParams) (contract.GenerationStarted, error)
-	lessonContent    func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
-	moduleContent    func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
-	job              func(context.Context, uuid.UUID) (domain.GenerationJob, error)
-	status           func(context.Context, uuid.UUID) (contract.GenerationStatus, error)
-	result           func(context.Context, uuid.UUID) (contract.GenerationResult, error)
-	retry            func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
+	start                func(context.Context, contract.StartGenerationParams) (contract.GenerationStarted, error)
+	enqueueStructure     func(context.Context, contract.GenerateStructureParams) (contract.GenerationStarted, error)
+	analyze              func(context.Context, contract.AnalyzePromptParams) (contract.GenerationAnalysisResult, error)
+	submitClarifications func(context.Context, contract.SubmitClarificationsParams) (contract.GenerationStarted, error)
+	retryStructure       func(context.Context, contract.GenerateStructureParams) (contract.GenerationStarted, error)
+	lessonContent        func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
+	moduleContent        func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
+	job                  func(context.Context, uuid.UUID) (domain.GenerationJob, error)
+	status               func(context.Context, uuid.UUID) (contract.GenerationStatus, error)
+	result               func(context.Context, uuid.UUID) (contract.GenerationResult, error)
+	retry                func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
 }
 
 func (s *generationServiceStub) StartFullCourseGeneration(ctx context.Context, params contract.StartGenerationParams) (contract.GenerationStarted, error) {
@@ -242,6 +276,13 @@ func (s *generationServiceStub) AnalyzePrompt(ctx context.Context, params contra
 		return contract.GenerationAnalysisResult{}, nil
 	}
 	return s.analyze(ctx, params)
+}
+
+func (s *generationServiceStub) SubmitClarifications(ctx context.Context, params contract.SubmitClarificationsParams) (contract.GenerationStarted, error) {
+	if s.submitClarifications == nil {
+		return contract.GenerationStarted{}, nil
+	}
+	return s.submitClarifications(ctx, params)
 }
 
 func (s *generationServiceStub) EnqueueStructureRetry(ctx context.Context, params contract.GenerateStructureParams) (contract.GenerationStarted, error) {

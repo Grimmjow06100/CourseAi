@@ -9,7 +9,6 @@ CREATE TYPE "generation_job_status" AS ENUM (
 );
 
 CREATE TYPE "generation_job_kind" AS ENUM (
-  'full_course',
   'analysis',
   'architecture',
   'lesson_plan',

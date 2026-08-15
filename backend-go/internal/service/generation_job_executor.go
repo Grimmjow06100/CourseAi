@@ -8,9 +8,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
-	"github.com/google/uuid"
 )
 
 var (
@@ -19,13 +17,12 @@ var (
 )
 
 type generationJobRunner interface {
-	runFullCourseJob(ctx context.Context, requestID uuid.UUID) error
-	runAnalysisJob(ctx context.Context, requestID uuid.UUID) error
-	runArchitectureJob(ctx context.Context, requestID uuid.UUID, payload contract.ArchitectureJobPayload) error
-	runLessonPlanJob(ctx context.Context, requestID, moduleID uuid.UUID) error
-	runLessonContentJob(ctx context.Context, requestID, lessonID uuid.UUID) error
-	runModuleContentJob(ctx context.Context, requestID, moduleID uuid.UUID) error
-	runFinalizeCourseJob(ctx context.Context, requestID, courseID uuid.UUID) error
+	runAnalysisJob(ctx context.Context, job domain.GenerationJob) error
+	runArchitectureJob(ctx context.Context, job domain.GenerationJob) error
+	runLessonPlanJob(ctx context.Context, job domain.GenerationJob) error
+	runLessonContentJob(ctx context.Context, job domain.GenerationJob) error
+	runModuleContentJob(ctx context.Context, job domain.GenerationJob) error
+	runFinalizeCourseJob(ctx context.Context, job domain.GenerationJob) error
 	handleTerminalJobFailure(ctx context.Context, job domain.GenerationJob, cause error) error
 }
 
@@ -56,42 +53,36 @@ func (e *GenerationJobExecutor) Execute(ctx context.Context, job domain.Generati
 	}
 
 	switch job.Kind {
-	case domain.GenerationJobKindFullCourse:
-		if err := requireEmptyJobPayload(job.Payload); err != nil {
-			return err
-		}
-		return e.runner.runFullCourseJob(ctx, job.RequestID)
 	case domain.GenerationJobKindAnalysis:
 		if err := requireEmptyJobPayload(job.Payload); err != nil {
 			return err
 		}
-		return e.runner.runAnalysisJob(ctx, job.RequestID)
+		return e.runner.runAnalysisJob(ctx, job)
 	case domain.GenerationJobKindArchitecture:
-		var payload contract.ArchitectureJobPayload
-		if err := decodeJobPayload(job.Payload, &payload); err != nil {
+		if err := requireEmptyJobPayload(job.Payload); err != nil {
 			return err
 		}
-		return e.runner.runArchitectureJob(ctx, job.RequestID, payload)
+		return e.runner.runArchitectureJob(ctx, job)
 	case domain.GenerationJobKindLessonPlan:
 		if err := requireEmptyJobPayload(job.Payload); err != nil {
 			return err
 		}
-		return e.runner.runLessonPlanJob(ctx, job.RequestID, *job.TargetID)
+		return e.runner.runLessonPlanJob(ctx, job)
 	case domain.GenerationJobKindLessonContent:
 		if err := requireEmptyJobPayload(job.Payload); err != nil {
 			return err
 		}
-		return e.runner.runLessonContentJob(ctx, job.RequestID, *job.TargetID)
+		return e.runner.runLessonContentJob(ctx, job)
 	case domain.GenerationJobKindModuleContent:
 		if err := requireEmptyJobPayload(job.Payload); err != nil {
 			return err
 		}
-		return e.runner.runModuleContentJob(ctx, job.RequestID, *job.TargetID)
+		return e.runner.runModuleContentJob(ctx, job)
 	case domain.GenerationJobKindFinalizeCourse:
 		if err := requireEmptyJobPayload(job.Payload); err != nil {
 			return err
 		}
-		return e.runner.runFinalizeCourseJob(ctx, job.RequestID, *job.TargetID)
+		return e.runner.runFinalizeCourseJob(ctx, job)
 	default:
 		return fmt.Errorf("%w: %s", domain.ErrInvalidGenerationJobKind, job.Kind)
 	}

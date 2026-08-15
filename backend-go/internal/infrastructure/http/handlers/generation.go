@@ -62,6 +62,45 @@ func (h *GenerationHandler) Analyze(c *gin.Context) {
 	c.JSON(http.StatusCreated, dto.GenerationAnalysisFromContract(result))
 }
 
+func (h *GenerationHandler) SubmitClarifications(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+	requestID, ok := parseUUIDParam(c, "requestID")
+	if !ok {
+		return
+	}
+	var request dto.SubmitClarificationsRequest
+	if !bindJSON(c, &request) {
+		return
+	}
+	language, err := domain.ParseCourseLanguage(request.Language)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	answers := make([]domain.ClarificationAnswer, 0, len(request.Answers))
+	for _, answer := range request.Answers {
+		answers = append(answers, domain.ClarificationAnswer{
+			QuestionID:     answer.QuestionID,
+			SelectedValues: answer.SelectedValues,
+		})
+	}
+	started, err := h.service.SubmitClarifications(c.Request.Context(), contract.SubmitClarificationsParams{
+		RequestID: requestID,
+		Answers:   answers,
+		Title:     request.Title,
+		Synopsis:  request.Synopsis,
+		Language:  language,
+	})
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
+}
+
 func (h *GenerationHandler) Structure(c *gin.Context) {
 	if h.service == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))

@@ -15,7 +15,10 @@ func TestAnalysisResponseToDomain(t *testing.T) {
 		SuggestedTitle: " Linux ", ShortSynopsis: " Basics ", WarningMessage: &warning,
 		DetectedCurrentLevel: "beginner", DetectedTargetLevel: "advanced",
 		DetectedGoal: " ", DetectedLanguage: "fr",
-		ClarificationQuestions: []clarificationQuestionPayload{{ID: "goals", Question: "Goal?", Options: []string{"Admin"}}},
+		ClarificationQuestions: []clarificationQuestionPayload{{
+			ID: "goals", Question: "Goal?", AllowMultiple: true,
+			Options: []clarificationOptionPayload{{Value: "Admin", Label: "Admin"}, {Value: "DevOps", Label: "DevOps"}},
+		}},
 	}
 	summary, err := response.ToDomain()
 	if err != nil {

@@ -29,7 +29,7 @@ Puis dans ce dossier :
 cd backend-go
 Copy-Item .env.example .env
 go mod download
-goose up
+make migrate-up
 go run ./cmd/api
 ```
 
@@ -66,19 +66,19 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 Appliquer :
 
 ```powershell
-goose up
+make migrate-up
 ```
 
 Rollback :
 
 ```powershell
-goose down
+make migrate-down
 ```
 
 Statut :
 
 ```powershell
-goose status
+make migrate-status
 ```
 
 ## Routes
@@ -113,6 +113,7 @@ Generation IA :
 ```http
 POST /api/generations
 POST /api/generations/analyze
+POST /api/generations/:requestID/clarifications
 POST /api/generations/:requestID/structure
 POST /api/generations/:requestID/structure/retry
 POST /api/generations/lessons/:lessonID/content
@@ -123,8 +124,9 @@ POST /api/generations/:requestID/retry
 GET  /api/generation-jobs/:jobID
 ```
 
-`POST /api/generations` persiste atomiquement une request et un job durable pour le mode automatique complet : prompt -> analyse -> structure -> contenu de toutes les lessons.
+`POST /api/generations` persiste atomiquement une request et un job durable `analysis`. Apres l'analyse, la pipeline continue automatiquement uniquement si le brief est complet. Sinon, la request passe a `awaiting_clarification` et aucun job en aval n'est cree.
 `POST /api/generations/analyze` cree une `GenerationRequest`, analyse le prompt, puis retourne le premier jet : hors scope eventuel, titre, synopsis, niveaux detectes, objectif, langue et questions de clarification.
+`POST /api/generations/:requestID/clarifications` valide les reponses face aux questions persistees, confirme le brief et cree le job `architecture` dans la meme transaction.
 `POST /api/generations/:requestID/structure` enfile la generation de la formation, des modules et des plans de lessons a partir du contexte confirme.
 `POST /api/generations/:requestID/structure/retry` nettoie atomiquement les donnees partielles et enfile une nouvelle tentative de structure.
 `POST /api/generations/lessons/:lessonID/content` enfile la generation et la persistance du contenu d'une lesson.
@@ -145,6 +147,32 @@ Toutes les routes longues retournent immediatement `202 Accepted` :
 ```
 
 Envoyer un header `Idempotency-Key` sur `POST /api/generations` permet de rejouer la commande sans creer une seconde request. Utiliser `GET /api/generation-jobs/:jobID` pour suivre `queued`, `running`, `retry_scheduled`, `completed`, `failed` ou `cancelled`.
+
+Lorsque `GET /api/generations/:requestID/status` retourne `pipelineStatus: "awaiting_clarification"`, il contient le premier jet (`suggestedTitle`, `shortSynopsis`, niveaux, objectif et langue detectes), les questions avec des options `{ "value", "label" }` et :
+
+```json
+{
+  "actionRequired": {
+    "type": "submit_clarifications",
+    "url": "/api/generations/{requestID}/clarifications"
+  }
+}
+```
+
+Le frontend affiche `label` et renvoie `value` dans `selectedValues`. Exemple :
+
+```json
+{
+  "answers": [
+    { "questionId": "currentLevel", "selectedValues": ["beginner"] },
+    { "questionId": "targetLevel", "selectedValues": ["advanced"] },
+    { "questionId": "goals", "selectedValues": ["administer_linux"] }
+  ],
+  "title": "Administration Linux",
+  "synopsis": "Une formation progressive pour administrer Linux en production.",
+  "language": "fr"
+}
+```
 
 ## Organisation
 
@@ -185,14 +213,16 @@ go fmt ./...
 
 ## Pipeline IA
 
-Le flux interactif du MVP est separe en trois frontieres claires :
+Le flux complet durable est :
 
-1. `POST /api/generations/analyze` : l'utilisateur envoie un prompt brut. Le backend persiste une `GenerationRequest`, appelle le prompt d'analyse, puis retourne soit un hors scope, soit un premier jet avec titre, synopsis, niveaux, objectif, langue et questions de clarification.
-2. `POST /api/generations/:requestID/structure` : le frontend renvoie le contexte confirme. Le backend enfile un job qui genere et persiste `Course`, `Module` et les plans de `Lesson`. Les lessons ont un `module_id` cree par le backend et `content_markdown = null`.
-   En cas d'echec sur `architecture_generation` ou `lesson_plan_generation`, `POST /api/generations/:requestID/structure/retry` peut relancer cette seule frontiere avec le meme payload confirme.
-3. `POST /api/generations/lessons/:lessonID/content` ou `POST /api/generations/modules/:moduleID/contents` : le backend enfile les jobs de contenu. Le worker renouvelle son lease pendant OpenAI, applique une retry policy bornee et persiste les erreurs terminales.
+1. `POST /api/generations` cree la request et le job `analysis`, puis retourne `202`.
+2. Le worker analyse le prompt. Un hors scope termine la request sans cours. Un brief complet enfile `architecture`. Un brief incomplet place la request en `awaiting_clarification` et termine le job d'analyse.
+3. Le frontend lit les questions avec `GET /api/generations/:requestID/status`, puis appelle `POST /api/generations/:requestID/clarifications`. Reponses, brief confirme, transition vers `queued` et job `architecture` sont persistes atomiquement.
+4. Le job `architecture` persiste le cours et ses modules, puis cree un job `lesson_plan` par module.
+5. Une fois tous les plans persistants, les jobs `lesson_content` generent theorie, exercices et quiz. Le dernier contenu cree le job `finalize_course`.
+6. La finalisation marque le cours et la request `completed`.
 
-`POST /api/generations` reste disponible comme mode automatique complet pour enchainer toute la pipeline sans confirmation intermediaire.
+Aucun job, lease ou worker ne reste reserve pendant l'attente utilisateur. Les routes `/structure` et de contenu restent disponibles pour les generations partielles et les reprises ciblees.
 
 L'implementation concrete de l'IA est dans `internal/infrastructure/openai` et elle est injectee dans `cmd/api/main.go`. Les prompts sont charges depuis `PROMPTS_DIR` par `internal/infrastructure/prompts`.
 

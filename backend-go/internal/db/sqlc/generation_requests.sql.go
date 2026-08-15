@@ -35,6 +35,17 @@ INSERT INTO generation_requests (
   detected_language,
   clarification_questions,
   raw_analysis_output,
+  analysis_completed_at,
+  clarification_answers,
+  confirmed_title,
+  confirmed_synopsis,
+  confirmed_current_level,
+  confirmed_target_level,
+  confirmed_goals,
+  confirmed_language,
+  brief_confirmed_at,
+  clarifications_submitted_at,
+  clarification_version,
   created_at,
   updated_at
 )
@@ -59,54 +70,55 @@ VALUES (
   $18::jsonb,
   $19::jsonb,
   $20,
-  $21
+  $21::jsonb,
+  $22,
+  $23,
+  $24::level,
+  $25::level,
+  $26::jsonb,
+  $27::course_language,
+  $28,
+  $29,
+  $30,
+  $31,
+  $32
 )
-RETURNING
-  id,
-  initial_user_prompt,
-  pipeline_status,
-  current_step,
-  progress_percent,
-  failure_message,
-  started_at,
-  completed_at,
-  is_out_of_scope,
-  error_message,
-  warning_message,
-  suggested_title,
-  short_synopsis,
-  detected_current_level,
-  detected_target_level,
-  detected_goal,
-  detected_language,
-  clarification_questions,
-  raw_analysis_output,
-  created_at,
-  updated_at
+RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
 `
 
 type CreateGenerationRequestParams struct {
-	ID                     uuid.UUID                `db:"id" json:"id"`
-	InitialUserPrompt      string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
-	PipelineStatus         GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
-	CurrentStep            *string                  `db:"current_step" json:"current_step"`
-	ProgressPercent        int32                    `db:"progress_percent" json:"progress_percent"`
-	FailureMessage         *string                  `db:"failure_message" json:"failure_message"`
-	StartedAt              *time.Time               `db:"started_at" json:"started_at"`
-	CompletedAt            *time.Time               `db:"completed_at" json:"completed_at"`
-	IsOutOfScope           bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
-	ErrorMessage           *string                  `db:"error_message" json:"error_message"`
-	WarningMessage         *string                  `db:"warning_message" json:"warning_message"`
-	SuggestedTitle         *string                  `db:"suggested_title" json:"suggested_title"`
-	ShortSynopsis          *string                  `db:"short_synopsis" json:"short_synopsis"`
-	DetectedCurrentLevel   *Level                   `db:"detected_current_level" json:"detected_current_level"`
-	DetectedTargetLevel    *Level                   `db:"detected_target_level" json:"detected_target_level"`
-	DetectedGoal           *string                  `db:"detected_goal" json:"detected_goal"`
-	DetectedLanguage       *CourseLanguage          `db:"detected_language" json:"detected_language"`
-	ClarificationQuestions json.RawMessage          `db:"clarification_questions" json:"clarification_questions"`
-	RawAnalysisOutput      json.RawMessage          `db:"raw_analysis_output" json:"raw_analysis_output"`
-	CreatedAt              time.Time                `db:"created_at" json:"created_at"`
-	UpdatedAt              time.Time                `db:"updated_at" json:"updated_at"`
+	ID                        uuid.UUID                `db:"id" json:"id"`
+	InitialUserPrompt         string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
+	PipelineStatus            GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
+	CurrentStep               *string                  `db:"current_step" json:"current_step"`
+	ProgressPercent           int32                    `db:"progress_percent" json:"progress_percent"`
+	FailureMessage            *string                  `db:"failure_message" json:"failure_message"`
+	StartedAt                 *time.Time               `db:"started_at" json:"started_at"`
+	CompletedAt               *time.Time               `db:"completed_at" json:"completed_at"`
+	IsOutOfScope              bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
+	ErrorMessage              *string                  `db:"error_message" json:"error_message"`
+	WarningMessage            *string                  `db:"warning_message" json:"warning_message"`
+	SuggestedTitle            *string                  `db:"suggested_title" json:"suggested_title"`
+	ShortSynopsis             *string                  `db:"short_synopsis" json:"short_synopsis"`
+	DetectedCurrentLevel      *Level                   `db:"detected_current_level" json:"detected_current_level"`
+	DetectedTargetLevel       *Level                   `db:"detected_target_level" json:"detected_target_level"`
+	DetectedGoal              *string                  `db:"detected_goal" json:"detected_goal"`
+	DetectedLanguage          *CourseLanguage          `db:"detected_language" json:"detected_language"`
+	ClarificationQuestions    json.RawMessage          `db:"clarification_questions" json:"clarification_questions"`
+	RawAnalysisOutput         json.RawMessage          `db:"raw_analysis_output" json:"raw_analysis_output"`
+	AnalysisCompletedAt       *time.Time               `db:"analysis_completed_at" json:"analysis_completed_at"`
+	ClarificationAnswers      json.RawMessage          `db:"clarification_answers" json:"clarification_answers"`
+	ConfirmedTitle            *string                  `db:"confirmed_title" json:"confirmed_title"`
+	ConfirmedSynopsis         *string                  `db:"confirmed_synopsis" json:"confirmed_synopsis"`
+	ConfirmedCurrentLevel     *Level                   `db:"confirmed_current_level" json:"confirmed_current_level"`
+	ConfirmedTargetLevel      *Level                   `db:"confirmed_target_level" json:"confirmed_target_level"`
+	ConfirmedGoals            json.RawMessage          `db:"confirmed_goals" json:"confirmed_goals"`
+	ConfirmedLanguage         *CourseLanguage          `db:"confirmed_language" json:"confirmed_language"`
+	BriefConfirmedAt          *time.Time               `db:"brief_confirmed_at" json:"brief_confirmed_at"`
+	ClarificationsSubmittedAt *time.Time               `db:"clarifications_submitted_at" json:"clarifications_submitted_at"`
+	ClarificationVersion      int32                    `db:"clarification_version" json:"clarification_version"`
+	CreatedAt                 time.Time                `db:"created_at" json:"created_at"`
+	UpdatedAt                 time.Time                `db:"updated_at" json:"updated_at"`
 }
 
 func (q *Queries) CreateGenerationRequest(ctx context.Context, arg CreateGenerationRequestParams) (GenerationRequest, error) {
@@ -130,6 +142,17 @@ func (q *Queries) CreateGenerationRequest(ctx context.Context, arg CreateGenerat
 		arg.DetectedLanguage,
 		arg.ClarificationQuestions,
 		arg.RawAnalysisOutput,
+		arg.AnalysisCompletedAt,
+		arg.ClarificationAnswers,
+		arg.ConfirmedTitle,
+		arg.ConfirmedSynopsis,
+		arg.ConfirmedCurrentLevel,
+		arg.ConfirmedTargetLevel,
+		arg.ConfirmedGoals,
+		arg.ConfirmedLanguage,
+		arg.BriefConfirmedAt,
+		arg.ClarificationsSubmittedAt,
+		arg.ClarificationVersion,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -156,32 +179,23 @@ func (q *Queries) CreateGenerationRequest(ctx context.Context, arg CreateGenerat
 		&i.RawAnalysisOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnalysisCompletedAt,
+		&i.ClarificationAnswers,
+		&i.ConfirmedTitle,
+		&i.ConfirmedSynopsis,
+		&i.ConfirmedCurrentLevel,
+		&i.ConfirmedTargetLevel,
+		&i.ConfirmedGoals,
+		&i.ConfirmedLanguage,
+		&i.BriefConfirmedAt,
+		&i.ClarificationsSubmittedAt,
+		&i.ClarificationVersion,
 	)
 	return i, err
 }
 
 const getGenerationRequestByCourseID = `-- name: GetGenerationRequestByCourseID :one
-SELECT gr.id,
-  gr.initial_user_prompt,
-  gr.pipeline_status,
-  gr.current_step,
-  gr.progress_percent,
-  gr.failure_message,
-  gr.started_at,
-  gr.completed_at,
-  gr.is_out_of_scope,
-  gr.error_message,
-  gr.warning_message,
-  gr.suggested_title,
-  gr.short_synopsis,
-  gr.detected_current_level,
-  gr.detected_target_level,
-  gr.detected_goal,
-  gr.detected_language,
-  gr.clarification_questions,
-  gr.raw_analysis_output,
-  gr.created_at,
-  gr.updated_at
+SELECT gr.id, gr.initial_user_prompt, gr.pipeline_status, gr.current_step, gr.progress_percent, gr.failure_message, gr.started_at, gr.completed_at, gr.is_out_of_scope, gr.error_message, gr.warning_message, gr.suggested_title, gr.short_synopsis, gr.detected_current_level, gr.detected_target_level, gr.detected_goal, gr.detected_language, gr.clarification_questions, gr.raw_analysis_output, gr.created_at, gr.updated_at, gr.analysis_completed_at, gr.clarification_answers, gr.confirmed_title, gr.confirmed_synopsis, gr.confirmed_current_level, gr.confirmed_target_level, gr.confirmed_goals, gr.confirmed_language, gr.brief_confirmed_at, gr.clarifications_submitted_at, gr.clarification_version
 FROM generation_requests gr
 JOIN courses c ON c.request_id = gr.id
 WHERE c.id = $1
@@ -212,33 +226,23 @@ func (q *Queries) GetGenerationRequestByCourseID(ctx context.Context, courseID u
 		&i.RawAnalysisOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnalysisCompletedAt,
+		&i.ClarificationAnswers,
+		&i.ConfirmedTitle,
+		&i.ConfirmedSynopsis,
+		&i.ConfirmedCurrentLevel,
+		&i.ConfirmedTargetLevel,
+		&i.ConfirmedGoals,
+		&i.ConfirmedLanguage,
+		&i.BriefConfirmedAt,
+		&i.ClarificationsSubmittedAt,
+		&i.ClarificationVersion,
 	)
 	return i, err
 }
 
 const getGenerationRequestByID = `-- name: GetGenerationRequestByID :one
-SELECT
-  id,
-  initial_user_prompt,
-  pipeline_status,
-  current_step,
-  progress_percent,
-  failure_message,
-  started_at,
-  completed_at,
-  is_out_of_scope,
-  error_message,
-  warning_message,
-  suggested_title,
-  short_synopsis,
-  detected_current_level,
-  detected_target_level,
-  detected_goal,
-  detected_language,
-  clarification_questions,
-  raw_analysis_output,
-  created_at,
-  updated_at
+SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
 FROM generation_requests
 WHERE id = $1
 `
@@ -268,6 +272,64 @@ func (q *Queries) GetGenerationRequestByID(ctx context.Context, id uuid.UUID) (G
 		&i.RawAnalysisOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnalysisCompletedAt,
+		&i.ClarificationAnswers,
+		&i.ConfirmedTitle,
+		&i.ConfirmedSynopsis,
+		&i.ConfirmedCurrentLevel,
+		&i.ConfirmedTargetLevel,
+		&i.ConfirmedGoals,
+		&i.ConfirmedLanguage,
+		&i.BriefConfirmedAt,
+		&i.ClarificationsSubmittedAt,
+		&i.ClarificationVersion,
+	)
+	return i, err
+}
+
+const getGenerationRequestForUpdate = `-- name: GetGenerationRequestForUpdate :one
+SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
+FROM generation_requests
+WHERE id = $1
+FOR UPDATE
+`
+
+func (q *Queries) GetGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (GenerationRequest, error) {
+	row := q.db.QueryRow(ctx, getGenerationRequestForUpdate, id)
+	var i GenerationRequest
+	err := row.Scan(
+		&i.ID,
+		&i.InitialUserPrompt,
+		&i.PipelineStatus,
+		&i.CurrentStep,
+		&i.ProgressPercent,
+		&i.FailureMessage,
+		&i.StartedAt,
+		&i.CompletedAt,
+		&i.IsOutOfScope,
+		&i.ErrorMessage,
+		&i.WarningMessage,
+		&i.SuggestedTitle,
+		&i.ShortSynopsis,
+		&i.DetectedCurrentLevel,
+		&i.DetectedTargetLevel,
+		&i.DetectedGoal,
+		&i.DetectedLanguage,
+		&i.ClarificationQuestions,
+		&i.RawAnalysisOutput,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisCompletedAt,
+		&i.ClarificationAnswers,
+		&i.ConfirmedTitle,
+		&i.ConfirmedSynopsis,
+		&i.ConfirmedCurrentLevel,
+		&i.ConfirmedTargetLevel,
+		&i.ConfirmedGoals,
+		&i.ConfirmedLanguage,
+		&i.BriefConfirmedAt,
+		&i.ClarificationsSubmittedAt,
+		&i.ClarificationVersion,
 	)
 	return i, err
 }
@@ -279,6 +341,16 @@ SELECT
   gr.current_step,
   gr.progress_percent,
   gr.failure_message,
+  gr.is_out_of_scope,
+	gr.error_message,
+	gr.warning_message,
+	gr.suggested_title,
+	gr.short_synopsis,
+	gr.detected_current_level,
+	gr.detected_target_level,
+	gr.detected_goal,
+	gr.detected_language,
+  gr.clarification_questions,
   c.id AS course_id,
   c.status AS course_status
 FROM generation_requests gr
@@ -287,13 +359,23 @@ WHERE gr.id = $1
 `
 
 type GetGenerationStatusByIDRow struct {
-	RequestID       uuid.UUID                `db:"request_id" json:"request_id"`
-	PipelineStatus  GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
-	CurrentStep     *string                  `db:"current_step" json:"current_step"`
-	ProgressPercent int32                    `db:"progress_percent" json:"progress_percent"`
-	FailureMessage  *string                  `db:"failure_message" json:"failure_message"`
-	CourseID        pgtype.UUID              `db:"course_id" json:"course_id"`
-	CourseStatus    *CourseGenerationStatus  `db:"course_status" json:"course_status"`
+	RequestID              uuid.UUID                `db:"request_id" json:"request_id"`
+	PipelineStatus         GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
+	CurrentStep            *string                  `db:"current_step" json:"current_step"`
+	ProgressPercent        int32                    `db:"progress_percent" json:"progress_percent"`
+	FailureMessage         *string                  `db:"failure_message" json:"failure_message"`
+	IsOutOfScope           bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
+	ErrorMessage           *string                  `db:"error_message" json:"error_message"`
+	WarningMessage         *string                  `db:"warning_message" json:"warning_message"`
+	SuggestedTitle         *string                  `db:"suggested_title" json:"suggested_title"`
+	ShortSynopsis          *string                  `db:"short_synopsis" json:"short_synopsis"`
+	DetectedCurrentLevel   *Level                   `db:"detected_current_level" json:"detected_current_level"`
+	DetectedTargetLevel    *Level                   `db:"detected_target_level" json:"detected_target_level"`
+	DetectedGoal           *string                  `db:"detected_goal" json:"detected_goal"`
+	DetectedLanguage       *CourseLanguage          `db:"detected_language" json:"detected_language"`
+	ClarificationQuestions json.RawMessage          `db:"clarification_questions" json:"clarification_questions"`
+	CourseID               pgtype.UUID              `db:"course_id" json:"course_id"`
+	CourseStatus           *CourseGenerationStatus  `db:"course_status" json:"course_status"`
 }
 
 func (q *Queries) GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (GetGenerationStatusByIDRow, error) {
@@ -305,6 +387,16 @@ func (q *Queries) GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (Ge
 		&i.CurrentStep,
 		&i.ProgressPercent,
 		&i.FailureMessage,
+		&i.IsOutOfScope,
+		&i.ErrorMessage,
+		&i.WarningMessage,
+		&i.SuggestedTitle,
+		&i.ShortSynopsis,
+		&i.DetectedCurrentLevel,
+		&i.DetectedTargetLevel,
+		&i.DetectedGoal,
+		&i.DetectedLanguage,
+		&i.ClarificationQuestions,
 		&i.CourseID,
 		&i.CourseStatus,
 	)
@@ -332,53 +424,54 @@ SET
   detected_language = $16::course_language,
   clarification_questions = $17::jsonb,
   raw_analysis_output = $18::jsonb,
-  updated_at = $19
-WHERE id = $20
-RETURNING
-  id,
-  initial_user_prompt,
-  pipeline_status,
-  current_step,
-  progress_percent,
-  failure_message,
-  started_at,
-  completed_at,
-  is_out_of_scope,
-  error_message,
-  warning_message,
-  suggested_title,
-  short_synopsis,
-  detected_current_level,
-  detected_target_level,
-  detected_goal,
-  detected_language,
-  clarification_questions,
-  raw_analysis_output,
-  created_at,
-  updated_at
+  analysis_completed_at = $19,
+  clarification_answers = $20::jsonb,
+  confirmed_title = $21,
+  confirmed_synopsis = $22,
+  confirmed_current_level = $23::level,
+  confirmed_target_level = $24::level,
+  confirmed_goals = $25::jsonb,
+  confirmed_language = $26::course_language,
+  brief_confirmed_at = $27,
+  clarifications_submitted_at = $28,
+  clarification_version = $29,
+  updated_at = $30
+WHERE id = $31
+RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
 `
 
 type UpdateGenerationRequestParams struct {
-	InitialUserPrompt      string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
-	PipelineStatus         GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
-	CurrentStep            *string                  `db:"current_step" json:"current_step"`
-	ProgressPercent        int32                    `db:"progress_percent" json:"progress_percent"`
-	FailureMessage         *string                  `db:"failure_message" json:"failure_message"`
-	StartedAt              *time.Time               `db:"started_at" json:"started_at"`
-	CompletedAt            *time.Time               `db:"completed_at" json:"completed_at"`
-	IsOutOfScope           bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
-	ErrorMessage           *string                  `db:"error_message" json:"error_message"`
-	WarningMessage         *string                  `db:"warning_message" json:"warning_message"`
-	SuggestedTitle         *string                  `db:"suggested_title" json:"suggested_title"`
-	ShortSynopsis          *string                  `db:"short_synopsis" json:"short_synopsis"`
-	DetectedCurrentLevel   *Level                   `db:"detected_current_level" json:"detected_current_level"`
-	DetectedTargetLevel    *Level                   `db:"detected_target_level" json:"detected_target_level"`
-	DetectedGoal           *string                  `db:"detected_goal" json:"detected_goal"`
-	DetectedLanguage       *CourseLanguage          `db:"detected_language" json:"detected_language"`
-	ClarificationQuestions json.RawMessage          `db:"clarification_questions" json:"clarification_questions"`
-	RawAnalysisOutput      json.RawMessage          `db:"raw_analysis_output" json:"raw_analysis_output"`
-	UpdatedAt              time.Time                `db:"updated_at" json:"updated_at"`
-	ID                     uuid.UUID                `db:"id" json:"id"`
+	InitialUserPrompt         string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
+	PipelineStatus            GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
+	CurrentStep               *string                  `db:"current_step" json:"current_step"`
+	ProgressPercent           int32                    `db:"progress_percent" json:"progress_percent"`
+	FailureMessage            *string                  `db:"failure_message" json:"failure_message"`
+	StartedAt                 *time.Time               `db:"started_at" json:"started_at"`
+	CompletedAt               *time.Time               `db:"completed_at" json:"completed_at"`
+	IsOutOfScope              bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
+	ErrorMessage              *string                  `db:"error_message" json:"error_message"`
+	WarningMessage            *string                  `db:"warning_message" json:"warning_message"`
+	SuggestedTitle            *string                  `db:"suggested_title" json:"suggested_title"`
+	ShortSynopsis             *string                  `db:"short_synopsis" json:"short_synopsis"`
+	DetectedCurrentLevel      *Level                   `db:"detected_current_level" json:"detected_current_level"`
+	DetectedTargetLevel       *Level                   `db:"detected_target_level" json:"detected_target_level"`
+	DetectedGoal              *string                  `db:"detected_goal" json:"detected_goal"`
+	DetectedLanguage          *CourseLanguage          `db:"detected_language" json:"detected_language"`
+	ClarificationQuestions    json.RawMessage          `db:"clarification_questions" json:"clarification_questions"`
+	RawAnalysisOutput         json.RawMessage          `db:"raw_analysis_output" json:"raw_analysis_output"`
+	AnalysisCompletedAt       *time.Time               `db:"analysis_completed_at" json:"analysis_completed_at"`
+	ClarificationAnswers      json.RawMessage          `db:"clarification_answers" json:"clarification_answers"`
+	ConfirmedTitle            *string                  `db:"confirmed_title" json:"confirmed_title"`
+	ConfirmedSynopsis         *string                  `db:"confirmed_synopsis" json:"confirmed_synopsis"`
+	ConfirmedCurrentLevel     *Level                   `db:"confirmed_current_level" json:"confirmed_current_level"`
+	ConfirmedTargetLevel      *Level                   `db:"confirmed_target_level" json:"confirmed_target_level"`
+	ConfirmedGoals            json.RawMessage          `db:"confirmed_goals" json:"confirmed_goals"`
+	ConfirmedLanguage         *CourseLanguage          `db:"confirmed_language" json:"confirmed_language"`
+	BriefConfirmedAt          *time.Time               `db:"brief_confirmed_at" json:"brief_confirmed_at"`
+	ClarificationsSubmittedAt *time.Time               `db:"clarifications_submitted_at" json:"clarifications_submitted_at"`
+	ClarificationVersion      int32                    `db:"clarification_version" json:"clarification_version"`
+	UpdatedAt                 time.Time                `db:"updated_at" json:"updated_at"`
+	ID                        uuid.UUID                `db:"id" json:"id"`
 }
 
 func (q *Queries) UpdateGenerationRequest(ctx context.Context, arg UpdateGenerationRequestParams) (GenerationRequest, error) {
@@ -401,6 +494,17 @@ func (q *Queries) UpdateGenerationRequest(ctx context.Context, arg UpdateGenerat
 		arg.DetectedLanguage,
 		arg.ClarificationQuestions,
 		arg.RawAnalysisOutput,
+		arg.AnalysisCompletedAt,
+		arg.ClarificationAnswers,
+		arg.ConfirmedTitle,
+		arg.ConfirmedSynopsis,
+		arg.ConfirmedCurrentLevel,
+		arg.ConfirmedTargetLevel,
+		arg.ConfirmedGoals,
+		arg.ConfirmedLanguage,
+		arg.BriefConfirmedAt,
+		arg.ClarificationsSubmittedAt,
+		arg.ClarificationVersion,
 		arg.UpdatedAt,
 		arg.ID,
 	)
@@ -427,6 +531,17 @@ func (q *Queries) UpdateGenerationRequest(ctx context.Context, arg UpdateGenerat
 		&i.RawAnalysisOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnalysisCompletedAt,
+		&i.ClarificationAnswers,
+		&i.ConfirmedTitle,
+		&i.ConfirmedSynopsis,
+		&i.ConfirmedCurrentLevel,
+		&i.ConfirmedTargetLevel,
+		&i.ConfirmedGoals,
+		&i.ConfirmedLanguage,
+		&i.BriefConfirmedAt,
+		&i.ClarificationsSubmittedAt,
+		&i.ClarificationVersion,
 	)
 	return i, err
 }

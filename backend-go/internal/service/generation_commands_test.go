@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"sync"
 	"testing"
@@ -46,7 +45,7 @@ func TestStartFullCourseGenerationOnlyPersistsCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find queued job: %v", err)
 	}
-	if job.Kind != domain.GenerationJobKindFullCourse || job.RequestID != started.RequestID {
+	if job.Kind != domain.GenerationJobKindAnalysis || job.RequestID != started.RequestID {
 		t.Fatalf("unexpected queued job: %+v", job)
 	}
 }
@@ -108,9 +107,8 @@ func TestEnqueueCourseStructureAndRetry(t *testing.T) {
 	if job.Kind != domain.GenerationJobKindArchitecture || job.RequestID != request.ID {
 		t.Fatalf("unexpected architecture job: %+v", job)
 	}
-	var payload contract.ArchitectureJobPayload
-	if err := json.Unmarshal(job.Payload, &payload); err != nil || payload.Title != "Formation Linux" {
-		t.Fatalf("unexpected architecture payload: %+v, %v", payload, err)
+	if string(job.Payload) != `{}` || requests[request.ID].ConfirmedBrief == nil {
+		t.Fatalf("architecture should use the persisted brief: job=%+v request=%+v", job, requests[request.ID])
 	}
 
 	failed := requests[request.ID]
@@ -126,6 +124,67 @@ func TestEnqueueCourseStructureAndRetry(t *testing.T) {
 	}
 	if retried.JobID == started.JobID || courses.deletedRequestID != request.ID || requests[request.ID].PipelineStatus != domain.PipelineStatusRunning {
 		t.Fatalf("unexpected retry state: retry=%+v deleted=%s request=%+v", retried, courses.deletedRequestID, requests[request.ID])
+	}
+}
+
+func TestSubmitClarificationsPersistsBriefAndEnqueuesArchitecture(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 13, 13, 0, 0, 0, time.UTC)
+	request, err := domain.NewGenerationRequestAt("Build a Linux course", now)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if err := request.MarkRunning(stepAnalysis, now); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	unknown := domain.LevelUnknown
+	advanced := domain.LevelAdvanced
+	language := domain.CourseLanguageEN
+	title := "Linux"
+	synopsis := "Linux administration"
+	goal := "Administer Linux"
+	if err := request.ApplyAnalysis(domain.AnalysisSummary{
+		SuggestedTitle: &title, ShortSynopsis: &synopsis,
+		DetectedCurrentLevel: &unknown, DetectedTargetLevel: &advanced,
+		DetectedGoal: &goal, DetectedLanguage: &language,
+		ClarificationQuestions: []domain.ClarificationQuestion{{
+			ID: domain.ClarificationIDCurrentLevel, Question: "Current level?",
+			Options: []domain.ClarificationOption{{Value: "beginner", Label: "Beginner"}, {Value: "intermediate", Label: "Intermediate"}},
+		}},
+	}, now); err != nil {
+		t.Fatalf("apply analysis: %v", err)
+	}
+	if err := request.MarkAwaitingClarification(now); err != nil {
+		t.Fatalf("mark awaiting clarification: %v", err)
+	}
+
+	requests := map[uuid.UUID]domain.GenerationRequest{request.ID: request}
+	queue := newMemoryGenerationJobQueue()
+	service := NewCourseGeneratorService(fakeCourseAI{}, &fakeUnitOfWork{requests: requests, jobs: queue}, fixedClock{now: now}, CourseGeneratorConfig{})
+	params := contract.SubmitClarificationsParams{
+		RequestID: request.ID,
+		Answers: []domain.ClarificationAnswer{{
+			QuestionID: domain.ClarificationIDCurrentLevel, SelectedValues: []string{"beginner"},
+		}},
+		Title: "Linux administration", Synopsis: "Production Linux", Language: domain.CourseLanguageEN,
+	}
+	started, err := service.SubmitClarifications(context.Background(), params)
+	if err != nil {
+		t.Fatalf("SubmitClarifications() error = %v", err)
+	}
+	persisted := requests[request.ID]
+	if persisted.PipelineStatus != domain.PipelineStatusQueued || persisted.ConfirmedBrief == nil || persisted.ConfirmedBrief.CurrentLevel != domain.LevelBeginner {
+		t.Fatalf("unexpected persisted clarification state: %+v", persisted)
+	}
+	job, err := queue.FindByID(context.Background(), started.JobID)
+	if err != nil || job.Kind != domain.GenerationJobKindArchitecture {
+		t.Fatalf("architecture job = %+v, %v", job, err)
+	}
+
+	repeated, err := service.SubmitClarifications(context.Background(), params)
+	if err != nil || repeated.JobID != started.JobID || queue.count() != 1 {
+		t.Fatalf("idempotent submission = %+v, %v, jobs=%d", repeated, err, queue.count())
 	}
 }
 
@@ -173,17 +232,24 @@ func TestGenerationCommandHelpers(t *testing.T) {
 	t.Parallel()
 
 	requestID := uuid.New()
-	payload, err := architectureJobPayload(validStructureParams(requestID))
+	brief := generationBriefFromStructureParams(validStructureParams(requestID))
+	first, err := architectureJobKey(requestID, 1, brief)
 	if err != nil {
-		t.Fatalf("architectureJobPayload() error = %v", err)
+		t.Fatalf("architectureJobKey() error = %v", err)
 	}
-	first := deterministicJobKey("architecture", requestID, payload)
-	second := deterministicJobKey("architecture", requestID, payload)
-	if first != second || first == deterministicJobKey("architecture", requestID, json.RawMessage(`{"different":true}`)) {
+	second, err := architectureJobKey(requestID, 1, brief)
+	if err != nil {
+		t.Fatalf("architectureJobKey() second error = %v", err)
+	}
+	third, err := architectureJobKey(requestID, 2, brief)
+	if err != nil {
+		t.Fatalf("architectureJobKey() version error = %v", err)
+	}
+	if first != second || first == third {
 		t.Fatal("deterministic job key is not stable or payload-sensitive")
 	}
-	if fullCourseIdempotencyKey("  client-key ") != "full_course:client:client-key" || fullCourseIdempotencyKey(" ") != "" {
-		t.Fatal("full-course idempotency key normalization is incorrect")
+	if generationRequestIdempotencyKey("  client-key ") != "analysis:client:client-key" || generationRequestIdempotencyKey(" ") != "" {
+		t.Fatal("generation request idempotency key normalization is incorrect")
 	}
 	if _, err := requestIDForTarget(context.Background(), fakeRepositories{}, domain.GenerationJobKindAnalysis, uuid.New()); !errors.Is(err, domain.ErrInvalidGenerationJobKind) {
 		t.Fatalf("unsupported target kind error = %v", err)

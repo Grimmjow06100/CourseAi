@@ -2,9 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
@@ -12,128 +12,106 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *CourseGeneratorService) runFullCourseJob(ctx context.Context, requestID uuid.UUID) error {
+func (s *CourseGeneratorService) runAnalysisJob(ctx context.Context, job domain.GenerationJob) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
-	request, err := s.loadRunnableJobRequest(ctx, requestID)
+	request, err := s.loadRunnableJobRequest(ctx, job.RequestID)
 	if err != nil {
 		return err
 	}
-	if request.PipelineStatus == domain.PipelineStatusCompleted {
+	if request.PipelineStatus == domain.PipelineStatusCompleted || request.PipelineStatus == domain.PipelineStatusAwaitingClarification {
 		return nil
 	}
-
-	if !requestHasAnalysis(request) {
+	if request.AnalysisCompletedAt == nil {
 		request, err = s.runPromptAnalysis(ctx, request)
 		if err != nil {
 			return err
 		}
 	}
+	return s.settleAnalysisJob(ctx, job, request)
+}
+
+func (s *CourseGeneratorService) settleAnalysisJob(ctx context.Context, parentJob domain.GenerationJob, request domain.GenerationRequest) error {
 	if request.IsOutOfScope {
 		return s.completeRequestIfNeeded(ctx, request)
 	}
 
-	course, err := s.loadCourseByRequestID(ctx, request.ID)
-	if errors.Is(err, contract.ErrCourseNotFound) {
-		params, paramsErr := structureParamsFromAnalysis(request)
-		if paramsErr != nil {
-			return paramsErr
+	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		locked, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, request.ID)
+		if err != nil {
+			return err
 		}
-		_, course, err = s.generateArchitectureJob(ctx, request, params)
-	}
-	if err != nil {
+		if locked.PipelineStatus == domain.PipelineStatusAwaitingClarification || locked.PipelineStatus == domain.PipelineStatusCompleted {
+			return nil
+		}
+		if locked.ConfirmedBrief != nil {
+			_, err = s.enqueueArchitectureJobWithRepositories(ctx, repositories, locked, &parentJob.ID)
+			return err
+		}
+		if locked.NeedsClarification() {
+			if err := locked.MarkAwaitingClarification(s.now()); err != nil {
+				return err
+			}
+			_, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, locked)
+			return err
+		}
+		if err := locked.ConfirmDetectedBrief(s.now()); err != nil {
+			return err
+		}
+		locked, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, locked)
+		if err != nil {
+			return err
+		}
+		_, err = s.enqueueArchitectureJobWithRepositories(ctx, repositories, locked, &parentJob.ID)
 		return err
-	}
-
-	if err := s.generateMissingLessonPlans(ctx, request.ID, course); err != nil {
-		return err
-	}
-	course, err = s.loadCourseByID(ctx, course.ID)
-	if err != nil {
-		return err
-	}
-	if err := s.generateMissingLessonContents(ctx, request.ID, course); err != nil {
-		return err
-	}
-
-	return s.runFinalizeCourseJob(ctx, request.ID, course.ID)
+	})
 }
 
-func (s *CourseGeneratorService) runAnalysisJob(ctx context.Context, requestID uuid.UUID) error {
+func (s *CourseGeneratorService) runArchitectureJob(ctx context.Context, job domain.GenerationJob) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
-	request, err := s.loadRunnableJobRequest(ctx, requestID)
+	request, err := s.loadRunnableJobRequest(ctx, job.RequestID)
 	if err != nil {
 		return err
 	}
-	if requestHasAnalysis(request) || request.PipelineStatus == domain.PipelineStatusCompleted {
-		return nil
-	}
-
-	request, err = s.runPromptAnalysis(ctx, request)
-	if err != nil {
-		return err
-	}
-	if request.IsOutOfScope {
-		return s.completeRequestIfNeeded(ctx, request)
-	}
-	return nil
-}
-
-func (s *CourseGeneratorService) runArchitectureJob(ctx context.Context, requestID uuid.UUID, payload contract.ArchitectureJobPayload) error {
-	if err := s.validateDependencies(); err != nil {
-		return err
-	}
-	request, err := s.loadRunnableJobRequest(ctx, requestID)
-	if err != nil {
-		return err
+	if request.PipelineStatus == domain.PipelineStatusAwaitingClarification {
+		return ErrGenerationAwaitingClarification
 	}
 	if request.IsOutOfScope {
 		return ErrGenerationOutOfScope
 	}
-	if !requestHasAnalysis(request) {
-		return ErrGenerationAnalysisRequired
+	if request.ConfirmedBrief == nil {
+		return ErrGenerationBriefRequired
+	}
+	request, err = s.updateRequestProgress(ctx, request.ID, stepArchitecture, 35)
+	if err != nil {
+		return err
 	}
 
 	course, err := s.loadCourseByRequestID(ctx, request.ID)
 	if errors.Is(err, contract.ErrCourseNotFound) {
-		params, paramsErr := architectureParamsFromJob(request, payload)
-		if paramsErr != nil {
-			return paramsErr
-		}
-		_, course, err = s.generateArchitectureJob(ctx, request, params)
-	} else if err != nil {
-		return err
+		_, course, err = s.generateArchitectureJob(ctx, request, structureParamsFromBrief(request.ID, *request.ConfirmedBrief))
 	}
 	if err != nil {
 		return err
 	}
-	if err := s.generateMissingLessonPlans(ctx, request.ID, course); err != nil {
-		return err
+	if hasAllLessonPlans(course) {
+		return s.finishLessonPlanPhaseAndEnqueueContents(ctx, job, course.ID)
 	}
-	request, err = s.loadGenerationRequest(ctx, request.ID)
-	if err != nil {
-		return err
-	}
-	if request.PipelineStatus == domain.PipelineStatusCompleted {
-		return nil
-	}
-	if _, err := s.updateRequestProgress(ctx, request.ID, stepGenerationSuccess, 95); err != nil {
-		return err
-	}
-	return s.completeRequest(ctx, request.ID)
+	return s.enqueueLessonPlanJobs(ctx, job, course)
 }
 
-func (s *CourseGeneratorService) runLessonPlanJob(ctx context.Context, requestID, moduleID uuid.UUID) error {
+func (s *CourseGeneratorService) runLessonPlanJob(ctx context.Context, job domain.GenerationJob) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
-	request, err := s.loadRunnableJobRequest(ctx, requestID)
+	request, err := s.loadRunnableJobRequest(ctx, job.RequestID)
 	if err != nil {
 		return err
 	}
+	moduleID := *job.TargetID
 	course, module, err := s.loadModuleGenerationContext(ctx, moduleID)
 	if err != nil {
 		return err
@@ -142,7 +120,7 @@ func (s *CourseGeneratorService) runLessonPlanJob(ctx context.Context, requestID
 		return fmt.Errorf("%w: module does not belong to generation request", domain.ErrInvalidCollection)
 	}
 	if len(module.Lessons) > 0 {
-		return s.finishLessonPlanPhaseIfReady(ctx, course.ID)
+		return s.finishLessonPlanPhaseAndEnqueueContents(ctx, job, course.ID)
 	}
 	if request.PipelineStatus == domain.PipelineStatusCompleted {
 		return ErrGenerationNotCompleted
@@ -169,48 +147,51 @@ func (s *CourseGeneratorService) runLessonPlanJob(ctx context.Context, requestID
 	if _, err := s.persistLessonPlan(ctx, module, lessons); err != nil {
 		return err
 	}
-	return s.finishLessonPlanPhaseIfReady(ctx, course.ID)
+	return s.finishLessonPlanPhaseAndEnqueueContents(ctx, job, course.ID)
 }
 
-func (s *CourseGeneratorService) runLessonContentJob(ctx context.Context, requestID, lessonID uuid.UUID) error {
+func (s *CourseGeneratorService) runLessonContentJob(ctx context.Context, job domain.GenerationJob) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
-	request, err := s.loadRunnableJobRequest(ctx, requestID)
+	request, err := s.loadRunnableJobRequest(ctx, job.RequestID)
 	if err != nil {
 		return err
 	}
-	course, _, lesson, err := s.loadLessonGenerationContext(ctx, lessonID)
+	lessonID := *job.TargetID
+	course, module, lesson, err := s.loadLessonGenerationContext(ctx, lessonID)
 	if err != nil {
 		return err
 	}
 	if course.RequestID != request.ID {
 		return fmt.Errorf("%w: lesson does not belong to generation request", domain.ErrInvalidCollection)
 	}
-	if lesson.HasContent() {
-		return s.completeCourseIfReady(ctx, course.ID)
-	}
-	if _, err := s.prepareCourseForLessonContent(ctx, course); err != nil {
-		return err
-	}
-	if request.PipelineStatus != domain.PipelineStatusCompleted {
-		if _, err := s.updateRequestProgress(ctx, request.ID, stepLessonContent, 75); err != nil {
+	if !lesson.HasContent() {
+		course, err = s.prepareCourseForLessonContent(ctx, course)
+		if err != nil {
+			return err
+		}
+		if request.PipelineStatus != domain.PipelineStatusCompleted {
+			if _, err := s.updateRequestProgress(ctx, request.ID, stepLessonContent, 75); err != nil {
+				return err
+			}
+		}
+		if err := s.generateAndPersistSingleLessonContent(ctx, course, module, lesson); err != nil {
 			return err
 		}
 	}
-	_, err = s.GenerateLessonContent(ctx, lesson.ID)
-	return err
+	return s.enqueueFinalizeIfReady(ctx, job.RequestID, course.ID)
 }
 
-func (s *CourseGeneratorService) runModuleContentJob(ctx context.Context, requestID, moduleID uuid.UUID) error {
+func (s *CourseGeneratorService) runModuleContentJob(ctx context.Context, job domain.GenerationJob) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
-	request, err := s.loadRunnableJobRequest(ctx, requestID)
+	request, err := s.loadRunnableJobRequest(ctx, job.RequestID)
 	if err != nil {
 		return err
 	}
-	course, module, err := s.loadModuleGenerationContext(ctx, moduleID)
+	course, module, err := s.loadModuleGenerationContext(ctx, *job.TargetID)
 	if err != nil {
 		return err
 	}
@@ -220,36 +201,24 @@ func (s *CourseGeneratorService) runModuleContentJob(ctx context.Context, reques
 	if len(module.Lessons) == 0 {
 		return ErrMissingGeneratedLessons
 	}
-	if !module.HasCompleteLessons() {
-		if _, err := s.prepareCourseForLessonContent(ctx, course); err != nil {
-			return err
-		}
-		if request.PipelineStatus != domain.PipelineStatusCompleted {
-			if _, err := s.updateRequestProgress(ctx, request.ID, stepLessonContent, 75); err != nil {
-				return err
-			}
-		}
+	if _, err := s.prepareCourseForLessonContent(ctx, course); err != nil && course.Status != domain.CourseStatusCompleted {
+		return err
 	}
-	for _, lesson := range module.Lessons {
-		if lesson.HasContent() {
-			continue
-		}
-		if err := s.runLessonContentJob(ctx, request.ID, lesson.ID); err != nil {
-			return err
-		}
+	if err := s.enqueueLessonContentJobs(ctx, job.RequestID, module.Lessons); err != nil {
+		return err
 	}
-	return s.completeCourseIfReady(ctx, course.ID)
+	return s.enqueueFinalizeIfReady(ctx, request.ID, course.ID)
 }
 
-func (s *CourseGeneratorService) runFinalizeCourseJob(ctx context.Context, requestID, courseID uuid.UUID) error {
+func (s *CourseGeneratorService) runFinalizeCourseJob(ctx context.Context, job domain.GenerationJob) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
-	request, err := s.loadRunnableJobRequest(ctx, requestID)
+	request, err := s.loadRunnableJobRequest(ctx, job.RequestID)
 	if err != nil {
 		return err
 	}
-	course, err := s.loadCourseByID(ctx, courseID)
+	course, err := s.loadCourseByID(ctx, *job.TargetID)
 	if err != nil {
 		return err
 	}
@@ -284,10 +253,6 @@ func (s *CourseGeneratorService) generateArchitectureJob(
 	request domain.GenerationRequest,
 	params contract.GenerateStructureParams,
 ) (domain.GenerationRequest, domain.Course, error) {
-	request, err := s.updateRequestProgress(ctx, request.ID, stepArchitecture, 35)
-	if err != nil {
-		return domain.GenerationRequest{}, domain.Course{}, err
-	}
 	architecture, err := s.ai.GenerateArchitecture(ctx, contract.ArchitectureInput{
 		Request:      request,
 		Title:        params.Title,
@@ -307,31 +272,166 @@ func (s *CourseGeneratorService) generateArchitectureJob(
 	return request, course, nil
 }
 
-func (s *CourseGeneratorService) generateMissingLessonPlans(ctx context.Context, requestID uuid.UUID, course domain.Course) error {
-	if len(course.Modules) == 0 {
-		return ErrMissingGeneratedModules
+func (s *CourseGeneratorService) generateAndPersistSingleLessonContent(ctx context.Context, course domain.Course, module domain.Module, lesson domain.Lesson) error {
+	output, err := s.ai.GenerateLessonContent(ctx, contract.LessonContentInput{Course: course, Module: module, Lesson: lesson})
+	if err != nil {
+		return fmt.Errorf("generate content for lesson %s: %w", lesson.ID, err)
 	}
-	for _, module := range course.Modules {
-		if len(module.Lessons) > 0 {
-			continue
-		}
-		if err := s.runLessonPlanJob(ctx, requestID, module.ID); err != nil {
-			return err
-		}
+	lessonWithContent, err := s.attachGeneratedContent(lesson, output)
+	if err != nil {
+		return err
 	}
-	return s.finishLessonPlanPhaseIfReady(ctx, course.ID)
+	return s.persistLessonContent(ctx, lessonWithContent)
 }
 
-func (s *CourseGeneratorService) generateMissingLessonContents(ctx context.Context, requestID uuid.UUID, course domain.Course) error {
+func (s *CourseGeneratorService) enqueueLessonPlanJobs(ctx context.Context, parentJob domain.GenerationJob, course domain.Course) error {
 	if len(course.Modules) == 0 {
 		return ErrMissingGeneratedModules
 	}
-	for _, module := range course.Modules {
-		if err := s.runModuleContentJob(ctx, requestID, module.ID); err != nil {
+	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, parentJob.RequestID)
+		if err != nil {
 			return err
 		}
+		for _, module := range course.Modules {
+			if len(module.Lessons) > 0 {
+				continue
+			}
+			targetID := module.ID
+			parentID := parentJob.ID
+			job, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
+				RequestID:      parentJob.RequestID,
+				ParentJobID:    &parentID,
+				Kind:           domain.GenerationJobKindLessonPlan,
+				TargetID:       &targetID,
+				IdempotencyKey: fmt.Sprintf("lesson_plan:%s:v%d:%s", request.ID, request.ClarificationVersion, module.ID),
+				Payload:        json.RawMessage(`{}`),
+				AvailableAt:    s.now(),
+			}, s.now())
+			if err != nil {
+				return err
+			}
+			if _, err := repositories.GenerationJobs().Enqueue(ctx, job); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *CourseGeneratorService) finishLessonPlanPhaseAndEnqueueContents(ctx context.Context, currentJob domain.GenerationJob, courseID uuid.UUID) error {
+	course, err := s.loadCourseByID(ctx, courseID)
+	if err != nil {
+		return err
 	}
-	return nil
+	if !hasAllLessonPlans(course) {
+		return nil
+	}
+	switch course.Status {
+	case domain.CourseStatusStructureGenerated:
+		course, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
+			if err := course.MarkLessonsGenerating(); err != nil {
+				return err
+			}
+			return course.MarkLessonsGenerated()
+		})
+	case domain.CourseStatusLessonsGenerating:
+		course, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
+			return course.MarkLessonsGenerated()
+		})
+	case domain.CourseStatusLessonsGenerated, domain.CourseStatusContentGenerating, domain.CourseStatusCompleted:
+		// The phase was already closed by another worker.
+	default:
+		err = fmt.Errorf("%w: cannot finish lesson plans from course status %s", domain.ErrInvalidStatusTransition, course.Status)
+	}
+	if err != nil {
+		return err
+	}
+
+	lessons := make([]domain.Lesson, 0)
+	for _, module := range course.Modules {
+		lessons = append(lessons, module.Lessons...)
+	}
+	if err := s.enqueueLessonContentJobs(ctx, currentJob.RequestID, lessons); err != nil {
+		return err
+	}
+	return s.enqueueFinalizeIfReady(ctx, currentJob.RequestID, course.ID)
+}
+
+func (s *CourseGeneratorService) enqueueLessonContentJobs(ctx context.Context, requestID uuid.UUID, lessons []domain.Lesson) error {
+	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+		if err != nil {
+			return err
+		}
+		jobs, err := repositories.GenerationJobs().ListByRequestID(ctx, requestID)
+		if err != nil {
+			return err
+		}
+		planParents := make(map[uuid.UUID]uuid.UUID)
+		for _, job := range jobs {
+			if job.Kind == domain.GenerationJobKindLessonPlan && job.TargetID != nil {
+				expectedKey := fmt.Sprintf("lesson_plan:%s:v%d:%s", request.ID, request.ClarificationVersion, *job.TargetID)
+				if job.IdempotencyKey == expectedKey {
+					planParents[*job.TargetID] = job.ID
+				}
+			}
+		}
+		for _, lesson := range lessons {
+			if lesson.HasContent() {
+				continue
+			}
+			targetID := lesson.ID
+			parentID, hasParent := planParents[lesson.ModuleID]
+			var parentJobID *uuid.UUID
+			if hasParent {
+				parentJobID = &parentID
+			}
+			job, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
+				RequestID:      requestID,
+				ParentJobID:    parentJobID,
+				Kind:           domain.GenerationJobKindLessonContent,
+				TargetID:       &targetID,
+				IdempotencyKey: fmt.Sprintf("lesson_content:%s:v%d:%s", request.ID, request.ClarificationVersion, lesson.ID),
+				Payload:        json.RawMessage(`{}`),
+				AvailableAt:    s.now(),
+			}, s.now())
+			if err != nil {
+				return err
+			}
+			if _, err := repositories.GenerationJobs().Enqueue(ctx, job); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (s *CourseGeneratorService) enqueueFinalizeIfReady(ctx context.Context, requestID, courseID uuid.UUID) error {
+	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		complete, err := repositories.Courses().IsCourseContentComplete(ctx, courseID)
+		if err != nil || !complete {
+			return err
+		}
+		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+		if err != nil {
+			return err
+		}
+		targetID := courseID
+		job, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
+			RequestID:      requestID,
+			Kind:           domain.GenerationJobKindFinalizeCourse,
+			TargetID:       &targetID,
+			IdempotencyKey: fmt.Sprintf("finalize_course:%s:v%d:%s", request.ID, request.ClarificationVersion, courseID),
+			Payload:        json.RawMessage(`{}`),
+			AvailableAt:    s.now(),
+		}, s.now())
+		if err != nil {
+			return err
+		}
+		_, err = repositories.GenerationJobs().Enqueue(ctx, job)
+		return err
+	})
 }
 
 func (s *CourseGeneratorService) prepareCourseForLessonPlans(ctx context.Context, course domain.Course) (domain.Course, error) {
@@ -344,35 +444,6 @@ func (s *CourseGeneratorService) prepareCourseForLessonPlans(ctx context.Context
 		return course, nil
 	default:
 		return domain.Course{}, fmt.Errorf("%w: cannot generate lesson plans from course status %s", domain.ErrInvalidStatusTransition, course.Status)
-	}
-}
-
-func (s *CourseGeneratorService) finishLessonPlanPhaseIfReady(ctx context.Context, courseID uuid.UUID) error {
-	course, err := s.loadCourseByID(ctx, courseID)
-	if err != nil {
-		return err
-	}
-	if !hasAllLessonPlans(course) {
-		return nil
-	}
-	switch course.Status {
-	case domain.CourseStatusStructureGenerated:
-		_, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
-			if err := course.MarkLessonsGenerating(); err != nil {
-				return err
-			}
-			return course.MarkLessonsGenerated()
-		})
-		return err
-	case domain.CourseStatusLessonsGenerating:
-		_, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
-			return course.MarkLessonsGenerated()
-		})
-		return err
-	case domain.CourseStatusLessonsGenerated, domain.CourseStatusContentGenerating, domain.CourseStatusCompleted:
-		return nil
-	default:
-		return fmt.Errorf("%w: cannot finish lesson plans from course status %s", domain.ErrInvalidStatusTransition, course.Status)
 	}
 }
 
@@ -423,30 +494,54 @@ func (s *CourseGeneratorService) completeRequestIfNeeded(ctx context.Context, re
 	return s.completeRequest(ctx, request.ID)
 }
 
-func architectureParamsFromJob(request domain.GenerationRequest, payload contract.ArchitectureJobPayload) (contract.GenerateStructureParams, error) {
-	params, err := structureParamsFromAnalysis(request)
+func (s *CourseGeneratorService) enqueueArchitectureJobWithRepositories(
+	ctx context.Context,
+	repositories contract.TransactionalRepositories,
+	request domain.GenerationRequest,
+	parentJobID *uuid.UUID,
+) (domain.GenerationJob, error) {
+	if request.ConfirmedBrief == nil {
+		return domain.GenerationJob{}, ErrGenerationBriefRequired
+	}
+	key, err := architectureJobKey(request.ID, request.ClarificationVersion, *request.ConfirmedBrief)
 	if err != nil {
-		return contract.GenerateStructureParams{}, err
+		return domain.GenerationJob{}, err
 	}
-	if strings.TrimSpace(payload.Title) != "" {
-		params.Title = payload.Title
+	job, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
+		RequestID:      request.ID,
+		ParentJobID:    parentJobID,
+		Kind:           domain.GenerationJobKindArchitecture,
+		IdempotencyKey: key,
+		Payload:        json.RawMessage(`{}`),
+		AvailableAt:    s.now(),
+	}, s.now())
+	if err != nil {
+		return domain.GenerationJob{}, err
 	}
-	if strings.TrimSpace(payload.Synopsis) != "" {
-		params.Synopsis = payload.Synopsis
+	return repositories.GenerationJobs().Enqueue(ctx, job)
+}
+
+func architectureJobKey(requestID uuid.UUID, version int, brief domain.GenerationBrief) (string, error) {
+	payload, err := json.Marshal(struct {
+		Version int                    `json:"version"`
+		Brief   domain.GenerationBrief `json:"brief"`
+	}{Version: version, Brief: brief})
+	if err != nil {
+		return "", fmt.Errorf("marshal confirmed generation brief: %w", err)
 	}
-	if payload.CurrentLevel != "" {
-		params.CurrentLevel = payload.CurrentLevel
+	return deterministicJobKey("architecture", requestID, payload), nil
+}
+
+func structureParamsFromBrief(requestID uuid.UUID, brief domain.GenerationBrief) contract.GenerateStructureParams {
+	return contract.GenerateStructureParams{
+		RequestID:    requestID,
+		Title:        brief.Title,
+		Synopsis:     brief.Synopsis,
+		CurrentLevel: brief.CurrentLevel,
+		TargetLevel:  brief.TargetLevel,
+		Goals:        brief.Goals,
+		Language:     brief.Language,
 	}
-	if payload.TargetLevel != "" {
-		params.TargetLevel = payload.TargetLevel
-	}
-	if len(payload.Goals) > 0 {
-		params.Goals = payload.Goals
-	}
-	if payload.Language != "" {
-		params.Language = payload.Language
-	}
-	return normalizeStructureParams(params)
 }
 
 func hasAllLessonPlans(course domain.Course) bool {

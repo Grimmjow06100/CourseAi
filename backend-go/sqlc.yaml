@@ -6,6 +6,7 @@ sql:
       - "migrations/00001_init_schema.sql"
       - "migrations/00002_add_structured_lesson_activities.sql"
       - "migrations/00003_generation_jobs.sql"
+      - "migrations/00004_generation_clarifications.sql"
     queries: "internal/db/queries"
     gen:
       go:

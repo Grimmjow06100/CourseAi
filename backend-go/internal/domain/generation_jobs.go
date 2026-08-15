@@ -78,7 +78,6 @@ func (s GenerationJobStatus) CanTransitionTo(next GenerationJobStatus) bool {
 type GenerationJobKind string
 
 const (
-	GenerationJobKindFullCourse     GenerationJobKind = "full_course"
 	GenerationJobKindAnalysis       GenerationJobKind = "analysis"
 	GenerationJobKindArchitecture   GenerationJobKind = "architecture"
 	GenerationJobKindLessonPlan     GenerationJobKind = "lesson_plan"
@@ -97,8 +96,7 @@ func ParseGenerationJobKind(value string) (GenerationJobKind, error) {
 
 func (k GenerationJobKind) Validate() error {
 	switch k {
-	case GenerationJobKindFullCourse,
-		GenerationJobKindAnalysis,
+	case GenerationJobKindAnalysis,
 		GenerationJobKindArchitecture,
 		GenerationJobKindLessonPlan,
 		GenerationJobKindLessonContent,

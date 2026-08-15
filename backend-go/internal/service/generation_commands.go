@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
@@ -25,7 +27,7 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		idempotencyKey := fullCourseIdempotencyKey(params.IdempotencyKey)
+		idempotencyKey := generationRequestIdempotencyKey(params.IdempotencyKey)
 		if idempotencyKey != "" {
 			existing, err := repositories.GenerationJobs().FindByIdempotencyKey(ctx, idempotencyKey)
 			if err == nil {
@@ -51,11 +53,11 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 			return err
 		}
 		if idempotencyKey == "" {
-			idempotencyKey = "full_course:" + createdRequest.ID.String() + ":v1"
+			idempotencyKey = "analysis:" + createdRequest.ID.String() + ":v1"
 		}
 		createdJob, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
 			RequestID:      createdRequest.ID,
-			Kind:           domain.GenerationJobKindFullCourse,
+			Kind:           domain.GenerationJobKindAnalysis,
 			IdempotencyKey: idempotencyKey,
 			Payload:        json.RawMessage(`{}`),
 			AvailableAt:    now,
@@ -85,30 +87,86 @@ func (s *CourseGeneratorService) EnqueueCourseStructure(ctx context.Context, par
 	if err != nil {
 		return contract.GenerationStarted{}, err
 	}
-	request, err := s.loadGenerationRequest(ctx, params.RequestID)
-	if err != nil {
+	brief := generationBriefFromStructureParams(params)
+	if err := brief.Validate(); err != nil {
 		return contract.GenerationStarted{}, err
-	}
-	if request.IsOutOfScope {
-		return contract.GenerationStarted{}, ErrGenerationOutOfScope
-	}
-	if !requestHasAnalysis(request) {
-		return contract.GenerationStarted{}, ErrGenerationAnalysisRequired
-	}
-	if request.PipelineStatus == domain.PipelineStatusFailed {
-		return contract.GenerationStarted{}, ErrGenerationStructureRetryNotAllowed
 	}
 
-	payload, err := architectureJobPayload(params)
+	var request domain.GenerationRequest
+	var job domain.GenerationJob
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		locked, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, params.RequestID)
+		if err != nil {
+			return err
+		}
+		if locked.IsOutOfScope {
+			return ErrGenerationOutOfScope
+		}
+		if locked.AnalysisCompletedAt == nil {
+			return ErrGenerationAnalysisRequired
+		}
+		if locked.PipelineStatus == domain.PipelineStatusFailed {
+			return ErrGenerationStructureRetryNotAllowed
+		}
+		if locked.PipelineStatus == domain.PipelineStatusAwaitingClarification {
+			return ErrGenerationAwaitingClarification
+		}
+		if locked.ConfirmedBrief == nil {
+			if err := locked.ConfirmBrief(brief, s.now()); err != nil {
+				return err
+			}
+			locked, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, locked)
+			if err != nil {
+				return err
+			}
+		} else if !generationBriefEqual(*locked.ConfirmedBrief, brief) {
+			return ErrClarificationAlreadySubmitted
+		}
+		request = locked
+		job, err = s.enqueueArchitectureJobWithRepositories(ctx, repositories, request, nil)
+		return err
+	})
 	if err != nil {
 		return contract.GenerationStarted{}, err
 	}
-	job, err := s.enqueueJob(ctx, domain.NewGenerationJobParams{
-		RequestID:      request.ID,
-		Kind:           domain.GenerationJobKindArchitecture,
-		IdempotencyKey: deterministicJobKey("architecture", request.ID, payload),
-		Payload:        payload,
-		AvailableAt:    s.now(),
+	return s.generationStarted(request, job), nil
+}
+
+func (s *CourseGeneratorService) SubmitClarifications(ctx context.Context, params contract.SubmitClarificationsParams) (contract.GenerationStarted, error) {
+	if err := s.validateDependencies(); err != nil {
+		return contract.GenerationStarted{}, err
+	}
+	if params.RequestID == uuid.Nil {
+		return contract.GenerationStarted{}, fmt.Errorf("%w: generation request id", domain.ErrBlankField)
+	}
+	if err := params.Language.Validate(); err != nil {
+		return contract.GenerationStarted{}, err
+	}
+
+	var request domain.GenerationRequest
+	var job domain.GenerationJob
+	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		locked, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, params.RequestID)
+		if err != nil {
+			return err
+		}
+		if locked.PipelineStatus != domain.PipelineStatusAwaitingClarification {
+			if clarificationSubmissionMatches(locked, params) {
+				request = locked
+				job, err = s.enqueueArchitectureJobWithRepositories(ctx, repositories, locked, nil)
+				return err
+			}
+			return ErrGenerationNotAwaitingClarification
+		}
+		if err := locked.SubmitClarifications(params.Answers, params.Title, params.Synopsis, params.Language, s.now()); err != nil {
+			return err
+		}
+		request, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, locked)
+		if err != nil {
+			return err
+		}
+		job, err = s.enqueueArchitectureJobWithRepositories(ctx, repositories, request, nil)
+		return err
 	})
 	if err != nil {
 		return contract.GenerationStarted{}, err
@@ -124,15 +182,15 @@ func (s *CourseGeneratorService) EnqueueStructureRetry(ctx context.Context, para
 	if err != nil {
 		return contract.GenerationStarted{}, err
 	}
-	payload, err := architectureJobPayload(params)
-	if err != nil {
+	brief := generationBriefFromStructureParams(params)
+	if err := brief.Validate(); err != nil {
 		return contract.GenerationStarted{}, err
 	}
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
 	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		loadedRequest, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, params.RequestID)
+		loadedRequest, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, params.RequestID)
 		if err != nil {
 			return err
 		}
@@ -154,21 +212,14 @@ func (s *CourseGeneratorService) EnqueueStructureRetry(ctx context.Context, para
 		if err := loadedRequest.RestartFromFailure(stepAnalysisCompleted, 25, s.now()); err != nil {
 			return err
 		}
+		if err := loadedRequest.ConfirmBrief(brief, s.now()); err != nil {
+			return err
+		}
 		request, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, loadedRequest)
 		if err != nil {
 			return err
 		}
-		createdJob, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
-			RequestID:      request.ID,
-			Kind:           domain.GenerationJobKindArchitecture,
-			IdempotencyKey: "architecture:" + request.ID.String() + ":retry:" + uuid.NewString(),
-			Payload:        payload,
-			AvailableAt:    s.now(),
-		}, s.now())
-		if err != nil {
-			return err
-		}
-		job, err = repositories.GenerationJobs().Enqueue(ctx, createdJob)
+		job, err = s.enqueueArchitectureJobWithRepositories(ctx, repositories, request, nil)
 		return err
 	})
 	if err != nil {
@@ -223,7 +274,7 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 		if err != nil {
 			return err
 		}
-		idempotencyKey := string(kind) + ":" + targetID.String() + ":v1"
+		idempotencyKey := fmt.Sprintf("%s:%s:v%d:%s", kind, request.ID, request.ClarificationVersion, targetID)
 		existing, findErr := repositories.GenerationJobs().FindByIdempotencyKey(ctx, idempotencyKey)
 		if findErr == nil && existing.Status != domain.GenerationJobStatusFailed && existing.Status != domain.GenerationJobStatusCancelled {
 			job = existing
@@ -300,30 +351,63 @@ func requestIDForTarget(ctx context.Context, repositories contract.Transactional
 	}
 }
 
-func architectureJobPayload(params contract.GenerateStructureParams) (json.RawMessage, error) {
-	payload, err := json.Marshal(contract.ArchitectureJobPayload{
+func deterministicJobKey(prefix string, requestID uuid.UUID, payload json.RawMessage) string {
+	digest := sha256.Sum256(payload)
+	return fmt.Sprintf("%s:%s:%x", prefix, requestID, digest[:12])
+}
+
+func generationRequestIdempotencyKey(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return "analysis:client:" + value
+}
+
+func generationBriefFromStructureParams(params contract.GenerateStructureParams) domain.GenerationBrief {
+	return domain.GenerationBrief{
 		Title:        params.Title,
 		Synopsis:     params.Synopsis,
 		CurrentLevel: params.CurrentLevel,
 		TargetLevel:  params.TargetLevel,
 		Goals:        params.Goals,
 		Language:     params.Language,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("marshal architecture job payload: %w", err)
 	}
-	return payload, nil
 }
 
-func deterministicJobKey(prefix string, requestID uuid.UUID, payload json.RawMessage) string {
-	digest := sha256.Sum256(payload)
-	return fmt.Sprintf("%s:%s:%x", prefix, requestID, digest[:12])
+func generationBriefEqual(left, right domain.GenerationBrief) bool {
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
 }
 
-func fullCourseIdempotencyKey(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
+func clarificationSubmissionMatches(request domain.GenerationRequest, params contract.SubmitClarificationsParams) bool {
+	if request.ConfirmedBrief == nil || request.ClarificationsSubmittedAt == nil {
+		return false
 	}
-	return "full_course:client:" + value
+	clone := request
+	clone.PipelineStatus = domain.PipelineStatusAwaitingClarification
+	clone.ConfirmedBrief = nil
+	clone.BriefConfirmedAt = nil
+	clone.ClarificationsSubmittedAt = nil
+	clone.ClarificationAnswers = nil
+	clone.ClarificationVersion = 0
+	if err := clone.SubmitClarifications(params.Answers, params.Title, params.Synopsis, params.Language, clone.UpdatedAt); err != nil {
+		return false
+	}
+	return generationBriefEqual(*request.ConfirmedBrief, *clone.ConfirmedBrief) &&
+		clarificationAnswersEqual(request.ClarificationAnswers, clone.ClarificationAnswers)
+}
+
+func clarificationAnswersEqual(left, right []domain.ClarificationAnswer) bool {
+	canonical := func(answers []domain.ClarificationAnswer) map[string]string {
+		values := make(map[string]string, len(answers))
+		for _, answer := range answers {
+			selected := append([]string(nil), answer.SelectedValues...)
+			sort.Strings(selected)
+			values[strings.TrimSpace(answer.QuestionID)] = strings.Join(selected, "\x00")
+		}
+		return values
+	}
+	return reflect.DeepEqual(canonical(left), canonical(right))
 }
