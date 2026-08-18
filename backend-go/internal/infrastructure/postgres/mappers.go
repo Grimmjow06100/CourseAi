@@ -3,370 +3,396 @@ package postgres
 import (
 	"encoding/json"
 	"fmt"
-	"time"
 
+	dbsqlc "github.com/Grimmjow06100/course-ai/backend-go/internal/db/sqlc"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/jsonutil"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const userColumns = `id, username, password, created_at, updated_at`
+type quizQuestionJSON struct {
+	Order      int              `json:"order"`
+	Type       string           `json:"type"`
+	Question   string           `json:"question"`
+	Options    []quizOptionJSON `json:"options"`
+	Answer     quizAnswerJSON   `json:"answer"`
+	Correction string           `json:"correction"`
+}
 
-const generationRequestColumns = `
-	id,
-	initial_user_prompt,
-	pipeline_status::text,
-	current_step,
-	progress_percent,
-	failure_message,
-	started_at,
-	completed_at,
-	is_out_of_scope,
-	error_message,
-	warning_message,
-	suggested_title,
-	short_synopsis,
-	detected_current_level::text,
-	detected_target_level::text,
-	detected_goal,
-	detected_language::text,
-	clarification_questions,
-	created_at,
-	updated_at
-`
+type quizOptionJSON struct {
+	Order int    `json:"order"`
+	Text  string `json:"text"`
+}
 
-const courseColumns = `
-	id,
-	request_id,
-	language::text,
-	status::text,
-	initial_user_prompt,
-	title,
-	synopsis,
-	target_audience,
-	current_level::text,
-	target_level::text,
-	prerequisites,
-	goals,
-	acquired_skills,
-	final_project_title,
-	final_project_description,
-	final_project_constraints,
-	created_at,
-	updated_at
-`
+type quizAnswerJSON struct {
+	Answer  *string  `json:"answer"`
+	Answers []string `json:"answers"`
+}
 
-const moduleColumns = `
-	id,
-	course_id,
-	module_order,
-	title,
-	description,
-	key_learning_points,
-	created_at,
-	updated_at
-`
-
-const lessonColumns = `
-	id,
-	module_id,
-	lesson_order,
-	title,
-	type::text,
-	estimated_duration_minutes,
-	learning_goal,
-	requires_diagram,
-	technical_keywords,
-	content_markdown,
-	created_at,
-	updated_at
-`
-
-func scanUser(row pgx.Row) (domain.User, error) {
-	var user domain.User
-	var username string
-	if err := row.Scan(
-		&user.ID,
-		&username,
-		&user.PasswordHash,
-		&user.CreatedAt,
-		&user.UpdatedAt,
-	); err != nil {
-		return domain.User{}, err
+func userFromSQLC(row dbsqlc.User) (domain.User, error) {
+	user := domain.User{
+		ID:           row.ID,
+		Username:     domain.Username(row.Username),
+		PasswordHash: row.Password,
+		CreatedAt:    row.CreatedAt,
+		UpdatedAt:    row.UpdatedAt,
 	}
-	user.Username = domain.Username(username)
 	return user, user.Validate()
 }
 
-func scanGenerationRequest(row pgx.Row) (domain.GenerationRequest, error) {
-	var request domain.GenerationRequest
-	var pipelineStatus string
-	var currentStep pgtype.Text
-	var failureMessage pgtype.Text
-	var startedAt pgtype.Timestamp
-	var completedAt pgtype.Timestamp
-	var errorMessage pgtype.Text
-	var warningMessage pgtype.Text
-	var suggestedTitle pgtype.Text
-	var shortSynopsis pgtype.Text
-	var detectedCurrentLevel pgtype.Text
-	var detectedTargetLevel pgtype.Text
-	var detectedGoal pgtype.Text
-	var detectedLanguage pgtype.Text
-	var clarificationQuestionsJSON []byte
-
-	if err := row.Scan(
-		&request.ID,
-		&request.InitialUserPrompt,
-		&pipelineStatus,
-		&currentStep,
-		&request.ProgressPercent,
-		&failureMessage,
-		&startedAt,
-		&completedAt,
-		&request.IsOutOfScope,
-		&errorMessage,
-		&warningMessage,
-		&suggestedTitle,
-		&shortSynopsis,
-		&detectedCurrentLevel,
-		&detectedTargetLevel,
-		&detectedGoal,
-		&detectedLanguage,
-		&clarificationQuestionsJSON,
-		&request.CreatedAt,
-		&request.UpdatedAt,
-	); err != nil {
-		return domain.GenerationRequest{}, err
-	}
-
-	status, err := domain.ParseGenerationPipelineStatus(pipelineStatus)
+func generationRequestFromSQLC(row dbsqlc.GenerationRequest) (domain.GenerationRequest, error) {
+	status, err := domain.ParseGenerationPipelineStatus(string(row.PipelineStatus))
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
-	request.PipelineStatus = status
-	request.CurrentStep = textPtr(currentStep)
-	request.FailureMessage = textPtr(failureMessage)
-	request.StartedAt = timestampPtr(startedAt)
-	request.CompletedAt = timestampPtr(completedAt)
-	request.ErrorMessage = textPtr(errorMessage)
-	request.WarningMessage = textPtr(warningMessage)
-	request.SuggestedTitle = textPtr(suggestedTitle)
-	request.ShortSynopsis = textPtr(shortSynopsis)
-	request.DetectedGoal = textPtr(detectedGoal)
 
-	if detectedCurrentLevel.Valid {
-		level, err := domain.ParseLevel(detectedCurrentLevel.String)
+	request := domain.GenerationRequest{
+		ID:                        row.ID,
+		InitialUserPrompt:         row.InitialUserPrompt,
+		PipelineStatus:            status,
+		CurrentStep:               row.CurrentStep,
+		ProgressPercent:           int(row.ProgressPercent),
+		FailureMessage:            row.FailureMessage,
+		StartedAt:                 row.StartedAt,
+		CompletedAt:               row.CompletedAt,
+		IsOutOfScope:              row.IsOutOfScope,
+		ErrorMessage:              row.ErrorMessage,
+		WarningMessage:            row.WarningMessage,
+		SuggestedTitle:            row.SuggestedTitle,
+		ShortSynopsis:             row.ShortSynopsis,
+		DetectedGoal:              row.DetectedGoal,
+		RawAnalysisOutput:         rawJSONFromBytes(row.RawAnalysisOutput),
+		CreatedAt:                 row.CreatedAt,
+		UpdatedAt:                 row.UpdatedAt,
+		AnalysisCompletedAt:       row.AnalysisCompletedAt,
+		BriefConfirmedAt:          row.BriefConfirmedAt,
+		ClarificationsSubmittedAt: row.ClarificationsSubmittedAt,
+		ClarificationVersion:      int(row.ClarificationVersion),
+	}
+
+	if row.DetectedCurrentLevel != nil {
+		level, err := domain.ParseLevel(string(*row.DetectedCurrentLevel))
 		if err != nil {
 			return domain.GenerationRequest{}, err
 		}
 		request.DetectedCurrentLevel = &level
 	}
-	if detectedTargetLevel.Valid {
-		level, err := domain.ParseLevel(detectedTargetLevel.String)
+	if row.DetectedTargetLevel != nil {
+		level, err := domain.ParseLevel(string(*row.DetectedTargetLevel))
 		if err != nil {
 			return domain.GenerationRequest{}, err
 		}
 		request.DetectedTargetLevel = &level
 	}
-	if detectedLanguage.Valid {
-		language, err := domain.ParseCourseLanguage(detectedLanguage.String)
+	if row.DetectedLanguage != nil {
+		language, err := domain.ParseCourseLanguage(string(*row.DetectedLanguage))
 		if err != nil {
 			return domain.GenerationRequest{}, err
 		}
 		request.DetectedLanguage = &language
 	}
 
-	questions, err := clarificationQuestionsFromJSON(clarificationQuestionsJSON)
+	request.ClarificationQuestions, err = clarificationQuestionsFromJSON(row.ClarificationQuestions)
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
-	request.ClarificationQuestions = questions
-
+	request.ClarificationAnswers, err = clarificationAnswersFromJSON(row.ClarificationAnswers)
+	if err != nil {
+		return domain.GenerationRequest{}, err
+	}
+	request.ConfirmedBrief, err = confirmedBriefFromSQLC(row)
+	if err != nil {
+		return domain.GenerationRequest{}, err
+	}
 	return request, request.Validate()
 }
 
-func scanCourse(row pgx.Row) (domain.Course, error) {
-	var course domain.Course
-	var language string
-	var status string
-	var targetAudience pgtype.Text
-	var currentLevel string
-	var targetLevel string
-	var prerequisitesJSON []byte
-	var goalsJSON []byte
-	var acquiredSkillsJSON []byte
-	var finalProjectTitle pgtype.Text
-	var finalProjectDescription pgtype.Text
-	var finalProjectConstraintsJSON []byte
-
-	if err := row.Scan(
-		&course.ID,
-		&course.RequestID,
-		&language,
-		&status,
-		&course.InitialUserPrompt,
-		&course.Title,
-		&course.Synopsis,
-		&targetAudience,
-		&currentLevel,
-		&targetLevel,
-		&prerequisitesJSON,
-		&goalsJSON,
-		&acquiredSkillsJSON,
-		&finalProjectTitle,
-		&finalProjectDescription,
-		&finalProjectConstraintsJSON,
-		&course.CreatedAt,
-		&course.UpdatedAt,
-	); err != nil {
-		return domain.Course{}, err
-	}
-
-	parsedLanguage, err := domain.ParseCourseLanguage(language)
+func generationJobFromSQLC(row dbsqlc.GenerationJob) (domain.GenerationJob, error) {
+	kind, err := domain.ParseGenerationJobKind(string(row.Kind))
 	if err != nil {
-		return domain.Course{}, err
+		return domain.GenerationJob{}, err
 	}
-	parsedStatus, err := domain.ParseCourseGenerationStatus(status)
+	status, err := domain.ParseGenerationJobStatus(string(row.Status))
 	if err != nil {
-		return domain.Course{}, err
-	}
-	parsedCurrentLevel, err := domain.ParseLevel(currentLevel)
-	if err != nil {
-		return domain.Course{}, err
-	}
-	parsedTargetLevel, err := domain.ParseLevel(targetLevel)
-	if err != nil {
-		return domain.Course{}, err
+		return domain.GenerationJob{}, err
 	}
 
-	course.Language = parsedLanguage
-	course.Status = parsedStatus
-	course.TargetAudience = textPtr(targetAudience)
-	course.CurrentLevel = parsedCurrentLevel
-	course.TargetLevel = parsedTargetLevel
-	course.FinalProjectTitle = textPtr(finalProjectTitle)
-	course.FinalProjectDescription = textPtr(finalProjectDescription)
-
-	if course.Prerequisites, err = stringSliceFromJSON(prerequisitesJSON); err != nil {
-		return domain.Course{}, err
+	job := domain.GenerationJob{
+		ID:               row.ID,
+		RequestID:        row.RequestID,
+		ParentJobID:      uuidPointerFromPGType(row.ParentJobID),
+		Kind:             kind,
+		Status:           status,
+		TargetID:         uuidPointerFromPGType(row.TargetID),
+		IdempotencyKey:   row.IdempotencyKey,
+		Payload:          rawJSONFromBytes(row.Payload),
+		Priority:         int(row.Priority),
+		AttemptCount:     int(row.AttemptCount),
+		MaxAttempts:      int(row.MaxAttempts),
+		AvailableAt:      row.AvailableAt,
+		LockedBy:         pointer.Clone(row.LockedBy),
+		LockedUntil:      pointer.Clone(row.LockedUntil),
+		StartedAt:        pointer.Clone(row.StartedAt),
+		CompletedAt:      pointer.Clone(row.CompletedAt),
+		LastErrorCode:    pointer.Clone(row.LastErrorCode),
+		LastErrorMessage: pointer.Clone(row.LastErrorMessage),
+		CreatedAt:        row.CreatedAt,
+		UpdatedAt:        row.UpdatedAt,
 	}
-	if course.Goals, err = stringSliceFromJSON(goalsJSON); err != nil {
-		return domain.Course{}, err
-	}
-	if course.AcquiredSkills, err = stringSliceFromJSON(acquiredSkillsJSON); err != nil {
-		return domain.Course{}, err
-	}
-	if course.FinalProjectConstraints, err = stringSliceFromJSON(finalProjectConstraintsJSON); err != nil {
-		return domain.Course{}, err
-	}
-
-	return course, nil
+	return job, job.Validate()
 }
 
-func scanModule(row pgx.Row) (domain.Module, error) {
-	var module domain.Module
-	var keyLearningPointsJSON []byte
-
-	if err := row.Scan(
-		&module.ID,
-		&module.CourseID,
-		&module.Order,
-		&module.Title,
-		&module.Description,
-		&keyLearningPointsJSON,
-		&module.CreatedAt,
-		&module.UpdatedAt,
-	); err != nil {
-		return domain.Module{}, err
+func courseFromSQLC(row dbsqlc.Course) (domain.Course, error) {
+	language, err := domain.ParseCourseLanguage(string(row.Language))
+	if err != nil {
+		return domain.Course{}, err
+	}
+	status, err := domain.ParseCourseGenerationStatus(string(row.Status))
+	if err != nil {
+		return domain.Course{}, err
+	}
+	currentLevel, err := domain.ParseLevel(string(row.CurrentLevel))
+	if err != nil {
+		return domain.Course{}, err
+	}
+	targetLevel, err := domain.ParseLevel(string(row.TargetLevel))
+	if err != nil {
+		return domain.Course{}, err
 	}
 
-	points, err := stringSliceFromJSON(keyLearningPointsJSON)
+	course := domain.Course{
+		ID:                      row.ID,
+		RequestID:               row.RequestID,
+		Language:                language,
+		Status:                  status,
+		InitialUserPrompt:       row.InitialUserPrompt,
+		Title:                   row.Title,
+		Synopsis:                row.Synopsis,
+		TargetAudience:          row.TargetAudience,
+		CurrentLevel:            currentLevel,
+		TargetLevel:             targetLevel,
+		FinalProjectTitle:       row.FinalProjectTitle,
+		FinalProjectDescription: row.FinalProjectDescription,
+		RawArchitectureOutput:   rawJSONFromBytes(row.RawArchitectureOutput),
+		CreatedAt:               row.CreatedAt,
+		UpdatedAt:               row.UpdatedAt,
+	}
+
+	if course.Prerequisites, err = stringSliceFromJSON(row.Prerequisites); err != nil {
+		return domain.Course{}, err
+	}
+	if course.Goals, err = stringSliceFromJSON(row.Goals); err != nil {
+		return domain.Course{}, err
+	}
+	if course.AcquiredSkills, err = stringSliceFromJSON(row.AcquiredSkills); err != nil {
+		return domain.Course{}, err
+	}
+	if course.FinalProjectConstraints, err = stringSliceFromJSON(row.FinalProjectConstraints); err != nil {
+		return domain.Course{}, err
+	}
+	return course, course.ValidateCourseOnly()
+}
+
+func moduleFromSQLC(row dbsqlc.Module) (domain.Module, error) {
+	points, err := stringSliceFromJSON(row.KeyLearningPoints)
 	if err != nil {
 		return domain.Module{}, err
 	}
-	module.KeyLearningPoints = points
-
-	return module, nil
+	return domain.Module{
+		ID:                   row.ID,
+		CourseID:             row.CourseID,
+		Order:                int(row.ModuleOrder),
+		Title:                row.Title,
+		Description:          row.Description,
+		KeyLearningPoints:    points,
+		RawLessonsPlanOutput: rawJSONFromBytes(row.RawLessonsPlanOutput),
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+	}, nil
 }
 
-func scanLesson(row pgx.Row) (domain.Lesson, error) {
-	var lesson domain.Lesson
-	var lessonType string
-	var technicalKeywordsJSON []byte
-	var contentMarkdown pgtype.Text
-
-	if err := row.Scan(
-		&lesson.ID,
-		&lesson.ModuleID,
-		&lesson.Order,
-		&lesson.Title,
-		&lessonType,
-		&lesson.EstimatedDurationMinutes,
-		&lesson.LearningGoal,
-		&lesson.RequiresDiagram,
-		&technicalKeywordsJSON,
-		&contentMarkdown,
-		&lesson.CreatedAt,
-		&lesson.UpdatedAt,
-	); err != nil {
-		return domain.Lesson{}, err
-	}
-
-	parsedType, err := domain.ParseLessonType(lessonType)
+func lessonFromSQLC(row dbsqlc.Lesson) (domain.Lesson, error) {
+	lessonType, err := domain.ParseLessonType(string(row.Type))
 	if err != nil {
 		return domain.Lesson{}, err
 	}
-	lesson.Type = parsedType
-	lesson.ContentMarkdown = textPtr(contentMarkdown)
-
-	keywords, err := stringSliceFromJSON(technicalKeywordsJSON)
+	keywords, err := stringSliceFromJSON(row.TechnicalKeywords)
 	if err != nil {
 		return domain.Lesson{}, err
 	}
-	lesson.TechnicalKeywords = keywords
-
+	lesson := domain.Lesson{
+		ID:                       row.ID,
+		ModuleID:                 row.ModuleID,
+		Order:                    int(row.LessonOrder),
+		Title:                    row.Title,
+		Type:                     lessonType,
+		EstimatedDurationMinutes: int(row.EstimatedDurationMinutes),
+		LearningGoal:             row.LearningGoal,
+		RequiresDiagram:          row.RequiresDiagram,
+		TechnicalKeywords:        keywords,
+		ContentMarkdown:          row.ContentMarkdown,
+		RawContentOutput:         rawJSONFromBytes(row.RawContentOutput),
+		CreatedAt:                row.CreatedAt,
+		UpdatedAt:                row.UpdatedAt,
+	}
 	return lesson, lesson.Validate()
 }
 
-func scanCourses(rows pgx.Rows) ([]domain.Course, error) {
-	defer rows.Close()
-	courses := make([]domain.Course, 0)
-	for rows.Next() {
-		course, err := scanCourse(rows)
+func exerciseFromSQLC(row dbsqlc.LessonExercise) (domain.Exercise, error) {
+	exerciseType, err := domain.ParseExerciseType(string(row.Type))
+	if err != nil {
+		return domain.Exercise{}, err
+	}
+	difficulty, err := domain.ParseDifficulty(string(row.Difficulty))
+	if err != nil {
+		return domain.Exercise{}, err
+	}
+	payload, err := exercisePayloadFromJSON(row.Payload)
+	if err != nil {
+		return domain.Exercise{}, err
+	}
+	exercise := domain.Exercise{
+		ID:                   row.ID,
+		LessonID:             row.LessonID,
+		Type:                 exerciseType,
+		Difficulty:           difficulty,
+		Title:                row.Title,
+		Objective:            row.Objective,
+		InstructionsMarkdown: row.InstructionsMarkdown,
+		ContentMarkdown:      row.ContentMarkdown,
+		CorrectionMarkdown:   row.CorrectionMarkdown,
+		Payload:              payload,
+		RawAIOutput:          rawJSONFromBytes(row.RawAiOutput),
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+	}
+	return exercise, exercise.Validate()
+}
+
+func quizFromSQLC(row dbsqlc.LessonQuiz) (domain.Quiz, error) {
+	quizType, err := domain.ParseQuizType(string(row.Type))
+	if err != nil {
+		return domain.Quiz{}, err
+	}
+	difficulty, err := domain.ParseDifficulty(string(row.Difficulty))
+	if err != nil {
+		return domain.Quiz{}, err
+	}
+	questions, err := quizQuestionsFromJSON(row.Questions)
+	if err != nil {
+		return domain.Quiz{}, err
+	}
+	quiz := domain.Quiz{
+		ID:          row.ID,
+		LessonID:    row.LessonID,
+		Type:        quizType,
+		Difficulty:  difficulty,
+		Title:       row.Title,
+		Objective:   row.Objective,
+		Questions:   questions,
+		RawAIOutput: rawJSONFromBytes(row.RawAiOutput),
+		CreatedAt:   row.CreatedAt,
+		UpdatedAt:   row.UpdatedAt,
+	}
+	return quiz, quiz.Validate()
+}
+
+func coursesFromSQLC(rows []dbsqlc.Course) ([]domain.Course, error) {
+	courses := make([]domain.Course, 0, len(rows))
+	for _, row := range rows {
+		course, err := courseFromSQLC(row)
 		if err != nil {
 			return nil, err
 		}
 		courses = append(courses, course)
 	}
-	return courses, rows.Err()
+	return courses, nil
 }
 
-func scanModules(rows pgx.Rows) ([]domain.Module, error) {
-	defer rows.Close()
-	modules := make([]domain.Module, 0)
-	for rows.Next() {
-		module, err := scanModule(rows)
+func generationJobsFromSQLC(rows []dbsqlc.GenerationJob) ([]domain.GenerationJob, error) {
+	jobs := make([]domain.GenerationJob, 0, len(rows))
+	for _, row := range rows {
+		job, err := generationJobFromSQLC(row)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+func modulesFromSQLC(rows []dbsqlc.Module) ([]domain.Module, error) {
+	modules := make([]domain.Module, 0, len(rows))
+	for _, row := range rows {
+		module, err := moduleFromSQLC(row)
 		if err != nil {
 			return nil, err
 		}
 		modules = append(modules, module)
 	}
-	return modules, rows.Err()
+	return modules, nil
 }
 
-func scanLessons(rows pgx.Rows) ([]domain.Lesson, error) {
-	defer rows.Close()
-	lessons := make([]domain.Lesson, 0)
-	for rows.Next() {
-		lesson, err := scanLesson(rows)
+func lessonsFromSQLC(rows []dbsqlc.Lesson) ([]domain.Lesson, error) {
+	lessons := make([]domain.Lesson, 0, len(rows))
+	for _, row := range rows {
+		lesson, err := lessonFromSQLC(row)
 		if err != nil {
 			return nil, err
 		}
 		lessons = append(lessons, lesson)
 	}
-	return lessons, rows.Err()
+	return lessons, nil
+}
+
+func exercisesFromSQLC(rows []dbsqlc.LessonExercise) ([]domain.Exercise, error) {
+	exercises := make([]domain.Exercise, 0, len(rows))
+	for _, row := range rows {
+		exercise, err := exerciseFromSQLC(row)
+		if err != nil {
+			return nil, err
+		}
+		exercises = append(exercises, exercise)
+	}
+	return exercises, nil
+}
+
+func quizzesFromSQLC(rows []dbsqlc.LessonQuiz) ([]domain.Quiz, error) {
+	quizzes := make([]domain.Quiz, 0, len(rows))
+	for _, row := range rows {
+		quiz, err := quizFromSQLC(row)
+		if err != nil {
+			return nil, err
+		}
+		quizzes = append(quizzes, quiz)
+	}
+	return quizzes, nil
+}
+
+func sqlcLevelPtr(value *domain.Level) *dbsqlc.Level {
+	if value == nil {
+		return nil
+	}
+	converted := dbsqlc.Level(*value)
+	return &converted
+}
+
+func sqlcLanguagePtr(value *domain.CourseLanguage) *dbsqlc.CourseLanguage {
+	if value == nil {
+		return nil
+	}
+	converted := dbsqlc.CourseLanguage(*value)
+	return &converted
+}
+
+func sqlcStatusPtr(value *domain.CourseGenerationStatus) *dbsqlc.CourseGenerationStatus {
+	if value == nil {
+		return nil
+	}
+	converted := dbsqlc.CourseGenerationStatus(*value)
+	return &converted
 }
 
 func stringSliceJSON(values []string) (string, error) {
@@ -413,53 +439,173 @@ func clarificationQuestionsFromJSON(data []byte) ([]domain.ClarificationQuestion
 	return values, nil
 }
 
-func textValue(value *string) any {
-	if value == nil {
-		return nil
+func clarificationAnswersJSON(values []domain.ClarificationAnswer) (string, error) {
+	if values == nil {
+		values = []domain.ClarificationAnswer{}
 	}
-	return *value
+	data, err := json.Marshal(values)
+	if err != nil {
+		return "", fmt.Errorf("marshal clarification answers: %w", err)
+	}
+	return string(data), nil
 }
 
-func timeValue(value *time.Time) any {
-	if value == nil {
-		return nil
+func clarificationAnswersFromJSON(data []byte) ([]domain.ClarificationAnswer, error) {
+	if len(data) == 0 {
+		return nil, nil
 	}
-	return *value
+	values := make([]domain.ClarificationAnswer, 0)
+	if err := json.Unmarshal(data, &values); err != nil {
+		return nil, fmt.Errorf("unmarshal clarification answers: %w", err)
+	}
+	return values, nil
 }
 
-func textPtr(value pgtype.Text) *string {
+func confirmedBriefFromSQLC(row dbsqlc.GenerationRequest) (*domain.GenerationBrief, error) {
+	if row.ConfirmedTitle == nil && row.ConfirmedSynopsis == nil && row.ConfirmedCurrentLevel == nil && row.ConfirmedTargetLevel == nil && row.ConfirmedLanguage == nil {
+		return nil, nil
+	}
+	if row.ConfirmedTitle == nil || row.ConfirmedSynopsis == nil || row.ConfirmedCurrentLevel == nil || row.ConfirmedTargetLevel == nil || row.ConfirmedLanguage == nil {
+		return nil, domain.ErrGenerationBriefIncomplete
+	}
+	goals, err := stringSliceFromJSON(row.ConfirmedGoals)
+	if err != nil {
+		return nil, err
+	}
+	currentLevel, err := domain.ParseLevel(string(*row.ConfirmedCurrentLevel))
+	if err != nil {
+		return nil, err
+	}
+	targetLevel, err := domain.ParseLevel(string(*row.ConfirmedTargetLevel))
+	if err != nil {
+		return nil, err
+	}
+	language, err := domain.ParseCourseLanguage(string(*row.ConfirmedLanguage))
+	if err != nil {
+		return nil, err
+	}
+	brief := domain.GenerationBrief{
+		Title:        *row.ConfirmedTitle,
+		Synopsis:     *row.ConfirmedSynopsis,
+		CurrentLevel: currentLevel,
+		TargetLevel:  targetLevel,
+		Goals:        goals,
+		Language:     language,
+	}
+	if err := brief.Validate(); err != nil {
+		return nil, err
+	}
+	return &brief, nil
+}
+
+func exercisePayloadJSON(value domain.ExercisePayload) (string, error) {
+	if value == nil {
+		value = domain.ExercisePayload{}
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("marshal exercise payload: %w", err)
+	}
+	return string(data), nil
+}
+
+func exercisePayloadFromJSON(data []byte) (domain.ExercisePayload, error) {
+	if len(data) == 0 {
+		return domain.ExercisePayload{}, nil
+	}
+	payload := domain.ExercisePayload{}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, fmt.Errorf("unmarshal exercise payload: %w", err)
+	}
+	return payload, nil
+}
+
+func quizQuestionsJSON(values []domain.QuizQuestion) (string, error) {
+	if values == nil {
+		values = []domain.QuizQuestion{}
+	}
+	data, err := json.Marshal(quizQuestionsToJSON(values))
+	if err != nil {
+		return "", fmt.Errorf("marshal quiz questions: %w", err)
+	}
+	return string(data), nil
+}
+
+func quizQuestionsFromJSON(data []byte) ([]domain.QuizQuestion, error) {
+	if len(data) == 0 {
+		return nil, nil
+	}
+	values := make([]quizQuestionJSON, 0)
+	if err := json.Unmarshal(data, &values); err != nil {
+		return nil, fmt.Errorf("unmarshal quiz questions: %w", err)
+	}
+	return quizQuestionsFromJSONPayload(values)
+}
+
+func quizQuestionsToJSON(values []domain.QuizQuestion) []quizQuestionJSON {
+	questions := make([]quizQuestionJSON, 0, len(values))
+	for _, value := range values {
+		options := make([]quizOptionJSON, 0, len(value.Options))
+		for _, option := range value.Options {
+			options = append(options, quizOptionJSON{Order: option.Order, Text: option.Text})
+		}
+		answers := value.Answer.Answers
+		if answers == nil {
+			answers = []string{}
+		}
+		questions = append(questions, quizQuestionJSON{
+			Order:      value.Order,
+			Type:       string(value.Type),
+			Question:   value.Question,
+			Options:    options,
+			Answer:     quizAnswerJSON{Answer: value.Answer.Answer, Answers: answers},
+			Correction: value.Correction,
+		})
+	}
+	return questions
+}
+
+func quizQuestionsFromJSONPayload(values []quizQuestionJSON) ([]domain.QuizQuestion, error) {
+	questions := make([]domain.QuizQuestion, 0, len(values))
+	for index, value := range values {
+		questionType, err := domain.ParseQuizQuestionType(value.Type)
+		if err != nil {
+			return nil, fmt.Errorf("quiz question %d type: %w", index+1, err)
+		}
+
+		options := make([]domain.QuizOption, 0, len(value.Options))
+		for _, option := range value.Options {
+			options = append(options, domain.QuizOption{Order: option.Order, Text: option.Text})
+		}
+		questions = append(questions, domain.QuizQuestion{
+			Order:      value.Order,
+			Type:       questionType,
+			Question:   value.Question,
+			Options:    options,
+			Answer:     domain.QuizAnswer{Answer: value.Answer.Answer, Answers: value.Answer.Answers},
+			Correction: value.Correction,
+		})
+	}
+	return questions, nil
+}
+
+func rawJSONValue(value json.RawMessage) any {
+	if len(value) == 0 {
+		return nil
+	}
+	return string(value)
+}
+
+func rawJSONFromBytes(data []byte) json.RawMessage {
+	if len(data) == 0 {
+		return nil
+	}
+	return jsonutil.Clone(json.RawMessage(data))
+}
+
+func uuidPointerFromPGType(value pgtype.UUID) *uuid.UUID {
 	if !value.Valid {
 		return nil
 	}
-	text := value.String
-	return &text
-}
-
-func timestampPtr(value pgtype.Timestamp) *time.Time {
-	if !value.Valid {
-		return nil
-	}
-	timestamp := value.Time
-	return &timestamp
-}
-
-func levelValue(value *domain.Level) any {
-	if value == nil {
-		return nil
-	}
-	return string(*value)
-}
-
-func languageValue(value *domain.CourseLanguage) any {
-	if value == nil {
-		return nil
-	}
-	return string(*value)
-}
-
-func uuidValue(value *uuid.UUID) any {
-	if value == nil {
-		return nil
-	}
-	return *value
+	return pointer.To(uuid.UUID(value.Bytes))
 }

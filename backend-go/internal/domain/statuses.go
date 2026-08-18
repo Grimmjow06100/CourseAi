@@ -82,11 +82,128 @@ func (t LessonType) Validate() error {
 	}
 }
 
+type Difficulty string
+
+const (
+	DifficultyBeginner     Difficulty = "beginner"
+	DifficultyIntermediate Difficulty = "intermediate"
+	DifficultyAdvanced     Difficulty = "advanced"
+)
+
+func ParseDifficulty(value string) (Difficulty, error) {
+	difficulty := Difficulty(strings.ToLower(strings.TrimSpace(value)))
+	if err := difficulty.Validate(); err != nil {
+		return "", err
+	}
+	return difficulty, nil
+}
+
+func (d Difficulty) Validate() error {
+	switch d {
+	case DifficultyBeginner, DifficultyIntermediate, DifficultyAdvanced:
+		return nil
+	default:
+		return fmt.Errorf("%w: %s", ErrInvalidDifficulty, d)
+	}
+}
+
+type ExerciseType string
+
+const (
+	ExerciseTypeGuidedLab     ExerciseType = "guided_lab"
+	ExerciseTypeCoding        ExerciseType = "coding"
+	ExerciseTypeDebugging     ExerciseType = "debugging"
+	ExerciseTypeConfiguration ExerciseType = "configuration"
+	ExerciseTypeScenario      ExerciseType = "scenario"
+	ExerciseTypeWrittenAnswer ExerciseType = "written_answer"
+	ExerciseTypeCommandLine   ExerciseType = "command_line"
+	ExerciseTypeMixed         ExerciseType = "mixed"
+)
+
+func ParseExerciseType(value string) (ExerciseType, error) {
+	exerciseType := ExerciseType(strings.ToLower(strings.TrimSpace(value)))
+	if err := exerciseType.Validate(); err != nil {
+		return "", err
+	}
+	return exerciseType, nil
+}
+
+func (t ExerciseType) Validate() error {
+	switch t {
+	case ExerciseTypeGuidedLab,
+		ExerciseTypeCoding,
+		ExerciseTypeDebugging,
+		ExerciseTypeConfiguration,
+		ExerciseTypeScenario,
+		ExerciseTypeWrittenAnswer,
+		ExerciseTypeCommandLine,
+		ExerciseTypeMixed:
+		return nil
+	default:
+		return fmt.Errorf("%w: %s", ErrInvalidExerciseType, t)
+	}
+}
+
+type QuizType string
+
+const (
+	QuizTypeSingleChoice   QuizType = "single_choice"
+	QuizTypeMultipleChoice QuizType = "multiple_choice"
+	QuizTypeTrueFalse      QuizType = "true_false"
+	QuizTypeShortAnswer    QuizType = "short_answer"
+	QuizTypeMixed          QuizType = "mixed"
+)
+
+func ParseQuizType(value string) (QuizType, error) {
+	quizType := QuizType(strings.ToLower(strings.TrimSpace(value)))
+	if err := quizType.Validate(); err != nil {
+		return "", err
+	}
+	return quizType, nil
+}
+
+func (t QuizType) Validate() error {
+	switch t {
+	case QuizTypeSingleChoice, QuizTypeMultipleChoice, QuizTypeTrueFalse, QuizTypeShortAnswer, QuizTypeMixed:
+		return nil
+	default:
+		return fmt.Errorf("%w: %s", ErrInvalidQuizType, t)
+	}
+}
+
+type QuizQuestionType string
+
+const (
+	QuizQuestionTypeSingleChoice   QuizQuestionType = "single_choice"
+	QuizQuestionTypeMultipleChoice QuizQuestionType = "multiple_choice"
+	QuizQuestionTypeTrueFalse      QuizQuestionType = "true_false"
+	QuizQuestionTypeShortAnswer    QuizQuestionType = "short_answer"
+)
+
+func ParseQuizQuestionType(value string) (QuizQuestionType, error) {
+	questionType := QuizQuestionType(strings.ToLower(strings.TrimSpace(value)))
+	if err := questionType.Validate(); err != nil {
+		return "", err
+	}
+	return questionType, nil
+}
+
+func (t QuizQuestionType) Validate() error {
+	switch t {
+	case QuizQuestionTypeSingleChoice,
+		QuizQuestionTypeMultipleChoice,
+		QuizQuestionTypeTrueFalse,
+		QuizQuestionTypeShortAnswer:
+		return nil
+	default:
+		return fmt.Errorf("%w: %s", ErrInvalidQuizQuestionType, t)
+	}
+}
+
 type CourseGenerationStatus string
 
 const (
 	CourseStatusAnalysisPending        CourseGenerationStatus = "analysis_pending"
-	CourseStatusNeedsClarification     CourseGenerationStatus = "needs_clarification"
 	CourseStatusAnalysisCompleted      CourseGenerationStatus = "analysis_completed"
 	CourseStatusArchitectureGenerating CourseGenerationStatus = "architecture_generating"
 	CourseStatusStructureGenerated     CourseGenerationStatus = "structure_generated"
@@ -108,7 +225,6 @@ func ParseCourseGenerationStatus(value string) (CourseGenerationStatus, error) {
 func (s CourseGenerationStatus) Validate() error {
 	switch s {
 	case CourseStatusAnalysisPending,
-		CourseStatusNeedsClarification,
 		CourseStatusAnalysisCompleted,
 		CourseStatusArchitectureGenerating,
 		CourseStatusStructureGenerated,
@@ -137,12 +253,7 @@ func (s CourseGenerationStatus) CanTransitionTo(next CourseGenerationStatus) boo
 
 	allowedTransitions := map[CourseGenerationStatus][]CourseGenerationStatus{
 		CourseStatusAnalysisPending: {
-			CourseStatusNeedsClarification,
 			CourseStatusAnalysisCompleted,
-			CourseStatusFailed,
-		},
-		CourseStatusNeedsClarification: {
-			CourseStatusAnalysisPending,
 			CourseStatusFailed,
 		},
 		CourseStatusAnalysisCompleted: {
@@ -182,10 +293,11 @@ func (s CourseGenerationStatus) CanTransitionTo(next CourseGenerationStatus) boo
 type GenerationPipelineStatus string
 
 const (
-	PipelineStatusQueued    GenerationPipelineStatus = "queued"
-	PipelineStatusRunning   GenerationPipelineStatus = "running"
-	PipelineStatusCompleted GenerationPipelineStatus = "completed"
-	PipelineStatusFailed    GenerationPipelineStatus = "failed"
+	PipelineStatusQueued                GenerationPipelineStatus = "queued"
+	PipelineStatusRunning               GenerationPipelineStatus = "running"
+	PipelineStatusAwaitingClarification GenerationPipelineStatus = "awaiting_clarification"
+	PipelineStatusCompleted             GenerationPipelineStatus = "completed"
+	PipelineStatusFailed                GenerationPipelineStatus = "failed"
 )
 
 func ParseGenerationPipelineStatus(value string) (GenerationPipelineStatus, error) {
@@ -198,7 +310,7 @@ func ParseGenerationPipelineStatus(value string) (GenerationPipelineStatus, erro
 
 func (s GenerationPipelineStatus) Validate() error {
 	switch s {
-	case PipelineStatusQueued, PipelineStatusRunning, PipelineStatusCompleted, PipelineStatusFailed:
+	case PipelineStatusQueued, PipelineStatusRunning, PipelineStatusAwaitingClarification, PipelineStatusCompleted, PipelineStatusFailed:
 		return nil
 	default:
 		return fmt.Errorf("%w: %s", ErrInvalidGenerationStatus, s)
@@ -221,7 +333,9 @@ func (s GenerationPipelineStatus) CanTransitionTo(next GenerationPipelineStatus)
 	case PipelineStatusQueued:
 		return next == PipelineStatusRunning || next == PipelineStatusFailed
 	case PipelineStatusRunning:
-		return next == PipelineStatusCompleted || next == PipelineStatusFailed
+		return next == PipelineStatusAwaitingClarification || next == PipelineStatusCompleted || next == PipelineStatusFailed
+	case PipelineStatusAwaitingClarification:
+		return next == PipelineStatusQueued || next == PipelineStatusFailed
 	default:
 		return false
 	}

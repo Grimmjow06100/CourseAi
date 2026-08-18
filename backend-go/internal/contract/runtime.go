@@ -12,9 +12,12 @@ type Clock interface {
 type TransactionalRepositories interface {
 	Users() UserRepository
 	GenerationRequests() GenerationRequestRepository
+	GenerationJobs() GenerationJobQueue
 	Courses() CourseRepository
 	Modules() ModuleRepository
 	Lessons() LessonRepository
+	Exercises() ExerciseRepository
+	Quizzes() QuizRepository
 }
 
 type UnitOfWork interface {

@@ -12,18 +12,24 @@ import (
 type Repositories struct {
 	users              *UserRepository
 	generationRequests *GenerationRequestRepository
+	generationJobs     *GenerationJobRepository
 	courses            *CourseRepository
 	modules            *ModuleRepository
 	lessons            *LessonRepository
+	exercises          *ExerciseRepository
+	quizzes            *QuizRepository
 }
 
 func NewRepositories(db DBTX) *Repositories {
 	return &Repositories{
 		users:              NewUserRepository(db),
 		generationRequests: NewGenerationRequestRepository(db),
+		generationJobs:     NewGenerationJobRepository(db),
 		courses:            NewCourseRepository(db),
 		modules:            NewModuleRepository(db),
 		lessons:            NewLessonRepository(db),
+		exercises:          NewExerciseRepository(db),
+		quizzes:            NewQuizRepository(db),
 	}
 }
 
@@ -33,6 +39,10 @@ func (r *Repositories) Users() contract.UserRepository {
 
 func (r *Repositories) GenerationRequests() contract.GenerationRequestRepository {
 	return r.generationRequests
+}
+
+func (r *Repositories) GenerationJobs() contract.GenerationJobQueue {
+	return r.generationJobs
 }
 
 func (r *Repositories) Courses() contract.CourseRepository {
@@ -45,6 +55,14 @@ func (r *Repositories) Modules() contract.ModuleRepository {
 
 func (r *Repositories) Lessons() contract.LessonRepository {
 	return r.lessons
+}
+
+func (r *Repositories) Exercises() contract.ExerciseRepository {
+	return r.exercises
+}
+
+func (r *Repositories) Quizzes() contract.QuizRepository {
+	return r.quizzes
 }
 
 // UnitOfWork runs repository operations inside a single PostgreSQL transaction.

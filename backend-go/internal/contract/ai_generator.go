@@ -50,6 +50,8 @@ type LessonContentInput struct {
 type LessonContentOutput struct {
 	Lesson          domain.Lesson
 	ContentMarkdown string
+	Exercises       []domain.Exercise
+	Quizzes         []domain.Quiz
 	Raw             json.RawMessage
 }
 

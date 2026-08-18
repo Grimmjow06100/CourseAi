@@ -88,6 +88,10 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusNotFound, "course_not_found", "course not found"
 	case errors.Is(err, contract.ErrGenerationRequestNotFound):
 		return http.StatusNotFound, "generation_request_not_found", "generation request not found"
+	case errors.Is(err, contract.ErrGenerationJobNotFound):
+		return http.StatusNotFound, "generation_job_not_found", "generation job not found"
+	case errors.Is(err, contract.ErrGenerationJobIdempotencyConflict):
+		return http.StatusConflict, "idempotency_conflict", "idempotency key is already used by another generation"
 	case errors.Is(err, contract.ErrModuleNotFound):
 		return http.StatusNotFound, "module_not_found", "module not found"
 	case errors.Is(err, contract.ErrLessonNotFound):
@@ -106,6 +110,14 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusConflict, "generation_not_completed", err.Error()
 	case errors.Is(err, service.ErrGenerationAnalysisRequired):
 		return http.StatusConflict, "generation_analysis_required", err.Error()
+	case errors.Is(err, service.ErrGenerationBriefRequired):
+		return http.StatusConflict, "generation_brief_required", err.Error()
+	case errors.Is(err, service.ErrGenerationAwaitingClarification):
+		return http.StatusConflict, "generation_awaiting_clarification", err.Error()
+	case errors.Is(err, service.ErrGenerationNotAwaitingClarification):
+		return http.StatusConflict, "generation_not_awaiting_clarification", err.Error()
+	case errors.Is(err, service.ErrClarificationAlreadySubmitted):
+		return http.StatusConflict, "clarification_already_submitted", err.Error()
 	case errors.Is(err, service.ErrGenerationNotRetryable):
 		return http.StatusConflict, "generation_not_retryable", err.Error()
 	case errors.Is(err, service.ErrGenerationStructureRetryNotAllowed):
@@ -127,6 +139,11 @@ func classifyError(err error) (int, string, string) {
 		errors.Is(err, domain.ErrInvalidPassword),
 		errors.Is(err, domain.ErrInvalidUsername),
 		errors.Is(err, domain.ErrInvalidClarification),
+		errors.Is(err, domain.ErrInvalidClarificationAnswer),
+		errors.Is(err, domain.ErrClarificationAnswerMissing),
+		errors.Is(err, domain.ErrClarificationAnswerUnknown),
+		errors.Is(err, domain.ErrClarificationValueNotAllowed),
+		errors.Is(err, domain.ErrGenerationBriefIncomplete),
 		errors.Is(err, domain.ErrGenerationRequestNotReady):
 		return http.StatusBadRequest, "validation_error", err.Error()
 	default:

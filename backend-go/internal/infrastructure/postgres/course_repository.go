@@ -2,238 +2,149 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"strings"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
+	dbsqlc "github.com/Grimmjow06100/course-ai/backend-go/internal/db/sqlc"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/google/uuid"
 )
 
 type CourseRepository struct {
-	db DBTX
+	queries *dbsqlc.Queries
 }
 
 func NewCourseRepository(db DBTX) *CourseRepository {
-	return &CourseRepository{db: db}
+	return &CourseRepository{queries: dbsqlc.New(db)}
 }
 
 func (r *CourseRepository) SaveCourse(ctx context.Context, course domain.Course) (domain.Course, error) {
-	if err := course.Validate(); err != nil {
+	if err := course.ValidateCourseOnly(); err != nil {
 		return domain.Course{}, err
 	}
 
-	prerequisitesJSON, err := stringSliceJSON(course.Prerequisites)
+	params, err := createCourseParams(course)
 	if err != nil {
 		return domain.Course{}, err
 	}
-	goalsJSON, err := stringSliceJSON(course.Goals)
+	row, err := r.queries.CreateCourse(ctx, params)
 	if err != nil {
 		return domain.Course{}, err
 	}
-	acquiredSkillsJSON, err := stringSliceJSON(course.AcquiredSkills)
+	savedCourse, err := courseFromSQLC(row)
 	if err != nil {
 		return domain.Course{}, err
 	}
-	finalProjectConstraintsJSON, err := stringSliceJSON(course.FinalProjectConstraints)
-	if err != nil {
-		return domain.Course{}, err
-	}
-
-	savedCourse, err := scanCourse(r.db.QueryRow(ctx, `
-		INSERT INTO courses (
-			id,
-			request_id,
-			language,
-			status,
-			initial_user_prompt,
-			title,
-			synopsis,
-			target_audience,
-			current_level,
-			target_level,
-			prerequisites,
-			goals,
-			acquired_skills,
-			final_project_title,
-			final_project_description,
-			final_project_constraints,
-			created_at,
-			updated_at
-		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14, $15, $16::jsonb, $17, $18)
-		RETURNING `+courseColumns+`
-	`,
-		course.ID,
-		course.RequestID,
-		string(course.Language),
-		string(course.Status),
-		course.InitialUserPrompt,
-		course.Title,
-		course.Synopsis,
-		textValue(course.TargetAudience),
-		string(course.CurrentLevel),
-		string(course.TargetLevel),
-		prerequisitesJSON,
-		goalsJSON,
-		acquiredSkillsJSON,
-		textValue(course.FinalProjectTitle),
-		textValue(course.FinalProjectDescription),
-		finalProjectConstraintsJSON,
-		course.CreatedAt,
-		course.UpdatedAt,
-	))
-	if err != nil {
-		return domain.Course{}, err
-	}
+	savedCourse.Modules = course.Modules
 	return savedCourse, nil
 }
 
 func (r *CourseRepository) UpdateCourse(ctx context.Context, course domain.Course) (domain.Course, error) {
-	if err := course.Validate(); err != nil {
+	if err := course.ValidateCourseOnly(); err != nil {
 		return domain.Course{}, err
 	}
 
-	prerequisitesJSON, err := stringSliceJSON(course.Prerequisites)
+	params, err := updateCourseParams(course)
 	if err != nil {
 		return domain.Course{}, err
 	}
-	goalsJSON, err := stringSliceJSON(course.Goals)
-	if err != nil {
-		return domain.Course{}, err
-	}
-	acquiredSkillsJSON, err := stringSliceJSON(course.AcquiredSkills)
-	if err != nil {
-		return domain.Course{}, err
-	}
-	finalProjectConstraintsJSON, err := stringSliceJSON(course.FinalProjectConstraints)
-	if err != nil {
-		return domain.Course{}, err
-	}
-
-	updatedCourse, err := scanCourse(r.db.QueryRow(ctx, `
-		UPDATE courses
-		SET
-			request_id = $2,
-			language = $3,
-			status = $4,
-			initial_user_prompt = $5,
-			title = $6,
-			synopsis = $7,
-			target_audience = $8,
-			current_level = $9,
-			target_level = $10,
-			prerequisites = $11::jsonb,
-			goals = $12::jsonb,
-			acquired_skills = $13::jsonb,
-			final_project_title = $14,
-			final_project_description = $15,
-			final_project_constraints = $16::jsonb,
-			updated_at = $17
-		WHERE id = $1
-		RETURNING `+courseColumns+`
-	`,
-		course.ID,
-		course.RequestID,
-		string(course.Language),
-		string(course.Status),
-		course.InitialUserPrompt,
-		course.Title,
-		course.Synopsis,
-		textValue(course.TargetAudience),
-		string(course.CurrentLevel),
-		string(course.TargetLevel),
-		prerequisitesJSON,
-		goalsJSON,
-		acquiredSkillsJSON,
-		textValue(course.FinalProjectTitle),
-		textValue(course.FinalProjectDescription),
-		finalProjectConstraintsJSON,
-		course.UpdatedAt,
-	))
+	row, err := r.queries.UpdateCourse(ctx, params)
 	if err != nil {
 		return domain.Course{}, mapNoRows(err, ErrCourseNotFound)
 	}
-	return r.hydrateCourse(ctx, updatedCourse)
+	updatedCourse, err := courseFromSQLC(row)
+	if err != nil {
+		return domain.Course{}, err
+	}
+	updatedCourse.Modules = course.Modules
+	return updatedCourse, nil
 }
 
 func (r *CourseRepository) FindCourseByID(ctx context.Context, id uuid.UUID) (domain.Course, error) {
-	course, err := scanCourse(r.db.QueryRow(ctx, `
-		SELECT `+courseColumns+`
-		FROM courses
-		WHERE id = $1
-	`, id))
+	course, err := r.FindCourseStateByID(ctx, id)
 	if err != nil {
-		return domain.Course{}, mapNoRows(err, ErrCourseNotFound)
+		return domain.Course{}, err
 	}
 	return r.hydrateCourse(ctx, course)
 }
 
-func (r *CourseRepository) FindCourseByRequestID(ctx context.Context, requestID uuid.UUID) (domain.Course, error) {
-	course, err := scanCourse(r.db.QueryRow(ctx, `
-		SELECT `+courseColumns+`
-		FROM courses
-		WHERE request_id = $1
-	`, requestID))
+func (r *CourseRepository) FindCourseStateByID(ctx context.Context, id uuid.UUID) (domain.Course, error) {
+	row, err := r.queries.GetCourseByID(ctx, id)
 	if err != nil {
 		return domain.Course{}, mapNoRows(err, ErrCourseNotFound)
 	}
+	return courseFromSQLC(row)
+}
+
+func (r *CourseRepository) FindCourseByRequestID(ctx context.Context, requestID uuid.UUID) (domain.Course, error) {
+	course, err := r.FindCourseStateByRequestID(ctx, requestID)
+	if err != nil {
+		return domain.Course{}, err
+	}
 	return r.hydrateCourse(ctx, course)
+}
+
+func (r *CourseRepository) FindCourseStateByRequestID(ctx context.Context, requestID uuid.UUID) (domain.Course, error) {
+	row, err := r.queries.GetCourseByRequestID(ctx, requestID)
+	if err != nil {
+		return domain.Course{}, mapNoRows(err, ErrCourseNotFound)
+	}
+	return courseFromSQLC(row)
+}
+
+func (r *CourseRepository) IsCourseContentComplete(ctx context.Context, id uuid.UUID) (bool, error) {
+	isComplete, err := r.queries.IsCourseContentComplete(ctx, id)
+	if err != nil {
+		return false, err
+	}
+	if isComplete == nil {
+		return false, fmt.Errorf("course content completeness query returned null")
+	}
+	return *isComplete, nil
 }
 
 func (r *CourseRepository) ListCourses(ctx context.Context, filters contract.CourseFilters) (contract.Page[domain.Course], error) {
 	filters = normalizeCourseFilters(filters)
-	whereSQL, args := buildCourseWhere(filters)
-
-	var totalItems int
-	if err := r.db.QueryRow(ctx, `SELECT COUNT(*) FROM courses `+whereSQL, args...).Scan(&totalItems); err != nil {
-		return contract.Page[domain.Course]{}, err
-	}
-
-	orderBy, err := courseOrderBySQL(filters.OrderBy)
-	if err != nil {
-		return contract.Page[domain.Course]{}, err
-	}
 	if err := filters.OrderDirection.Validate(); err != nil {
 		return contract.Page[domain.Course]{}, err
 	}
 
-	pagination := filters.Pagination.Normalize()
-	args = append(args, pagination.PageSize, (pagination.Page-1)*pagination.PageSize)
-	rows, err := r.db.Query(ctx, `
-		SELECT `+courseColumns+`
-		FROM courses
-		`+whereSQL+`
-		ORDER BY `+orderBy+` `+string(filters.OrderDirection)+`
-		LIMIT $`+fmt.Sprint(len(args)-1)+` OFFSET $`+fmt.Sprint(len(args))+`
-	`, args...)
+	search := optionalSearch(filters.Search)
+	totalItems, err := r.queries.CountCourses(ctx, dbsqlc.CountCoursesParams{
+		Status:   sqlcStatusPtr(filters.Status),
+		Language: sqlcLanguagePtr(filters.Language),
+		Search:   search,
+	})
 	if err != nil {
 		return contract.Page[domain.Course]{}, err
 	}
 
-	courses, err := scanCourses(rows)
+	pagination := filters.Pagination.Normalize()
+	rows, err := r.listCourseRows(ctx, filters, search, pagination)
 	if err != nil {
 		return contract.Page[domain.Course]{}, err
 	}
-	for index := range courses {
-		hydratedCourse, err := r.hydrateCourse(ctx, courses[index])
-		if err != nil {
-			return contract.Page[domain.Course]{}, err
-		}
-		courses[index] = hydratedCourse
+	courses, err := coursesFromSQLC(rows)
+	if err != nil {
+		return contract.Page[domain.Course]{}, err
+	}
+	courses, err = relationLoader{queries: r.queries}.hydrateCourses(ctx, courses)
+	if err != nil {
+		return contract.Page[domain.Course]{}, err
 	}
 
 	totalPages := 0
 	if totalItems > 0 {
 		totalPages = int(math.Ceil(float64(totalItems) / float64(pagination.PageSize)))
 	}
-
 	return contract.Page[domain.Course]{
 		Items:       courses,
 		Page:        pagination.Page,
 		PageSize:    pagination.PageSize,
-		TotalItems:  totalItems,
+		TotalItems:  int(totalItems),
 		TotalPages:  totalPages,
 		HasNext:     pagination.Page < totalPages,
 		HasPrevious: pagination.Page > 1,
@@ -241,37 +152,161 @@ func (r *CourseRepository) ListCourses(ctx context.Context, filters contract.Cou
 }
 
 func (r *CourseRepository) DeleteCourseByRequestID(ctx context.Context, requestID uuid.UUID) error {
-	commandTag, err := r.db.Exec(ctx, `DELETE FROM courses WHERE request_id = $1`, requestID)
+	rowsAffected, err := r.queries.DeleteCourseByRequestID(ctx, requestID)
 	if err != nil {
 		return err
 	}
-	if commandTag.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return ErrCourseNotFound
 	}
 	return nil
 }
 
 func (r *CourseRepository) DeleteCourse(ctx context.Context, id uuid.UUID) error {
-	commandTag, err := r.db.Exec(ctx, `DELETE FROM courses WHERE id = $1`, id)
+	rowsAffected, err := r.queries.DeleteCourseByID(ctx, id)
 	if err != nil {
 		return err
 	}
-	if commandTag.RowsAffected() == 0 {
+	if rowsAffected == 0 {
 		return ErrCourseNotFound
 	}
 	return nil
 }
 
 func (r *CourseRepository) hydrateCourse(ctx context.Context, course domain.Course) (domain.Course, error) {
-	modules, err := NewModuleRepository(r.db).ListModulesByCourseID(ctx, course.ID)
+	courses, err := relationLoader{queries: r.queries}.hydrateCourses(ctx, []domain.Course{course})
 	if err != nil {
 		return domain.Course{}, err
 	}
-	course.Modules = modules
-	if err := course.Validate(); err != nil {
-		return domain.Course{}, err
+	return courses[0], nil
+}
+
+func (r *CourseRepository) listCourseRows(
+	ctx context.Context,
+	filters contract.CourseFilters,
+	search *string,
+	pagination contract.Pagination,
+) ([]dbsqlc.Course, error) {
+	offset := int32((pagination.Page - 1) * pagination.PageSize)
+	limit := int32(pagination.PageSize)
+	status := sqlcStatusPtr(filters.Status)
+	language := sqlcLanguagePtr(filters.Language)
+
+	switch filters.OrderBy {
+	case contract.CourseOrderByCreatedAt:
+		if filters.OrderDirection == contract.SortAscending {
+			return r.queries.ListCoursesCreatedAtAsc(ctx, dbsqlc.ListCoursesCreatedAtAscParams{
+				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			})
+		}
+		return r.queries.ListCoursesCreatedAtDesc(ctx, dbsqlc.ListCoursesCreatedAtDescParams{
+			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+		})
+	case contract.CourseOrderByUpdatedAt:
+		if filters.OrderDirection == contract.SortAscending {
+			return r.queries.ListCoursesUpdatedAtAsc(ctx, dbsqlc.ListCoursesUpdatedAtAscParams{
+				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			})
+		}
+		return r.queries.ListCoursesUpdatedAtDesc(ctx, dbsqlc.ListCoursesUpdatedAtDescParams{
+			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+		})
+	case contract.CourseOrderByTitle:
+		if filters.OrderDirection == contract.SortAscending {
+			return r.queries.ListCoursesTitleAsc(ctx, dbsqlc.ListCoursesTitleAscParams{
+				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			})
+		}
+		return r.queries.ListCoursesTitleDesc(ctx, dbsqlc.ListCoursesTitleDescParams{
+			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+		})
+	case contract.CourseOrderByStatus:
+		if filters.OrderDirection == contract.SortAscending {
+			return r.queries.ListCoursesStatusAsc(ctx, dbsqlc.ListCoursesStatusAscParams{
+				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			})
+		}
+		return r.queries.ListCoursesStatusDesc(ctx, dbsqlc.ListCoursesStatusDescParams{
+			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+		})
+	default:
+		return nil, fmt.Errorf("invalid course order field: %s", filters.OrderBy)
 	}
-	return course, nil
+}
+
+func createCourseParams(course domain.Course) (dbsqlc.CreateCourseParams, error) {
+	prerequisites, goals, skills, constraints, err := courseJSONFields(course)
+	if err != nil {
+		return dbsqlc.CreateCourseParams{}, err
+	}
+	return dbsqlc.CreateCourseParams{
+		ID:                      course.ID,
+		RequestID:               course.RequestID,
+		Language:                dbsqlc.CourseLanguage(course.Language),
+		Status:                  dbsqlc.CourseGenerationStatus(course.Status),
+		InitialUserPrompt:       course.InitialUserPrompt,
+		Title:                   course.Title,
+		Synopsis:                course.Synopsis,
+		TargetAudience:          course.TargetAudience,
+		CurrentLevel:            dbsqlc.Level(course.CurrentLevel),
+		TargetLevel:             dbsqlc.Level(course.TargetLevel),
+		Prerequisites:           prerequisites,
+		Goals:                   goals,
+		AcquiredSkills:          skills,
+		FinalProjectTitle:       course.FinalProjectTitle,
+		FinalProjectDescription: course.FinalProjectDescription,
+		FinalProjectConstraints: constraints,
+		RawArchitectureOutput:   rawJSONFromBytes(course.RawArchitectureOutput),
+		CreatedAt:               course.CreatedAt,
+		UpdatedAt:               course.UpdatedAt,
+	}, nil
+}
+
+func updateCourseParams(course domain.Course) (dbsqlc.UpdateCourseParams, error) {
+	prerequisites, goals, skills, constraints, err := courseJSONFields(course)
+	if err != nil {
+		return dbsqlc.UpdateCourseParams{}, err
+	}
+	return dbsqlc.UpdateCourseParams{
+		RequestID:               course.RequestID,
+		Language:                dbsqlc.CourseLanguage(course.Language),
+		Status:                  dbsqlc.CourseGenerationStatus(course.Status),
+		InitialUserPrompt:       course.InitialUserPrompt,
+		Title:                   course.Title,
+		Synopsis:                course.Synopsis,
+		TargetAudience:          course.TargetAudience,
+		CurrentLevel:            dbsqlc.Level(course.CurrentLevel),
+		TargetLevel:             dbsqlc.Level(course.TargetLevel),
+		Prerequisites:           prerequisites,
+		Goals:                   goals,
+		AcquiredSkills:          skills,
+		FinalProjectTitle:       course.FinalProjectTitle,
+		FinalProjectDescription: course.FinalProjectDescription,
+		FinalProjectConstraints: constraints,
+		RawArchitectureOutput:   rawJSONFromBytes(course.RawArchitectureOutput),
+		UpdatedAt:               course.UpdatedAt,
+		ID:                      course.ID,
+	}, nil
+}
+
+func courseJSONFields(course domain.Course) (json.RawMessage, json.RawMessage, json.RawMessage, json.RawMessage, error) {
+	prerequisites, err := stringSliceJSON(course.Prerequisites)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	goals, err := stringSliceJSON(course.Goals)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	skills, err := stringSliceJSON(course.AcquiredSkills)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	constraints, err := stringSliceJSON(course.FinalProjectConstraints)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return json.RawMessage(prerequisites), json.RawMessage(goals), json.RawMessage(skills), json.RawMessage(constraints), nil
 }
 
 func normalizeCourseFilters(filters contract.CourseFilters) contract.CourseFilters {
@@ -286,40 +321,9 @@ func normalizeCourseFilters(filters contract.CourseFilters) contract.CourseFilte
 	return filters
 }
 
-func buildCourseWhere(filters contract.CourseFilters) (string, []any) {
-	clauses := make([]string, 0)
-	args := make([]any, 0)
-
-	if filters.Status != nil {
-		args = append(args, string(*filters.Status))
-		clauses = append(clauses, fmt.Sprintf("status = $%d", len(args)))
+func optionalSearch(search string) *string {
+	if search == "" {
+		return nil
 	}
-	if filters.Language != nil {
-		args = append(args, string(*filters.Language))
-		clauses = append(clauses, fmt.Sprintf("language = $%d", len(args)))
-	}
-	if filters.Search != "" {
-		args = append(args, "%"+filters.Search+"%")
-		clauses = append(clauses, fmt.Sprintf("(title ILIKE $%d OR synopsis ILIKE $%d)", len(args), len(args)))
-	}
-
-	if len(clauses) == 0 {
-		return "", args
-	}
-	return "WHERE " + strings.Join(clauses, " AND "), args
-}
-
-func courseOrderBySQL(field contract.CourseOrderField) (string, error) {
-	switch field {
-	case contract.CourseOrderByCreatedAt:
-		return "created_at", nil
-	case contract.CourseOrderByUpdatedAt:
-		return "updated_at", nil
-	case contract.CourseOrderByTitle:
-		return "title", nil
-	case contract.CourseOrderByStatus:
-		return "status", nil
-	default:
-		return "", fmt.Errorf("invalid course order field: %s", field)
-	}
+	return &search
 }

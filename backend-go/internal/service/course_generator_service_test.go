@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
 	"github.com/google/uuid"
 )
 
@@ -230,6 +232,167 @@ func TestRestartFromFailureClearsFailureState(t *testing.T) {
 	}
 }
 
+func TestGetGenerationStatusExposesAnalysisAndClarificationAction(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, time.August, 15, 10, 0, 0, 0, time.UTC)
+	request, err := domain.NewGenerationRequestAt("Build a Linux course", now)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	if err := request.MarkRunning(stepAnalysis, now); err != nil {
+		t.Fatalf("mark running: %v", err)
+	}
+	unknown := domain.LevelUnknown
+	target := domain.LevelAdvanced
+	language := domain.CourseLanguageEN
+	title := "Linux administration"
+	synopsis := "Learn Linux progressively"
+	goal := "Administer Linux"
+	if err := request.ApplyAnalysis(domain.AnalysisSummary{
+		SuggestedTitle:       &title,
+		ShortSynopsis:        &synopsis,
+		DetectedCurrentLevel: &unknown,
+		DetectedTargetLevel:  &target,
+		DetectedGoal:         &goal,
+		DetectedLanguage:     &language,
+		ClarificationQuestions: []domain.ClarificationQuestion{{
+			ID:       domain.ClarificationIDCurrentLevel,
+			Question: "What is your current level?",
+			Options: []domain.ClarificationOption{
+				{Value: "beginner", Label: "Beginner"},
+				{Value: "intermediate", Label: "Intermediate"},
+			},
+		}},
+	}, now); err != nil {
+		t.Fatalf("apply analysis: %v", err)
+	}
+	if err := request.MarkAwaitingClarification(now); err != nil {
+		t.Fatalf("mark awaiting clarification: %v", err)
+	}
+
+	service := NewCourseGeneratorService(fakeCourseAI{}, &fakeUnitOfWork{
+		requests: map[uuid.UUID]domain.GenerationRequest{request.ID: request},
+	}, fixedClock{now: now}, CourseGeneratorConfig{})
+	status, err := service.GetGenerationStatus(context.Background(), request.ID)
+	if err != nil {
+		t.Fatalf("GetGenerationStatus() error = %v", err)
+	}
+	if status.SuggestedTitle == nil || *status.SuggestedTitle != title || status.DetectedLanguage == nil || *status.DetectedLanguage != language {
+		t.Fatalf("analysis draft is missing from status: %+v", status)
+	}
+	if status.ActionRequired == nil || status.ActionRequired.Type != "submit_clarifications" || status.ActionRequired.URL != "/api/generations/"+request.ID.String()+"/clarifications" {
+		t.Fatalf("clarification action is missing from status: %+v", status.ActionRequired)
+	}
+}
+
+func TestAttachGeneratedContentPreservesRawOutput(t *testing.T) {
+	now := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	lesson, err := domain.NewLessonAt(domain.NewLessonParams{
+		ModuleID:                 uuid.New(),
+		Order:                    1,
+		Title:                    "Commandes Linux essentielles",
+		Type:                     domain.LessonTypeMixed,
+		EstimatedDurationMinutes: 45,
+		LearningGoal:             "Utiliser les commandes de base du shell.",
+		RequiresDiagram:          false,
+		TechnicalKeywords:        []string{"shell", "linux"},
+	}, now)
+	if err != nil {
+		t.Fatalf("create lesson: %v", err)
+	}
+
+	exercise, err := domain.NewExerciseAt(domain.NewExerciseParams{
+		LessonID:             lesson.ID,
+		Type:                 domain.ExerciseTypeGuidedLab,
+		Difficulty:           domain.DifficultyBeginner,
+		Title:                "Explorer le systeme de fichiers",
+		Objective:            "Naviguer entre les dossiers.",
+		InstructionsMarkdown: "Utilise `pwd`, `ls` et `cd`.",
+		ContentMarkdown:      "Liste le contenu de ton repertoire courant.",
+		CorrectionMarkdown:   "`pwd` affiche le chemin courant et `ls` liste les fichiers.",
+		Payload:              domain.ExercisePayload{"commands": []string{"pwd", "ls", "cd"}},
+	}, now)
+	if err != nil {
+		t.Fatalf("create exercise: %v", err)
+	}
+
+	answer := "ls"
+	quiz, err := domain.NewQuizAt(domain.NewQuizParams{
+		LessonID:   lesson.ID,
+		Type:       domain.QuizTypeSingleChoice,
+		Difficulty: domain.DifficultyBeginner,
+		Title:      "Quiz shell",
+		Objective:  "Verifier les commandes de base.",
+		Questions: []domain.QuizQuestion{
+			{
+				Order:    1,
+				Type:     domain.QuizQuestionTypeSingleChoice,
+				Question: "Quelle commande liste les fichiers ?",
+				Options: []domain.QuizOption{
+					{Order: 1, Text: "cd"},
+					{Order: 2, Text: "ls"},
+				},
+				Answer:     domain.QuizAnswer{Answer: &answer},
+				Correction: "`ls` liste les fichiers du dossier courant.",
+			},
+		},
+	}, now)
+	if err != nil {
+		t.Fatalf("create quiz: %v", err)
+	}
+
+	raw := json.RawMessage(`{"contentMarkdown":"# Linux","exercises":[{"title":"Explorer"}],"quizzes":[{"title":"Quiz shell"}]}`)
+	service := NewCourseGeneratorService(fakeCourseAI{}, nil, fixedClock{now: now}, CourseGeneratorConfig{})
+
+	lessonWithContent, err := service.attachGeneratedContent(lesson, contract.LessonContentOutput{
+		ContentMarkdown: "# Linux",
+		Exercises:       []domain.Exercise{exercise},
+		Quizzes:         []domain.Quiz{quiz},
+		Raw:             raw,
+	})
+	if err != nil {
+		t.Fatalf("attach generated content: %v", err)
+	}
+
+	if string(lessonWithContent.RawContentOutput) != string(raw) {
+		t.Fatalf("unexpected lesson raw output: %s", string(lessonWithContent.RawContentOutput))
+	}
+	if len(lessonWithContent.Exercises) != 1 || string(lessonWithContent.Exercises[0].RawAIOutput) != string(raw) {
+		t.Fatalf("unexpected exercise raw output: %#v", lessonWithContent.Exercises)
+	}
+	if len(lessonWithContent.Quizzes) != 1 || string(lessonWithContent.Quizzes[0].RawAIOutput) != string(raw) {
+		t.Fatalf("unexpected quiz raw output: %#v", lessonWithContent.Quizzes)
+	}
+}
+
+func TestAttachGeneratedContentRejectsActivityPolicyMismatch(t *testing.T) {
+	now := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
+	lesson, err := domain.NewLessonAt(domain.NewLessonParams{
+		ModuleID:                 uuid.New(),
+		Order:                    1,
+		Title:                    "Pratique Linux",
+		Type:                     domain.LessonTypePractice,
+		EstimatedDurationMinutes: 45,
+		LearningGoal:             "Pratiquer les commandes de base du shell.",
+		RequiresDiagram:          false,
+		TechnicalKeywords:        []string{"shell", "linux"},
+	}, now)
+	if err != nil {
+		t.Fatalf("create lesson: %v", err)
+	}
+
+	service := NewCourseGeneratorService(fakeCourseAI{}, nil, fixedClock{now: now}, CourseGeneratorConfig{})
+	_, err = service.attachGeneratedContent(lesson, contract.LessonContentOutput{
+		ContentMarkdown: "# Linux",
+		Exercises:       nil,
+		Quizzes:         nil,
+	})
+	if !errors.Is(err, domain.ErrInvalidCollection) {
+		t.Fatalf("expected activity policy error, got: %v", err)
+	}
+}
+
 func validStructureParams(requestID uuid.UUID) contract.GenerateStructureParams {
 	return contract.GenerateStructureParams{
 		RequestID:    requestID,
@@ -257,8 +420,8 @@ func analyzedGenerationRequest(t *testing.T, now time.Time) domain.GenerationReq
 	goal := "Comprendre Linux"
 	language := domain.CourseLanguageFR
 	if err := request.ApplyAnalysis(domain.AnalysisSummary{
-		SuggestedTitle:       testStringPtr("Formation Linux"),
-		ShortSynopsis:        testStringPtr("Apprendre les bases de Linux."),
+		SuggestedTitle:       pointer.To("Formation Linux"),
+		ShortSynopsis:        pointer.To("Apprendre les bases de Linux."),
 		DetectedCurrentLevel: &level,
 		DetectedTargetLevel:  &targetLevel,
 		DetectedGoal:         &goal,
@@ -270,10 +433,6 @@ func analyzedGenerationRequest(t *testing.T, now time.Time) domain.GenerationReq
 		t.Fatalf("update progress: %v", err)
 	}
 	return request
-}
-
-func testStringPtr(value string) *string {
-	return &value
 }
 
 type fixedClock struct {
@@ -305,15 +464,27 @@ func (fakeCourseAI) GenerateLessonContent(context.Context, contract.LessonConten
 type fakeUnitOfWork struct {
 	requests map[uuid.UUID]domain.GenerationRequest
 	courses  contract.CourseRepository
+	modules  contract.ModuleRepository
+	lessons  contract.LessonRepository
+	jobs     contract.GenerationJobQueue
 }
 
 func (u *fakeUnitOfWork) WithinTx(ctx context.Context, fn func(context.Context, contract.TransactionalRepositories) error) error {
-	return fn(ctx, fakeRepositories{requests: fakeGenerationRequestRepository{requests: u.requests}, courses: u.courses})
+	return fn(ctx, fakeRepositories{
+		requests: fakeGenerationRequestRepository{requests: u.requests},
+		courses:  u.courses,
+		modules:  u.modules,
+		lessons:  u.lessons,
+		jobs:     u.jobs,
+	})
 }
 
 type fakeRepositories struct {
 	requests fakeGenerationRequestRepository
 	courses  contract.CourseRepository
+	modules  contract.ModuleRepository
+	lessons  contract.LessonRepository
+	jobs     contract.GenerationJobQueue
 }
 
 func (r fakeRepositories) Users() contract.UserRepository {
@@ -324,21 +495,35 @@ func (r fakeRepositories) GenerationRequests() contract.GenerationRequestReposit
 	return r.requests
 }
 
+func (r fakeRepositories) GenerationJobs() contract.GenerationJobQueue {
+	return r.jobs
+}
+
 func (r fakeRepositories) Courses() contract.CourseRepository {
 	return r.courses
 }
 
 func (r fakeRepositories) Modules() contract.ModuleRepository {
-	return nil
+	return r.modules
 }
 
 func (r fakeRepositories) Lessons() contract.LessonRepository {
+	return r.lessons
+}
+
+func (r fakeRepositories) Exercises() contract.ExerciseRepository {
+	return nil
+}
+
+func (r fakeRepositories) Quizzes() contract.QuizRepository {
 	return nil
 }
 
 type fakeCourseRepository struct {
 	deletedRequestID uuid.UUID
 	deleteErr        error
+	courseByID       map[uuid.UUID]domain.Course
+	findErr          error
 }
 
 func (r *fakeCourseRepository) SaveCourse(context.Context, domain.Course) (domain.Course, error) {
@@ -354,6 +539,24 @@ func (r *fakeCourseRepository) FindCourseByID(context.Context, uuid.UUID) (domai
 }
 
 func (r *fakeCourseRepository) FindCourseByRequestID(context.Context, uuid.UUID) (domain.Course, error) {
+	panic("not used")
+}
+
+func (r *fakeCourseRepository) FindCourseStateByID(context.Context, uuid.UUID) (domain.Course, error) {
+	if r.findErr != nil {
+		return domain.Course{}, r.findErr
+	}
+	for _, course := range r.courseByID {
+		return course, nil
+	}
+	return domain.Course{}, contract.ErrCourseNotFound
+}
+
+func (r *fakeCourseRepository) FindCourseStateByRequestID(context.Context, uuid.UUID) (domain.Course, error) {
+	panic("not used")
+}
+
+func (r *fakeCourseRepository) IsCourseContentComplete(context.Context, uuid.UUID) (bool, error) {
 	panic("not used")
 }
 
@@ -374,8 +577,9 @@ type fakeGenerationRequestRepository struct {
 	requests map[uuid.UUID]domain.GenerationRequest
 }
 
-func (r fakeGenerationRequestRepository) SaveGenerationRequest(context.Context, domain.GenerationRequest) (domain.GenerationRequest, error) {
-	panic("not used")
+func (r fakeGenerationRequestRepository) SaveGenerationRequest(_ context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
+	r.requests[request.ID] = request
+	return request, nil
 }
 
 func (r fakeGenerationRequestRepository) UpdateGenerationRequest(_ context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
@@ -391,6 +595,34 @@ func (r fakeGenerationRequestRepository) FindGenerationRequestByID(_ context.Con
 	return request, nil
 }
 
+func (r fakeGenerationRequestRepository) FindGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error) {
+	return r.FindGenerationRequestByID(ctx, id)
+}
+
 func (r fakeGenerationRequestRepository) FindGenerationRequestByCourseID(context.Context, uuid.UUID) (domain.GenerationRequest, error) {
 	panic("not used")
+}
+
+func (r fakeGenerationRequestRepository) FindGenerationStatusByID(_ context.Context, id uuid.UUID) (contract.GenerationStatus, error) {
+	request, ok := r.requests[id]
+	if !ok {
+		return contract.GenerationStatus{}, contract.ErrGenerationRequestNotFound
+	}
+	return contract.GenerationStatus{
+		RequestID:              request.ID,
+		PipelineStatus:         request.PipelineStatus,
+		CurrentStep:            request.CurrentStep,
+		ProgressPercent:        request.ProgressPercent,
+		FailureMessage:         request.FailureMessage,
+		IsOutOfScope:           request.IsOutOfScope,
+		ErrorMessage:           request.ErrorMessage,
+		WarningMessage:         request.WarningMessage,
+		SuggestedTitle:         request.SuggestedTitle,
+		ShortSynopsis:          request.ShortSynopsis,
+		DetectedCurrentLevel:   request.DetectedCurrentLevel,
+		DetectedTargetLevel:    request.DetectedTargetLevel,
+		DetectedGoal:           request.DetectedGoal,
+		DetectedLanguage:       request.DetectedLanguage,
+		ClarificationQuestions: request.ClarificationQuestions,
+	}, nil
 }

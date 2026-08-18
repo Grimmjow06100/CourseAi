@@ -45,3 +45,44 @@
 - [x] Add PostgreSQL repository compile-time interface assertions and verify CourseRepository includes DeleteCourseByRequestID.
 - [x] Write a vault strategy note for complete backend-go stack traces on logged errors.
 - [x] Write a vault strategy note for structured lesson quiz and exercise persistence.
+- [x] Reorganize backend-go OpenAI package into generator facade, client, JSON extraction, and DTO files.
+- [x] Move backend-go OpenAI DTOs into the dedicated openai/dto package.
+- [x] Add Goose migration for structured lesson quizzes and exercises.
+- [x] Fix backend-go Goose makefile command order for current CLI syntax.
+- [x] Add backend-go domain entities and business validation for structured quizzes and exercises.
+- [x] Extend backend-go lesson content generation prompt and OpenAI schema to produce structured quizzes and exercises.
+- [x] Persist generated lesson quizzes and exercises into PostgreSQL and expose them through lesson API responses.
+- [x] Write a vault code review for structured lesson activity generation and persistence.
+- [x] Persist raw AI outputs for analysis, architecture, lesson plans, lesson content, quizzes, and exercises.
+- [x] Harden quiz domain validation for option counts, duplicate answers, and contiguous question/option ordering.
+- [x] Move lesson activity pedagogical policy from the OpenAI DTO layer into the domain and enforce it in generation.
+- [x] Add sqlc configuration, optimized query files, generated Go query package, and Makefile targets for backend-go database access.
+- [x] Migrate all backend-go PostgreSQL repositories to sqlc-generated methods and batch-load course relations without N+1 queries.
+- [x] Document potential PostgreSQL read-path optimizations, use-case projections, join tradeoffs, and repository improvements in the vault.
+- [x] Write a dedicated vault lesson explaining N+1 queries, PostgreSQL ANY arrays, batch loading, and Go graph reconstruction.
+- [x] Document the complete Course AI pagination flow from HTTP query parsing through sqlc LIMIT/OFFSET and response metadata.
+- [x] Review and document prioritized PostgreSQL, HTTP orchestration, and OpenAI optimizations for faster course generation.
+- [x] Verify that the pipeline optimization review links to the official OpenAI latency, prompt caching, and model guidance.
+- [x] Explain why generation writes should avoid automatic relation hydration and use bulk inserts for generated collections.
+- [x] Write a detailed vault note tracing SaveLesson hydration queries and explaining bulk inserts, PostgreSQL COPY, and sqlc :copyfrom.
+- [x] Optimize backend-go persistence with write-only repositories, sqlc CopyFrom bulk inserts, scalar status projections, atomic lesson content replacement, and document the changes in the vault.
+- [x] Explain the performance tradeoff between single-row INSERT and pgx CopyFrom for generated exercises and quizzes.
+- [x] Explain the role and transactional behavior of ReplaceLessonContent during lesson regeneration.
+- [x] Explain when replacing a lesson requires deleting previously generated exercises and quizzes.
+- [x] Review backend-go generation readiness, state transitions, OpenAI contracts, PostgreSQL persistence, security, and runtime verification.
+- [x] Consolidate the two backend optimization notes into one prioritized lesson-generation performance guide.
+- [x] Write a complete pre-deployment readiness, Railway, security, migration, testing, and GO/NO-GO checklist in the vault.
+- [x] Document durable PostgreSQL jobs, worker pools, leases, retries, idempotency, goroutines, and deployment-oriented pipeline orchestration.
+- [x] Complete the durable generation-job foundation with domain invariants, PostgreSQL migration, sqlc queue operations, claim fencing, leases, retries, idempotency, repository wiring, and integration tests.
+- [x] Regenerate sqlc with `query_parameter_limit: 1` and migrate repositories to direct scalar arguments for single-parameter queries.
+- [x] Implement generation worker infrastructure with strict environment config, bounded concurrency, lease heartbeat, expired-job reaping, provider-aware retry policy, graceful shutdown, and race-tested behavior.
+- [x] Centralize generation worker environment parsing through `internal/config`, preserve strict malformed-value errors, and add shared configuration tests.
+- [x] Rename the jobs configuration API to `WorkerConfig`, `DefaultWorkerConfig`, and `LoadWorkerConfig` across the worker infrastructure and tests.
+- [x] Implement the generation job executor for every `GenerationJobKind` with strict payload validation, target ownership checks, resumable checkpoints, idempotent AI generation, finalization, and dispatch tests.
+- [x] Finalize the production-ready Go backend runtime with asynchronous generation handlers, durable job enqueueing and status APIs, worker/executor wiring, graceful shutdown, CORS, Railway/Goose deployment configuration, Docker packaging, and end-to-end production smoke tests.
+- [x] Consolidate reusable Go helpers into focused `internal/shared` packages for pointers, JSON, and text while preserving domain and infrastructure boundaries, with unit, race, and PostgreSQL integration coverage.
+- [x] Reorganize backend-go tests by keeping unit tests beside their packages, moving PostgreSQL suites to `tests/integration/postgres`, adding reusable transactional setup in `tests/testkit`, and exposing dedicated Make targets for unit, race, integration, and combined runs.
+- [x] Add the missing backend-go unit coverage across domain aggregates, configuration, services, HTTP handlers/DTOs/middleware, OpenAI structured generation, prompt loading, PostgreSQL mappers, and the complete in-memory course pipeline; fix analysis failure persistence discovered by the new tests.
+- [x] Document the corrected full-generation clarification workflow, including durable request states, user-answer persistence, job chaining, claims, leases, retries, API changes, migrations, and test coverage.
+- [x] Implement the durable clarification workflow end to end: staged analysis jobs, awaiting-clarification state, persisted answers and confirmed brief, atomic architecture continuation, status API draft, resumable downstream jobs, sqlc migration, documentation, and unit/race/PostgreSQL integration coverage.
+- [x] Add structured JSON worker lifecycle logs for job start, success, retry, terminal failure, interruption, claim loss and heartbeat failure, with correlation IDs, job metadata, timing, documented fields, and race-tested log assertions.

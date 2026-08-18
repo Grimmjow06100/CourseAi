@@ -44,19 +44,68 @@ type ModuleResponse struct {
 }
 
 type LessonResponse struct {
-	ID                       string    `json:"id"`
-	ModuleID                 string    `json:"moduleId"`
-	Order                    int       `json:"order"`
-	Title                    string    `json:"title"`
-	Type                     string    `json:"type"`
-	EstimatedDurationMinutes int       `json:"estimatedDurationMinutes"`
-	LearningGoal             string    `json:"learningGoal"`
-	RequiresDiagram          bool      `json:"requiresDiagram"`
-	TechnicalKeywords        []string  `json:"technicalKeywords"`
-	ContentMarkdown          *string   `json:"contentMarkdown"`
-	HasContent               bool      `json:"hasContent"`
-	CreatedAt                time.Time `json:"createdAt"`
-	UpdatedAt                time.Time `json:"updatedAt"`
+	ID                       string             `json:"id"`
+	ModuleID                 string             `json:"moduleId"`
+	Order                    int                `json:"order"`
+	Title                    string             `json:"title"`
+	Type                     string             `json:"type"`
+	EstimatedDurationMinutes int                `json:"estimatedDurationMinutes"`
+	LearningGoal             string             `json:"learningGoal"`
+	RequiresDiagram          bool               `json:"requiresDiagram"`
+	TechnicalKeywords        []string           `json:"technicalKeywords"`
+	ContentMarkdown          *string            `json:"contentMarkdown"`
+	Exercises                []ExerciseResponse `json:"exercises"`
+	Quizzes                  []QuizResponse     `json:"quizzes"`
+	HasContent               bool               `json:"hasContent"`
+	HasStructuredActivities  bool               `json:"hasStructuredActivities"`
+	CreatedAt                time.Time          `json:"createdAt"`
+	UpdatedAt                time.Time          `json:"updatedAt"`
+}
+
+type ExerciseResponse struct {
+	ID                   string         `json:"id"`
+	LessonID             string         `json:"lessonId"`
+	Type                 string         `json:"type"`
+	Difficulty           string         `json:"difficulty"`
+	Title                string         `json:"title"`
+	Objective            string         `json:"objective"`
+	InstructionsMarkdown string         `json:"instructionsMarkdown"`
+	ContentMarkdown      string         `json:"contentMarkdown"`
+	CorrectionMarkdown   string         `json:"correctionMarkdown"`
+	Payload              map[string]any `json:"payload"`
+	CreatedAt            time.Time      `json:"createdAt"`
+	UpdatedAt            time.Time      `json:"updatedAt"`
+}
+
+type QuizResponse struct {
+	ID         string                 `json:"id"`
+	LessonID   string                 `json:"lessonId"`
+	Type       string                 `json:"type"`
+	Difficulty string                 `json:"difficulty"`
+	Title      string                 `json:"title"`
+	Objective  string                 `json:"objective"`
+	Questions  []QuizQuestionResponse `json:"questions"`
+	CreatedAt  time.Time              `json:"createdAt"`
+	UpdatedAt  time.Time              `json:"updatedAt"`
+}
+
+type QuizQuestionResponse struct {
+	Order      int                  `json:"order"`
+	Type       string               `json:"type"`
+	Question   string               `json:"question"`
+	Options    []QuizOptionResponse `json:"options"`
+	Answer     QuizAnswerResponse   `json:"answer"`
+	Correction string               `json:"correction"`
+}
+
+type QuizOptionResponse struct {
+	Order int    `json:"order"`
+	Text  string `json:"text"`
+}
+
+type QuizAnswerResponse struct {
+	Answer  *string  `json:"answer"`
+	Answers []string `json:"answers"`
 }
 
 func CourseFromDomain(course domain.Course) CourseResponse {
@@ -110,6 +159,16 @@ func ModuleFromDomain(module domain.Module) ModuleResponse {
 }
 
 func LessonFromDomain(lesson domain.Lesson) LessonResponse {
+	exercises := make([]ExerciseResponse, 0, len(lesson.Exercises))
+	for _, exercise := range lesson.Exercises {
+		exercises = append(exercises, ExerciseFromDomain(exercise))
+	}
+
+	quizzes := make([]QuizResponse, 0, len(lesson.Quizzes))
+	for _, quiz := range lesson.Quizzes {
+		quizzes = append(quizzes, QuizFromDomain(quiz))
+	}
+
 	return LessonResponse{
 		ID:                       lesson.ID.String(),
 		ModuleID:                 lesson.ModuleID.String(),
@@ -121,10 +180,83 @@ func LessonFromDomain(lesson domain.Lesson) LessonResponse {
 		RequiresDiagram:          lesson.RequiresDiagram,
 		TechnicalKeywords:        lesson.TechnicalKeywords,
 		ContentMarkdown:          lesson.ContentMarkdown,
+		Exercises:                exercises,
+		Quizzes:                  quizzes,
 		HasContent:               lesson.HasContent(),
+		HasStructuredActivities:  lesson.HasStructuredActivities(),
 		CreatedAt:                lesson.CreatedAt,
 		UpdatedAt:                lesson.UpdatedAt,
 	}
+}
+
+func ExerciseFromDomain(exercise domain.Exercise) ExerciseResponse {
+	return ExerciseResponse{
+		ID:                   exercise.ID.String(),
+		LessonID:             exercise.LessonID.String(),
+		Type:                 string(exercise.Type),
+		Difficulty:           string(exercise.Difficulty),
+		Title:                exercise.Title,
+		Objective:            exercise.Objective,
+		InstructionsMarkdown: exercise.InstructionsMarkdown,
+		ContentMarkdown:      exercise.ContentMarkdown,
+		CorrectionMarkdown:   exercise.CorrectionMarkdown,
+		Payload:              exercisePayloadFromDomain(exercise.Payload),
+		CreatedAt:            exercise.CreatedAt,
+		UpdatedAt:            exercise.UpdatedAt,
+	}
+}
+
+func QuizFromDomain(quiz domain.Quiz) QuizResponse {
+	questions := make([]QuizQuestionResponse, 0, len(quiz.Questions))
+	for _, question := range quiz.Questions {
+		questions = append(questions, QuizQuestionFromDomain(question))
+	}
+
+	return QuizResponse{
+		ID:         quiz.ID.String(),
+		LessonID:   quiz.LessonID.String(),
+		Type:       string(quiz.Type),
+		Difficulty: string(quiz.Difficulty),
+		Title:      quiz.Title,
+		Objective:  quiz.Objective,
+		Questions:  questions,
+		CreatedAt:  quiz.CreatedAt,
+		UpdatedAt:  quiz.UpdatedAt,
+	}
+}
+
+func QuizQuestionFromDomain(question domain.QuizQuestion) QuizQuestionResponse {
+	options := make([]QuizOptionResponse, 0, len(question.Options))
+	for _, option := range question.Options {
+		options = append(options, QuizOptionResponse{
+			Order: option.Order,
+			Text:  option.Text,
+		})
+	}
+	answers := question.Answer.Answers
+	if answers == nil {
+		answers = []string{}
+	}
+
+	return QuizQuestionResponse{
+		Order:      question.Order,
+		Type:       string(question.Type),
+		Question:   question.Question,
+		Options:    options,
+		Answer:     QuizAnswerResponse{Answer: question.Answer.Answer, Answers: answers},
+		Correction: question.Correction,
+	}
+}
+
+func exercisePayloadFromDomain(payload domain.ExercisePayload) map[string]any {
+	if payload == nil {
+		return map[string]any{}
+	}
+	values := make(map[string]any, len(payload))
+	for key, value := range payload {
+		values[key] = value
+	}
+	return values
 }
 
 func CoursePageFromDomain(page contract.Page[domain.Course]) PageResponse[CourseResponse] {

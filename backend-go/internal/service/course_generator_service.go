@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,16 +10,20 @@ import (
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/jsonutil"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 	"github.com/google/uuid"
 )
 
 const (
-	stepAnalysis          = "analysis"
-	stepAnalysisCompleted = "analysis_completed"
-	stepArchitecture      = "architecture_generation"
-	stepLessonPlan        = "lesson_plan_generation"
-	stepLessonContent     = "lesson_content_generation"
-	stepGenerationSuccess = "generation_completed"
+	stepAnalysis                = "analysis"
+	stepAnalysisCompleted       = "analysis_completed"
+	stepAwaitingClarification   = "awaiting_clarification"
+	stepClarificationsCompleted = "clarifications_completed"
+	stepArchitecture            = "architecture_generation"
+	stepLessonPlan              = "lesson_plan_generation"
+	stepLessonContent           = "lesson_content_generation"
+	stepGenerationSuccess       = "generation_completed"
 )
 
 var (
@@ -26,6 +31,10 @@ var (
 	ErrPromptRequired                       = errors.New("generation prompt is required")
 	ErrGenerationOutOfScope                 = errors.New("generation request is out of scope")
 	ErrGenerationAnalysisRequired           = errors.New("generation request must be analyzed before structure generation")
+	ErrGenerationBriefRequired              = errors.New("generation request requires a confirmed brief")
+	ErrGenerationAwaitingClarification      = errors.New("generation request is awaiting clarification")
+	ErrGenerationNotAwaitingClarification   = errors.New("generation request is not awaiting clarification")
+	ErrClarificationAlreadySubmitted        = errors.New("clarifications have already been submitted")
 	ErrGenerationNotCompleted               = errors.New("generation is not completed")
 	ErrGenerationNotRetryable               = errors.New("only failed generations can be retried")
 	ErrGenerationStructureRetryNotAllowed   = errors.New("only failed structure generations can be retried")
@@ -37,8 +46,10 @@ var (
 )
 
 type CourseGeneratorConfig struct {
-	StatusURLFormat string
-	ResultURLFormat string
+	StatusURLFormat        string
+	JobStatusURLFormat     string
+	ResultURLFormat        string
+	ClarificationURLFormat string
 }
 
 type CourseGeneratorService struct {
@@ -81,13 +92,14 @@ func (s *CourseGeneratorService) AnalyzePrompt(ctx context.Context, params contr
 		return contract.GenerationAnalysisResult{}, err
 	}
 
-	request, err = s.runPromptAnalysis(ctx, request)
+	analyzedRequest, err := s.runPromptAnalysis(ctx, request)
 	if err != nil {
 		if failErr := s.markPipelineFailed(ctx, request.ID, err); failErr != nil {
 			return contract.GenerationAnalysisResult{}, errors.Join(err, failErr)
 		}
 		return contract.GenerationAnalysisResult{}, err
 	}
+	request = analyzedRequest
 
 	if request.IsOutOfScope {
 		if err := s.completeRequest(ctx, request.ID); err != nil {
@@ -97,45 +109,23 @@ func (s *CourseGeneratorService) AnalyzePrompt(ctx context.Context, params contr
 		if err != nil {
 			return contract.GenerationAnalysisResult{}, err
 		}
+	} else if request.NeedsClarification() {
+		request, err = s.markRequestAwaitingClarification(ctx, request.ID)
+		if err != nil {
+			return contract.GenerationAnalysisResult{}, err
+		}
+	} else {
+		request, err = s.confirmDetectedRequestBrief(ctx, request.ID)
+		if err != nil {
+			return contract.GenerationAnalysisResult{}, err
+		}
 	}
 
 	return contract.GenerationAnalysisResult{Request: request}, nil
 }
 
 func (s *CourseGeneratorService) StartFullCourseGeneration(ctx context.Context, params contract.StartGenerationParams) (contract.GenerationStarted, error) {
-	if err := s.validateDependencies(); err != nil {
-		return contract.GenerationStarted{}, err
-	}
-
-	prompt := strings.TrimSpace(params.Prompt)
-	if prompt == "" {
-		return contract.GenerationStarted{}, ErrPromptRequired
-	}
-
-	request, err := domain.NewGenerationRequestAt(prompt, s.now())
-	if err != nil {
-		return contract.GenerationStarted{}, err
-	}
-
-	if err := s.persistNewRequest(ctx, request); err != nil {
-		return contract.GenerationStarted{}, err
-	}
-
-	started := s.generationStarted(request.ID, request.PipelineStatus)
-	if err := s.runFullPipeline(ctx, request); err != nil {
-		if failErr := s.markPipelineFailed(ctx, request.ID, err); failErr != nil {
-			return started, errors.Join(err, failErr)
-		}
-		started.Status = domain.PipelineStatusFailed
-		return started, err
-	}
-
-	completedRequest, err := s.loadGenerationRequest(ctx, request.ID)
-	if err != nil {
-		return started, err
-	}
-
-	return s.generationStarted(completedRequest.ID, completedRequest.PipelineStatus), nil
+	return s.enqueueFullCourseGeneration(ctx, params)
 }
 
 func (s *CourseGeneratorService) GenerateCourseStructure(ctx context.Context, params contract.GenerateStructureParams) (contract.GenerationResult, error) {
@@ -155,7 +145,7 @@ func (s *CourseGeneratorService) GenerateCourseStructure(ctx context.Context, pa
 	if request.IsOutOfScope {
 		return contract.GenerationResult{}, ErrGenerationOutOfScope
 	}
-	if !requestHasAnalysis(request) {
+	if request.AnalysisCompletedAt == nil {
 		return contract.GenerationResult{}, ErrGenerationAnalysisRequired
 	}
 
@@ -210,7 +200,7 @@ func (s *CourseGeneratorService) RetryCourseStructure(ctx context.Context, param
 	if request.IsOutOfScope {
 		return contract.GenerationResult{}, ErrGenerationOutOfScope
 	}
-	if !requestHasAnalysis(request) {
+	if request.AnalysisCompletedAt == nil {
 		return contract.GenerationResult{}, ErrGenerationAnalysisRequired
 	}
 
@@ -326,33 +316,18 @@ func (s *CourseGeneratorService) GetGenerationStatus(ctx context.Context, reques
 
 	var status contract.GenerationStatus
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
-		if err != nil {
-			return err
-		}
-
-		status = contract.GenerationStatus{
-			RequestID:       request.ID,
-			PipelineStatus:  request.PipelineStatus,
-			CurrentStep:     request.CurrentStep,
-			ProgressPercent: request.ProgressPercent,
-			FailureMessage:  request.FailureMessage,
-		}
-
-		course, err := repositories.Courses().FindCourseByRequestID(ctx, request.ID)
-		if err != nil {
-			if errors.Is(err, contract.ErrCourseNotFound) {
-				return nil
-			}
-			return err
-		}
-
-		status.CourseID = &course.ID
-		status.CourseStatus = &course.Status
-		return nil
+		var err error
+		status, err = repositories.GenerationRequests().FindGenerationStatusByID(ctx, requestID)
+		return err
 	})
 	if err != nil {
 		return contract.GenerationStatus{}, err
+	}
+	if status.PipelineStatus == domain.PipelineStatusAwaitingClarification {
+		status.ActionRequired = &contract.GenerationActionRequired{
+			Type: "submit_clarifications",
+			URL:  formatGenerationURL(s.config.ClarificationURLFormat, "/api/generations/%s/clarifications", requestID),
+		}
 	}
 	return status, nil
 }
@@ -394,60 +369,111 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 		return contract.GenerationStarted{}, err
 	}
 
-	request, err := s.loadGenerationRequest(ctx, requestID)
+	var request domain.GenerationRequest
+	var job domain.GenerationJob
+	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		locked, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
+		if err != nil {
+			return err
+		}
+		if locked.PipelineStatus != domain.PipelineStatusFailed {
+			return ErrGenerationNotRetryable
+		}
+		if locked.AnalysisCompletedAt == nil {
+			if err := locked.RestartFromFailure(stepAnalysis, 0, s.now()); err != nil {
+				return err
+			}
+			request, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, locked)
+			if err != nil {
+				return err
+			}
+			created, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
+				RequestID:      request.ID,
+				Kind:           domain.GenerationJobKindAnalysis,
+				IdempotencyKey: "analysis:" + request.ID.String() + ":retry:" + uuid.NewString(),
+				Payload:        json.RawMessage(`{}`),
+				AvailableAt:    s.now(),
+			}, s.now())
+			if err != nil {
+				return err
+			}
+			job, err = repositories.GenerationJobs().Enqueue(ctx, created)
+			return err
+		}
+		if locked.ConfirmedBrief == nil {
+			if locked.NeedsClarification() {
+				if err := locked.RestartFromFailure(stepAnalysisCompleted, 25, s.now()); err != nil {
+					return err
+				}
+				request, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, locked)
+				if err != nil {
+					return err
+				}
+				created, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
+					RequestID:      request.ID,
+					Kind:           domain.GenerationJobKindAnalysis,
+					IdempotencyKey: "analysis:" + request.ID.String() + ":clarification-resume:" + uuid.NewString(),
+					Payload:        json.RawMessage(`{}`),
+					AvailableAt:    s.now(),
+				}, s.now())
+				if err != nil {
+					return err
+				}
+				job, err = repositories.GenerationJobs().Enqueue(ctx, created)
+				return err
+			}
+			if err := locked.RestartFromFailure(stepAnalysisCompleted, 25, s.now()); err != nil {
+				return err
+			}
+			if err := locked.ConfirmDetectedBrief(s.now()); err != nil {
+				return err
+			}
+		} else {
+			brief := *locked.ConfirmedBrief
+			if err := locked.RestartFromFailure(stepAnalysisCompleted, 25, s.now()); err != nil {
+				return err
+			}
+			if err := locked.ConfirmBrief(brief, s.now()); err != nil {
+				return err
+			}
+		}
+		request, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, locked)
+		if err != nil {
+			return err
+		}
+		course, courseErr := repositories.Courses().FindCourseByRequestID(ctx, request.ID)
+		if courseErr == nil && course.Status == domain.CourseStatusFailed {
+			if err := course.RestartGenerationFromFailure(courseRecoveryStatus(course)); err != nil {
+				return err
+			}
+			course.UpdatedAt = s.now()
+			if _, err := repositories.Courses().UpdateCourse(ctx, course); err != nil {
+				return err
+			}
+		} else if courseErr != nil && !errors.Is(courseErr, contract.ErrCourseNotFound) {
+			return courseErr
+		}
+		job, err = s.enqueueArchitectureJobWithRepositories(ctx, repositories, request, nil)
+		return err
+	})
 	if err != nil {
 		return contract.GenerationStarted{}, err
 	}
-	if request.PipelineStatus != domain.PipelineStatusFailed {
-		return contract.GenerationStarted{}, ErrGenerationNotRetryable
-	}
-
-	return s.StartFullCourseGeneration(ctx, contract.StartGenerationParams{Prompt: request.InitialUserPrompt})
+	return s.generationStarted(request, job), nil
 }
 
-func (s *CourseGeneratorService) runFullPipeline(ctx context.Context, request domain.GenerationRequest) error {
-	request, err := s.runPromptAnalysis(ctx, request)
-	if err != nil {
-		return err
+func courseRecoveryStatus(course domain.Course) domain.CourseGenerationStatus {
+	if hasAllLessonPlans(course) {
+		for _, module := range course.Modules {
+			for _, lesson := range module.Lessons {
+				if lesson.HasContent() {
+					return domain.CourseStatusContentGenerating
+				}
+			}
+		}
+		return domain.CourseStatusLessonsGenerated
 	}
-	if request.IsOutOfScope {
-		return ErrGenerationOutOfScope
-	}
-
-	structureParams, err := structureParamsFromAnalysis(request)
-	if err != nil {
-		return err
-	}
-
-	request, course, err := s.runStructurePipeline(ctx, request, structureParams)
-	if err != nil {
-		return err
-	}
-
-	request, err = s.updateRequestProgress(ctx, request.ID, stepLessonContent, 75)
-	if err != nil {
-		return err
-	}
-
-	course, err = s.ensureCourseContentGenerating(ctx, course)
-	if err != nil {
-		return err
-	}
-
-	if err := s.generateAndPersistLessonContents(ctx, course); err != nil {
-		return err
-	}
-
-	if err := s.completeCourseIfReady(ctx, course.ID); err != nil {
-		return err
-	}
-
-	request, err = s.updateRequestProgress(ctx, request.ID, stepGenerationSuccess, 95)
-	if err != nil {
-		return err
-	}
-
-	return s.completeRequest(ctx, request.ID)
+	return domain.CourseStatusStructureGenerated
 }
 
 func (s *CourseGeneratorService) runPromptAnalysis(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
@@ -461,7 +487,7 @@ func (s *CourseGeneratorService) runPromptAnalysis(ctx context.Context, request 
 		return domain.GenerationRequest{}, fmt.Errorf("analyze prompt: %w", err)
 	}
 
-	request, err = s.persistAnalysis(ctx, request.ID, analysis.Summary)
+	request, err = s.persistAnalysis(ctx, request.ID, analysis.Summary, analysis.Raw)
 	if err != nil {
 		return domain.GenerationRequest{}, err
 	}
@@ -469,26 +495,50 @@ func (s *CourseGeneratorService) runPromptAnalysis(ctx context.Context, request 
 	return request, nil
 }
 
-func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, request domain.GenerationRequest, params contract.GenerateStructureParams) (domain.GenerationRequest, domain.Course, error) {
-	request, err := s.updateRequestProgress(ctx, request.ID, stepArchitecture, 35)
-	if err != nil {
-		return domain.GenerationRequest{}, domain.Course{}, err
-	}
-
-	architecture, err := s.ai.GenerateArchitecture(ctx, contract.ArchitectureInput{
-		Request:      request,
-		Title:        params.Title,
-		Synopsis:     params.Synopsis,
-		CurrentLevel: params.CurrentLevel,
-		TargetLevel:  params.TargetLevel,
-		Goals:        params.Goals,
-		Language:     params.Language,
+func (s *CourseGeneratorService) markRequestAwaitingClarification(ctx context.Context, requestID uuid.UUID) (domain.GenerationRequest, error) {
+	var updated domain.GenerationRequest
+	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
+		if err != nil {
+			return err
+		}
+		if request.PipelineStatus == domain.PipelineStatusAwaitingClarification {
+			updated = request
+			return nil
+		}
+		if err := request.MarkAwaitingClarification(s.now()); err != nil {
+			return err
+		}
+		updated, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, request)
+		return err
 	})
-	if err != nil {
-		return domain.GenerationRequest{}, domain.Course{}, fmt.Errorf("generate architecture: %w", err)
-	}
+	return updated, err
+}
 
-	course, err := s.persistArchitecture(ctx, request, architecture.Course)
+func (s *CourseGeneratorService) confirmDetectedRequestBrief(ctx context.Context, requestID uuid.UUID) (domain.GenerationRequest, error) {
+	var updated domain.GenerationRequest
+	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
+		if err != nil {
+			return err
+		}
+		if request.ConfirmedBrief == nil {
+			if err := request.ConfirmDetectedBrief(s.now()); err != nil {
+				return err
+			}
+			request, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, request)
+			if err != nil {
+				return err
+			}
+		}
+		updated = request
+		return nil
+	})
+	return updated, err
+}
+
+func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, request domain.GenerationRequest, params contract.GenerateStructureParams) (domain.GenerationRequest, domain.Course, error) {
+	request, course, err := s.generateArchitectureJob(ctx, request, params)
 	if err != nil {
 		return domain.GenerationRequest{}, domain.Course{}, err
 	}
@@ -498,7 +548,7 @@ func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, reque
 		return domain.GenerationRequest{}, domain.Course{}, err
 	}
 
-	course, err = s.transitionCourse(ctx, course.ID, func(course *domain.Course) error {
+	course, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
 		return course.MarkLessonsGenerating()
 	})
 	if err != nil {
@@ -510,7 +560,7 @@ func (s *CourseGeneratorService) runStructurePipeline(ctx context.Context, reque
 		return domain.GenerationRequest{}, domain.Course{}, err
 	}
 
-	course, err = s.transitionCourse(ctx, course.ID, func(course *domain.Course) error {
+	course, err = s.transitionCourse(ctx, course, func(course *domain.Course) error {
 		return course.MarkLessonsGenerated()
 	})
 	if err != nil {
@@ -564,7 +614,7 @@ func (s *CourseGeneratorService) updateRequestProgress(ctx context.Context, requ
 	return updatedRequest, err
 }
 
-func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID uuid.UUID, summary domain.AnalysisSummary) (domain.GenerationRequest, error) {
+func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID uuid.UUID, summary domain.AnalysisSummary, rawOutput json.RawMessage) (domain.GenerationRequest, error) {
 	var updatedRequest domain.GenerationRequest
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
@@ -576,6 +626,7 @@ func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID 
 		if err := request.ApplyAnalysis(summary, now); err != nil {
 			return err
 		}
+		request.RawAnalysisOutput = jsonutil.Clone(rawOutput)
 		if err := request.UpdateProgress(stepAnalysisCompleted, 25, now); err != nil {
 			return err
 		}
@@ -586,11 +637,12 @@ func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID 
 	return updatedRequest, err
 }
 
-func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, request domain.GenerationRequest, generatedCourse domain.Course) (domain.Course, error) {
+func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, request domain.GenerationRequest, generatedCourse domain.Course, rawOutput json.RawMessage) (domain.Course, error) {
 	course, err := s.normalizeGeneratedCourse(request, generatedCourse)
 	if err != nil {
 		return domain.Course{}, err
 	}
+	course.RawArchitectureOutput = jsonutil.Clone(rawOutput)
 
 	modules, err := s.normalizeGeneratedModules(course.ID, course.Modules)
 	if err != nil {
@@ -605,13 +657,9 @@ func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, reques
 			return err
 		}
 
-		savedModules := make([]domain.Module, 0, len(modules))
-		for _, module := range modules {
-			savedModule, err := repositories.Modules().SaveModule(ctx, module)
-			if err != nil {
-				return err
-			}
-			savedModules = append(savedModules, savedModule)
+		savedModules, err := repositories.Modules().SaveModules(ctx, modules)
+		if err != nil {
+			return err
 		}
 
 		persistedCourse.Modules = savedModules
@@ -638,7 +686,10 @@ func (s *CourseGeneratorService) generateAndPersistLessonPlans(ctx context.Conte
 			return domain.Course{}, err
 		}
 
-		savedLessons, err := s.persistLessons(ctx, lessons)
+		module.RawLessonsPlanOutput = jsonutil.Clone(output.Raw)
+		module.UpdatedAt = s.now()
+
+		savedLessons, err := s.persistLessonPlan(ctx, module, lessons)
 		if err != nil {
 			return domain.Course{}, err
 		}
@@ -651,9 +702,13 @@ func (s *CourseGeneratorService) generateAndPersistLessonPlans(ctx context.Conte
 	return course, nil
 }
 
-func (s *CourseGeneratorService) persistLessons(ctx context.Context, lessons []domain.Lesson) ([]domain.Lesson, error) {
+func (s *CourseGeneratorService) persistLessonPlan(ctx context.Context, module domain.Module, lessons []domain.Lesson) ([]domain.Lesson, error) {
 	var savedLessons []domain.Lesson
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if _, err := repositories.Modules().UpdateModule(ctx, module); err != nil {
+			return err
+		}
+
 		persistedLessons, err := repositories.Lessons().SaveLessons(ctx, lessons)
 		if err != nil {
 			return err
@@ -686,23 +741,26 @@ func (s *CourseGeneratorService) generateAndPersistLessonContents(ctx context.Co
 
 func (s *CourseGeneratorService) persistLessonContent(ctx context.Context, lesson domain.Lesson) error {
 	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		_, err := repositories.Lessons().UpdateLesson(ctx, lesson)
+		if _, err := repositories.Lessons().ReplaceLessonContent(ctx, lesson); err != nil {
+			return err
+		}
+		if _, err := repositories.Exercises().SaveExercises(ctx, lesson.Exercises); err != nil {
+			return err
+		}
+		_, err := repositories.Quizzes().SaveQuizzes(ctx, lesson.Quizzes)
 		return err
 	})
 }
 
-func (s *CourseGeneratorService) transitionCourse(ctx context.Context, courseID uuid.UUID, mutate func(course *domain.Course) error) (domain.Course, error) {
+func (s *CourseGeneratorService) transitionCourse(ctx context.Context, course domain.Course, mutate func(course *domain.Course) error) (domain.Course, error) {
 	var updatedCourse domain.Course
 	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		course, err := repositories.Courses().FindCourseByID(ctx, courseID)
-		if err != nil {
-			return err
-		}
 		if err := mutate(&course); err != nil {
 			return err
 		}
 		course.UpdatedAt = s.now()
 
+		var err error
 		updatedCourse, err = repositories.Courses().UpdateCourse(ctx, course)
 		return err
 	})
@@ -741,7 +799,7 @@ func (s *CourseGeneratorService) markPipelineFailed(ctx context.Context, request
 			}
 		}
 
-		course, err := repositories.Courses().FindCourseByRequestID(ctx, request.ID)
+		course, err := repositories.Courses().FindCourseStateByRequestID(ctx, request.ID)
 		if err != nil {
 			if errors.Is(err, contract.ErrCourseNotFound) {
 				return nil
@@ -814,7 +872,7 @@ func (s *CourseGeneratorService) normalizeGeneratedCourse(request domain.Generat
 		course, err := domain.NewCourseAt(domain.NewCourseParams{
 			RequestID:               request.ID,
 			Language:                generatedCourse.Language,
-			InitialUserPrompt:       firstNonBlank(generatedCourse.InitialUserPrompt, request.InitialUserPrompt),
+			InitialUserPrompt:       textutil.FirstNonBlank(generatedCourse.InitialUserPrompt, request.InitialUserPrompt),
 			Title:                   generatedCourse.Title,
 			Synopsis:                generatedCourse.Synopsis,
 			TargetAudience:          generatedCourse.TargetAudience,
@@ -972,12 +1030,44 @@ func (s *CourseGeneratorService) attachGeneratedContent(lesson domain.Lesson, ou
 	if content == "" {
 		return domain.Lesson{}, ErrMissingGeneratedContent
 	}
+	if err := domain.ValidateLessonActivitiesForType(lesson.Type, output.Exercises, output.Quizzes); err != nil {
+		return domain.Lesson{}, err
+	}
 
 	if err := lesson.AttachContent(content); err != nil {
 		return domain.Lesson{}, err
 	}
+	lesson.RawContentOutput = jsonutil.Clone(output.Raw)
+	lesson.Exercises = attachRawOutputToExercises(output.Exercises, output.Raw)
+	lesson.Quizzes = attachRawOutputToQuizzes(output.Quizzes, output.Raw)
 	lesson.UpdatedAt = s.now()
 	return lesson, nil
+}
+
+func attachRawOutputToExercises(exercises []domain.Exercise, rawOutput json.RawMessage) []domain.Exercise {
+	if len(exercises) == 0 {
+		return nil
+	}
+
+	withRawOutput := make([]domain.Exercise, 0, len(exercises))
+	for _, exercise := range exercises {
+		exercise.RawAIOutput = jsonutil.Clone(rawOutput)
+		withRawOutput = append(withRawOutput, exercise)
+	}
+	return withRawOutput
+}
+
+func attachRawOutputToQuizzes(quizzes []domain.Quiz, rawOutput json.RawMessage) []domain.Quiz {
+	if len(quizzes) == 0 {
+		return nil
+	}
+
+	withRawOutput := make([]domain.Quiz, 0, len(quizzes))
+	for _, quiz := range quizzes {
+		quiz.RawAIOutput = jsonutil.Clone(rawOutput)
+		withRawOutput = append(withRawOutput, quiz)
+	}
+	return withRawOutput
 }
 
 func (s *CourseGeneratorService) loadCourseByID(ctx context.Context, courseID uuid.UUID) (domain.Course, error) {
@@ -1069,17 +1159,23 @@ func (s *CourseGeneratorService) ensureCourseContentGenerating(ctx context.Conte
 	if course.Status == domain.CourseStatusCompleted || course.Status == domain.CourseStatusContentGenerating {
 		return course, nil
 	}
-	return s.transitionCourse(ctx, course.ID, func(course *domain.Course) error {
+	return s.transitionCourse(ctx, course, func(course *domain.Course) error {
 		return course.MarkContentGenerating()
 	})
 }
 
 func (s *CourseGeneratorService) completeCourseIfReady(ctx context.Context, courseID uuid.UUID) error {
-	_, err := s.transitionCourse(ctx, courseID, func(course *domain.Course) error {
-		if course.Status == domain.CourseStatusCompleted {
-			return nil
+	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		isComplete, err := repositories.Courses().IsCourseContentComplete(ctx, courseID)
+		if err != nil || !isComplete {
+			return err
 		}
-		if !course.HasCompleteContent() {
+
+		course, err := repositories.Courses().FindCourseStateByID(ctx, courseID)
+		if err != nil {
+			return err
+		}
+		if course.Status == domain.CourseStatusCompleted {
 			return nil
 		}
 		if course.Status != domain.CourseStatusContentGenerating {
@@ -1087,16 +1183,23 @@ func (s *CourseGeneratorService) completeCourseIfReady(ctx context.Context, cour
 				return err
 			}
 		}
-		return course.MarkCompleted()
+		if err := course.MarkCompletedWithValidatedContent(isComplete); err != nil {
+			return err
+		}
+		course.UpdatedAt = s.now()
+		_, err = repositories.Courses().UpdateCourse(ctx, course)
+		return err
 	})
-	return err
 }
-func (s *CourseGeneratorService) generationStarted(requestID uuid.UUID, status domain.GenerationPipelineStatus) contract.GenerationStarted {
+func (s *CourseGeneratorService) generationStarted(request domain.GenerationRequest, job domain.GenerationJob) contract.GenerationStarted {
 	return contract.GenerationStarted{
-		RequestID: requestID,
-		Status:    status,
-		StatusURL: formatGenerationURL(s.config.StatusURLFormat, "/api/generations/%s/status", requestID),
-		ResultURL: formatGenerationURL(s.config.ResultURLFormat, "/api/generations/%s/result", requestID),
+		JobID:        job.ID,
+		RequestID:    request.ID,
+		Status:       request.PipelineStatus,
+		JobStatus:    job.Status,
+		StatusURL:    formatGenerationURL(s.config.StatusURLFormat, "/api/generations/%s/status", request.ID),
+		JobStatusURL: formatGenerationURL(s.config.JobStatusURLFormat, "/api/generation-jobs/%s", job.ID),
+		ResultURL:    formatGenerationURL(s.config.ResultURLFormat, "/api/generations/%s/result", request.ID),
 	}
 }
 
@@ -1133,13 +1236,6 @@ func failureMessage(err error) string {
 	return message
 }
 
-func firstNonBlank(primary string, fallback string) string {
-	if strings.TrimSpace(primary) != "" {
-		return primary
-	}
-	return fallback
-}
-
 func normalizeStructureParams(params contract.GenerateStructureParams) (contract.GenerateStructureParams, error) {
 	if params.RequestID == uuid.Nil {
 		return contract.GenerateStructureParams{}, fmt.Errorf("%w: generation request id", domain.ErrBlankField)
@@ -1154,16 +1250,22 @@ func normalizeStructureParams(params contract.GenerateStructureParams) (contract
 		return contract.GenerateStructureParams{}, fmt.Errorf("%w: synopsis", domain.ErrBlankField)
 	}
 	if params.CurrentLevel == "" {
-		params.CurrentLevel = domain.LevelUnknown
+		return contract.GenerateStructureParams{}, fmt.Errorf("%w: current level", domain.ErrGenerationBriefIncomplete)
 	}
 	if err := params.CurrentLevel.Validate(); err != nil {
 		return contract.GenerateStructureParams{}, err
 	}
+	if params.CurrentLevel == domain.LevelUnknown {
+		return contract.GenerateStructureParams{}, fmt.Errorf("%w: current level", domain.ErrGenerationBriefIncomplete)
+	}
 	if params.TargetLevel == "" {
-		params.TargetLevel = domain.LevelUnknown
+		return contract.GenerateStructureParams{}, fmt.Errorf("%w: target level", domain.ErrGenerationBriefIncomplete)
 	}
 	if err := params.TargetLevel.Validate(); err != nil {
 		return contract.GenerateStructureParams{}, err
+	}
+	if params.TargetLevel == domain.LevelUnknown {
+		return contract.GenerateStructureParams{}, fmt.Errorf("%w: target level", domain.ErrGenerationBriefIncomplete)
 	}
 	if params.Language == "" {
 		params.Language = domain.CourseLanguageFR
@@ -1172,7 +1274,7 @@ func normalizeStructureParams(params contract.GenerateStructureParams) (contract
 		return contract.GenerateStructureParams{}, err
 	}
 
-	params.Goals = normalizeNonEmptyStrings(params.Goals)
+	params.Goals = textutil.TrimNonBlank(params.Goals)
 	if len(params.Goals) == 0 {
 		return contract.GenerateStructureParams{}, fmt.Errorf("%w: goals", domain.ErrInvalidCollection)
 	}
@@ -1180,77 +1282,8 @@ func normalizeStructureParams(params contract.GenerateStructureParams) (contract
 	return params, nil
 }
 
-func structureParamsFromAnalysis(request domain.GenerationRequest) (contract.GenerateStructureParams, error) {
-	currentLevel := domain.LevelUnknown
-	if request.DetectedCurrentLevel != nil {
-		currentLevel = *request.DetectedCurrentLevel
-	}
-	targetLevel := domain.LevelUnknown
-	if request.DetectedTargetLevel != nil {
-		targetLevel = *request.DetectedTargetLevel
-	}
-	language := domain.CourseLanguageFR
-	if request.DetectedLanguage != nil {
-		language = *request.DetectedLanguage
-	}
-
-	goals := []string{request.InitialUserPrompt}
-	if request.DetectedGoal != nil && !isUnknownText(*request.DetectedGoal) {
-		goals = []string{*request.DetectedGoal}
-	}
-
-	return normalizeStructureParams(contract.GenerateStructureParams{
-		RequestID:    request.ID,
-		Title:        optionalStringValue(request.SuggestedTitle, request.InitialUserPrompt),
-		Synopsis:     optionalStringValue(request.ShortSynopsis, request.InitialUserPrompt),
-		CurrentLevel: currentLevel,
-		TargetLevel:  targetLevel,
-		Goals:        goals,
-		Language:     language,
-	})
-}
-
 func requestHasAnalysis(request domain.GenerationRequest) bool {
-	return request.IsOutOfScope ||
-		request.ErrorMessage != nil ||
-		request.WarningMessage != nil ||
-		request.SuggestedTitle != nil ||
-		request.ShortSynopsis != nil ||
-		request.DetectedCurrentLevel != nil ||
-		request.DetectedTargetLevel != nil ||
-		request.DetectedGoal != nil ||
-		request.DetectedLanguage != nil ||
-		len(request.ClarificationQuestions) > 0
-}
-
-func normalizeNonEmptyStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-	normalized := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value != "" {
-			normalized = append(normalized, value)
-		}
-	}
-	return normalized
-}
-
-func optionalStringValue(value *string, fallback string) string {
-	if value == nil {
-		return fallback
-	}
-	trimmed := strings.TrimSpace(*value)
-	if trimmed == "" {
-		return fallback
-	}
-	return trimmed
-}
-
-func isUnknownText(value string) bool {
-	value = strings.TrimSpace(strings.ToLower(value))
-	return value == "" || value == "unknown" || value == "unknow"
+	return request.AnalysisCompletedAt != nil
 }
 func formatGenerationURL(format string, fallbackFormat string, requestID uuid.UUID) string {
 	format = strings.TrimSpace(format)
