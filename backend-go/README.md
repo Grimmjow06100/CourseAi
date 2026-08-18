@@ -224,6 +224,55 @@ Le flux complet durable est :
 
 Aucun job, lease ou worker ne reste reserve pendant l'attente utilisateur. Les routes `/structure` et de contenu restent disponibles pour les generations partielles et les reprises ciblees.
 
+## Logs des workers
+
+Le worker pool emet des logs JSON structures sur `stdout`. Chaque execution de job contient les champs de correlation suivants :
+
+- `worker_id`, `job_id`, `request_id` et `parent_job_id` ;
+- `job_kind` et `target_id` ;
+- `attempt`, `max_attempts` et `priority` ;
+- `started_at`, `finished_at` et `duration_ms` ;
+- `outcome` et `job_status` ;
+- `error`, `error_type` et `error_code` lorsqu'une erreur existe.
+
+Evenements principaux :
+
+```text
+generation_worker_started
+generation_worker_stopped
+generation_job_started
+generation_job_completed
+generation_job_retry_scheduled
+generation_job_failed
+generation_job_interrupted
+generation_job_claim_lost
+generation_job_heartbeat_failed
+```
+
+Exemple d'une execution terminee :
+
+```json
+{
+  "level": "INFO",
+  "msg": "generation job completed",
+  "event": "generation_job_completed",
+  "component": "generation_worker",
+  "worker_id": "course-ai-worker:host:1234:0:uuid",
+  "job_id": "uuid",
+  "request_id": "uuid",
+  "parent_job_id": "uuid",
+  "job_kind": "lesson_content",
+  "target_id": "uuid",
+  "attempt": 1,
+  "max_attempts": 3,
+  "outcome": "success",
+  "job_status": "completed",
+  "duration_ms": 8421
+}
+```
+
+Les prompts, payloads et contenus generes ne sont pas journalises. Les logs restent ainsi utilisables pour la correlation et la mesure de latence sans exposer les donnees de formation.
+
 L'implementation concrete de l'IA est dans `internal/infrastructure/openai` et elle est injectee dans `cmd/api/main.go`. Les prompts sont charges depuis `PROMPTS_DIR` par `internal/infrastructure/prompts`.
 
 ## Deploiement Railway

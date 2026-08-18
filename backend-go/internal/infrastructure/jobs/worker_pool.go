@@ -126,6 +126,31 @@ func (p *WorkerPool) Run(ctx context.Context) error {
 }
 
 func (p *WorkerPool) runWorker(ctx context.Context, workerID string) {
+	workerStartedAt := time.Now()
+	workerLogger := p.workerLogger(workerID)
+	workerLogger.InfoContext(ctx, "generation worker started",
+		"event", "generation_worker_started",
+		"started_at", workerStartedAt.UTC(),
+		"poll_interval_ms", p.config.PollInterval.Milliseconds(),
+		"lease_duration_ms", p.config.LeaseDuration.Milliseconds(),
+		"heartbeat_interval_ms", p.config.HeartbeatInterval.Milliseconds(),
+		"job_timeout_ms", p.config.JobTimeout.Milliseconds(),
+	)
+	defer func() {
+		finishedAt := time.Now()
+		stopReason := "worker_loop_completed"
+		if ctx.Err() != nil {
+			stopReason = ctx.Err().Error()
+		}
+		workerLogger.Info("generation worker stopped",
+			"event", "generation_worker_stopped",
+			"outcome", "stopped",
+			"stop_reason", stopReason,
+			"finished_at", finishedAt.UTC(),
+			"duration_ms", finishedAt.Sub(workerStartedAt).Milliseconds(),
+		)
+	}()
+
 	for {
 		if ctx.Err() != nil {
 			return
@@ -140,7 +165,12 @@ func (p *WorkerPool) runWorker(ctx context.Context, workerID string) {
 				return
 			}
 		default:
-			p.logger.ErrorContext(ctx, "claim generation job", "worker_id", workerID, "error", err)
+			workerLogger.ErrorContext(ctx, "claim generation job failed",
+				appendLogArgs(
+					[]any{"event", "generation_job_claim_failed", "outcome", "error"},
+					errorLogArgs(err),
+				)...,
+			)
 			if !waitForContext(ctx, p.config.PollInterval) {
 				return
 			}
@@ -151,9 +181,37 @@ func (p *WorkerPool) runWorker(ctx context.Context, workerID string) {
 func (p *WorkerPool) executeClaimedJob(processCtx context.Context, job domain.GenerationJob) {
 	claim, err := job.Claim()
 	if err != nil {
-		p.logger.ErrorContext(processCtx, "invalid claimed generation job", "job_id", job.ID, "error", err)
+		p.logger.ErrorContext(processCtx, "invalid claimed generation job",
+			appendLogArgs(
+				[]any{
+					"event", "generation_job_claim_invalid",
+					"component", workerLogComponent,
+					"worker_id", optionalStringLogValue(job.LockedBy),
+					"job_id", job.ID.String(),
+					"request_id", job.RequestID.String(),
+					"parent_job_id", optionalUUIDLogValue(job.ParentJobID),
+					"job_kind", string(job.Kind),
+					"target_id", optionalUUIDLogValue(job.TargetID),
+					"outcome", "error",
+				},
+				errorLogArgs(err),
+			)...,
+		)
 		return
 	}
+	jobLogger := p.claimedJobLogger(job, claim)
+	executionStartedAt := time.Now()
+	jobLogger.InfoContext(processCtx, "generation job started",
+		"event", "generation_job_started",
+		"outcome", "running",
+		"job_status", string(domain.GenerationJobStatusRunning),
+		"started_at", executionStartedAt.UTC(),
+		"claim_started_at", optionalTimeLogValue(job.StartedAt),
+		"locked_until", optionalTimeLogValue(job.LockedUntil),
+		"available_at", job.AvailableAt.UTC(),
+		"queue_delay_ms", nonNegativeDurationMilliseconds(executionStartedAt.Sub(job.AvailableAt)),
+		"job_timeout_ms", p.config.JobTimeout.Milliseconds(),
+	)
 
 	jobCtx, cancelJob := context.WithTimeout(processCtx, p.config.JobTimeout)
 	heartbeatResult := make(chan error, 1)
@@ -171,14 +229,33 @@ func (p *WorkerPool) executeClaimedJob(processCtx context.Context, job domain.Ge
 	heartbeatErr := <-heartbeatResult
 
 	if processCtx.Err() != nil {
-		p.logger.Info("generation job interrupted by worker shutdown", "job_id", job.ID, "worker_id", claim.WorkerID)
+		finishedAt := time.Now()
+		jobLogger.Info("generation job interrupted by worker shutdown",
+			appendLogArgs(
+				[]any{"event", "generation_job_interrupted", "reason", "worker_shutdown"},
+				jobFinishedLogArgs(executionStartedAt, finishedAt, "interrupted", domain.GenerationJobStatusRunning),
+			)...,
+		)
 		return
 	}
 	if errors.Is(heartbeatErr, contract.ErrGenerationJobClaimLost) {
-		p.logger.Warn("generation job claim lost", "job_id", job.ID, "worker_id", claim.WorkerID, "attempt", claim.AttemptCount)
+		finishedAt := time.Now()
+		jobLogger.Warn("generation job claim lost",
+			appendLogArgs(
+				[]any{"event", "generation_job_claim_lost"},
+				jobFinishedLogArgs(executionStartedAt, finishedAt, "claim_lost", domain.GenerationJobStatusRunning),
+				errorLogArgs(heartbeatErr),
+			)...,
+		)
 		return
 	}
 	if heartbeatErr != nil {
+		jobLogger.Warn("generation job heartbeat failed",
+			appendLogArgs(
+				[]any{"event", "generation_job_heartbeat_failed", "elapsed_ms", time.Since(executionStartedAt).Milliseconds()},
+				errorLogArgs(heartbeatErr),
+			)...,
+		)
 		if executionErr == nil || errors.Is(executionErr, context.Canceled) {
 			executionErr = heartbeatErr
 		} else {
@@ -198,32 +275,96 @@ func (p *WorkerPool) executeClaimedJob(processCtx context.Context, job domain.Ge
 	defer cleanupCancel()
 
 	if executionErr == nil {
-		if err := p.queue.Complete(cleanupCtx, claim, p.clock.Now()); err != nil {
-			p.logger.ErrorContext(cleanupCtx, "complete generation job", "job_id", job.ID, "error", err)
+		completedAt := p.clock.Now()
+		if err := p.queue.Complete(cleanupCtx, claim, completedAt); err != nil {
+			finishedAt := time.Now()
+			jobLogger.ErrorContext(cleanupCtx, "persist generation job completion failed",
+				appendLogArgs(
+					[]any{"event", "generation_job_completion_failed", "completed_at", completedAt.UTC()},
+					jobFinishedLogArgs(executionStartedAt, finishedAt, "completion_persistence_failed", domain.GenerationJobStatusRunning),
+					errorLogArgs(err),
+				)...,
+			)
+			return
 		}
+		finishedAt := time.Now()
+		jobLogger.InfoContext(cleanupCtx, "generation job completed",
+			appendLogArgs(
+				[]any{"event", "generation_job_completed", "completed_at", completedAt.UTC()},
+				jobFinishedLogArgs(executionStartedAt, finishedAt, "success", domain.GenerationJobStatusCompleted),
+			)...,
+		)
 		return
 	}
 
 	decision := p.retryPolicy.Decide(job, executionErr)
 	if decision.Retry {
 		if err := p.queue.Retry(cleanupCtx, claim, decision.AvailableAt, executionErr); err != nil {
-			p.logger.ErrorContext(cleanupCtx, "schedule generation job retry", "job_id", job.ID, "error", err)
+			finishedAt := time.Now()
+			jobLogger.ErrorContext(cleanupCtx, "persist generation job retry failed",
+				appendLogArgs(
+					[]any{
+						"event", "generation_job_retry_failed",
+						"retry_reason", decision.Reason,
+						"retry_at", decision.AvailableAt.UTC(),
+						"retry_delay_ms", decision.Delay.Milliseconds(),
+						"execution_error", executionErr,
+					},
+					jobFinishedLogArgs(executionStartedAt, finishedAt, "retry_persistence_failed", domain.GenerationJobStatusRunning),
+					errorLogArgs(err),
+				)...,
+			)
 			return
 		}
-		p.logger.Warn("generation job retry scheduled", "job_id", job.ID, "attempt", claim.AttemptCount, "delay", decision.Delay, "reason", decision.Reason)
+		finishedAt := time.Now()
+		jobLogger.Warn("generation job retry scheduled",
+			appendLogArgs(
+				[]any{
+					"event", "generation_job_retry_scheduled",
+					"retry_reason", decision.Reason,
+					"retry_at", decision.AvailableAt.UTC(),
+					"retry_delay_ms", decision.Delay.Milliseconds(),
+				},
+				jobFinishedLogArgs(executionStartedAt, finishedAt, "retry_scheduled", domain.GenerationJobStatusRetryScheduled),
+				errorLogArgs(executionErr),
+			)...,
+		)
 		return
 	}
 
 	if err := p.queue.Fail(cleanupCtx, claim, executionErr, p.clock.Now()); err != nil {
-		p.logger.ErrorContext(cleanupCtx, "fail generation job", "job_id", job.ID, "error", err)
+		finishedAt := time.Now()
+		jobLogger.ErrorContext(cleanupCtx, "persist terminal generation job failure failed",
+			appendLogArgs(
+				[]any{
+					"event", "generation_job_failure_persistence_failed",
+					"failure_reason", decision.Reason,
+					"execution_error", executionErr,
+				},
+				jobFinishedLogArgs(executionStartedAt, finishedAt, "failure_persistence_failed", domain.GenerationJobStatusRunning),
+				errorLogArgs(err),
+			)...,
+		)
 		return
 	}
 	if failureHandler, ok := p.executor.(contract.GenerationJobFailureHandler); ok {
 		if err := failureHandler.HandleTerminalFailure(cleanupCtx, job, executionErr); err != nil {
-			p.logger.ErrorContext(cleanupCtx, "synchronize terminal generation job failure", "job_id", job.ID, "request_id", job.RequestID, "error", err)
+			jobLogger.ErrorContext(cleanupCtx, "synchronize terminal generation job failure",
+				appendLogArgs(
+					[]any{"event", "generation_job_failure_sync_failed", "execution_error", executionErr},
+					errorLogArgs(err),
+				)...,
+			)
 		}
 	}
-	p.logger.Error("generation job failed", "job_id", job.ID, "attempt", claim.AttemptCount, "reason", decision.Reason, "error", executionErr)
+	finishedAt := time.Now()
+	jobLogger.Error("generation job failed",
+		appendLogArgs(
+			[]any{"event", "generation_job_failed", "failure_reason", decision.Reason},
+			jobFinishedLogArgs(executionStartedAt, finishedAt, "failed", domain.GenerationJobStatusFailed),
+			errorLogArgs(executionErr),
+		)...,
+	)
 }
 
 func (p *WorkerPool) executeSafely(ctx context.Context, job domain.GenerationJob) (executionErr error) {

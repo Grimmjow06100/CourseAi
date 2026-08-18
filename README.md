@@ -17,6 +17,7 @@ Le backend Go contient aujourd'hui :
 - des migrations SQL Goose ;
 - une API HTTP Gin avec commandes asynchrones, statut de jobs, CORS et arret gracieux ;
 - une queue PostgreSQL durable avec worker pool, leases, heartbeat, retries et reprise apres redemarrage ;
+- des logs JSON structures pour chaque worker et chaque issue de job, avec correlation, tentative et duree ;
 - une auth JWT + bcrypt ;
 - une base PostgreSQL locale via Docker Compose.
 
