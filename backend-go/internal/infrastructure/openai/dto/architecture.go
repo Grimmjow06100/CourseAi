@@ -66,6 +66,7 @@ func (r ArchitectureResponse) ToDomain(input contract.ArchitectureInput) (domain
 
 	course := domain.Course{
 		RequestID:               input.Request.ID,
+		ClerkUserID:             input.Request.ClerkUserID,
 		Language:                language,
 		InitialUserPrompt:       input.Request.InitialUserPrompt,
 		Title:                   r.Title,

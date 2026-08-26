@@ -488,6 +488,7 @@ type Course struct {
 	RawArchitectureOutput   json.RawMessage        `db:"raw_architecture_output" json:"raw_architecture_output"`
 	CreatedAt               time.Time              `db:"created_at" json:"created_at"`
 	UpdatedAt               time.Time              `db:"updated_at" json:"updated_at"`
+	ClerkUserID             string                 `db:"clerk_user_id" json:"clerk_user_id"`
 }
 
 type GenerationJob struct {
@@ -511,6 +512,7 @@ type GenerationJob struct {
 	LastErrorMessage *string             `db:"last_error_message" json:"last_error_message"`
 	CreatedAt        time.Time           `db:"created_at" json:"created_at"`
 	UpdatedAt        time.Time           `db:"updated_at" json:"updated_at"`
+	FailureHandledAt *time.Time          `db:"failure_handled_at" json:"failure_handled_at"`
 }
 
 type GenerationRequest struct {
@@ -546,6 +548,7 @@ type GenerationRequest struct {
 	BriefConfirmedAt          *time.Time               `db:"brief_confirmed_at" json:"brief_confirmed_at"`
 	ClarificationsSubmittedAt *time.Time               `db:"clarifications_submitted_at" json:"clarifications_submitted_at"`
 	ClarificationVersion      int32                    `db:"clarification_version" json:"clarification_version"`
+	ClerkUserID               string                   `db:"clerk_user_id" json:"clerk_user_id"`
 }
 
 type Lesson struct {
@@ -604,12 +607,4 @@ type Module struct {
 	RawLessonsPlanOutput json.RawMessage `db:"raw_lessons_plan_output" json:"raw_lessons_plan_output"`
 	CreatedAt            time.Time       `db:"created_at" json:"created_at"`
 	UpdatedAt            time.Time       `db:"updated_at" json:"updated_at"`
-}
-
-type User struct {
-	ID        uuid.UUID `db:"id" json:"id"`
-	Username  string    `db:"username" json:"username"`
-	Password  string    `db:"password" json:"password"`
-	CreatedAt time.Time `db:"created_at" json:"created_at"`
-	UpdatedAt time.Time `db:"updated_at" json:"updated_at"`
 }

@@ -51,3 +51,11 @@ func validateProgressPercent(progress int) error {
 	}
 	return nil
 }
+
+func validateClerkUserID(value string) error {
+	value = strings.TrimSpace(value)
+	if len(value) < 6 || len(value) > 64 || !strings.HasPrefix(value, "user_") {
+		return ErrInvalidClerkUserID
+	}
+	return nil
+}

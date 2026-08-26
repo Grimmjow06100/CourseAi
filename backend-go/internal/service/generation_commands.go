@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
@@ -19,15 +20,25 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 	if err := s.validateDependencies(); err != nil {
 		return contract.GenerationStarted{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.GenerationStarted{}, err
+	}
 	prompt := strings.TrimSpace(params.Prompt)
 	if prompt == "" {
 		return contract.GenerationStarted{}, ErrPromptRequired
 	}
+	if utf8.RuneCountInString(prompt) > 4000 {
+		return contract.GenerationStarted{}, ErrPromptTooLong
+	}
+	if utf8.RuneCountInString(strings.TrimSpace(params.IdempotencyKey)) > 200 {
+		return contract.GenerationStarted{}, fmt.Errorf("%w: idempotency key exceeds 200 characters", domain.ErrInvalidCollection)
+	}
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		idempotencyKey := generationRequestIdempotencyKey(params.IdempotencyKey)
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		idempotencyKey := generationRequestIdempotencyKey(owner, params.IdempotencyKey)
 		if idempotencyKey != "" {
 			existing, err := repositories.GenerationJobs().FindByIdempotencyKey(ctx, idempotencyKey)
 			if err == nil {
@@ -38,6 +49,9 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 				if existingRequest.InitialUserPrompt != prompt {
 					return contract.ErrGenerationJobIdempotencyConflict
 				}
+				if existingRequest.ClerkUserID != owner {
+					return contract.ErrGenerationJobNotFound
+				}
 				request = existingRequest
 				job = existing
 				return nil
@@ -46,9 +60,12 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 				return err
 			}
 		}
+		if err := s.enforceGenerationAdmission(ctx, repositories.GenerationRequests(), owner); err != nil {
+			return err
+		}
 
 		now := s.now()
-		createdRequest, err := domain.NewGenerationRequestAt(prompt, now)
+		createdRequest, err := domain.NewGenerationRequestAt(prompt, owner, now)
 		if err != nil {
 			return err
 		}
@@ -83,7 +100,11 @@ func (s *CourseGeneratorService) EnqueueCourseStructure(ctx context.Context, par
 	if err := s.validateDependencies(); err != nil {
 		return contract.GenerationStarted{}, err
 	}
-	params, err := normalizeStructureParams(params)
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.GenerationStarted{}, err
+	}
+	params, err = normalizeStructureParams(params)
 	if err != nil {
 		return contract.GenerationStarted{}, err
 	}
@@ -95,6 +116,9 @@ func (s *CourseGeneratorService) EnqueueCourseStructure(ctx context.Context, par
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
 	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, params.RequestID, owner); err != nil {
+			return err
+		}
 		locked, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, params.RequestID)
 		if err != nil {
 			return err
@@ -136,6 +160,10 @@ func (s *CourseGeneratorService) SubmitClarifications(ctx context.Context, param
 	if err := s.validateDependencies(); err != nil {
 		return contract.GenerationStarted{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.GenerationStarted{}, err
+	}
 	if params.RequestID == uuid.Nil {
 		return contract.GenerationStarted{}, fmt.Errorf("%w: generation request id", domain.ErrBlankField)
 	}
@@ -145,7 +173,10 @@ func (s *CourseGeneratorService) SubmitClarifications(ctx context.Context, param
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, params.RequestID, owner); err != nil {
+			return err
+		}
 		locked, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, params.RequestID)
 		if err != nil {
 			return err
@@ -178,7 +209,11 @@ func (s *CourseGeneratorService) EnqueueStructureRetry(ctx context.Context, para
 	if err := s.validateDependencies(); err != nil {
 		return contract.GenerationStarted{}, err
 	}
-	params, err := normalizeStructureParams(params)
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.GenerationStarted{}, err
+	}
+	params, err = normalizeStructureParams(params)
 	if err != nil {
 		return contract.GenerationStarted{}, err
 	}
@@ -190,6 +225,9 @@ func (s *CourseGeneratorService) EnqueueStructureRetry(ctx context.Context, para
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
 	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, params.RequestID, owner); err != nil {
+			return err
+		}
 		loadedRequest, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, params.RequestID)
 		if err != nil {
 			return err
@@ -240,11 +278,18 @@ func (s *CourseGeneratorService) GetGenerationJob(ctx context.Context, jobID uui
 	if err := s.validateDependencies(); err != nil {
 		return domain.GenerationJob{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return domain.GenerationJob{}, err
+	}
 	if jobID == uuid.Nil {
 		return domain.GenerationJob{}, fmt.Errorf("%w: generation job id", domain.ErrBlankField)
 	}
 	var job domain.GenerationJob
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationJob, jobID, owner); err != nil {
+			return err
+		}
 		loadedJob, err := repositories.GenerationJobs().FindByID(ctx, jobID)
 		if err != nil {
 			return err
@@ -255,8 +300,34 @@ func (s *CourseGeneratorService) GetGenerationJob(ctx context.Context, jobID uui
 	return job, err
 }
 
+func (s *CourseGeneratorService) DeleteGenerationRequest(ctx context.Context, requestID uuid.UUID) error {
+	if err := s.validateDependencies(); err != nil {
+		return err
+	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return err
+	}
+	if requestID == uuid.Nil {
+		return fmt.Errorf("%w: generation request id", domain.ErrBlankField)
+	}
+	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
+			return err
+		}
+		if _, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID); err != nil {
+			return err
+		}
+		return repositories.GenerationRequests().DeleteGenerationRequest(ctx, requestID)
+	})
+}
+
 func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, kind domain.GenerationJobKind, targetID uuid.UUID) (contract.GenerationStarted, error) {
 	if err := s.validateDependencies(); err != nil {
+		return contract.GenerationStarted{}, err
+	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
 		return contract.GenerationStarted{}, err
 	}
 	if targetID == uuid.Nil {
@@ -265,7 +336,14 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		resource := ownedModule
+		if kind == domain.GenerationJobKindLessonContent {
+			resource = ownedLesson
+		}
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), resource, targetID, owner); err != nil {
+			return err
+		}
 		requestID, err := requestIDForTarget(ctx, repositories, kind, targetID)
 		if err != nil {
 			return err
@@ -297,7 +375,7 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 		if err != nil {
 			return err
 		}
-		job, err = repositories.GenerationJobs().Enqueue(ctx, createdJob)
+		job, err = s.enqueueWithCapacity(ctx, repositories, createdJob)
 		return err
 	})
 	if err != nil {
@@ -314,10 +392,23 @@ func (s *CourseGeneratorService) enqueueJob(ctx context.Context, params domain.N
 	var saved domain.GenerationJob
 	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		var err error
-		saved, err = repositories.GenerationJobs().Enqueue(ctx, job)
+		saved, err = s.enqueueWithCapacity(ctx, repositories, job)
 		return err
 	})
 	return saved, err
+}
+
+func (s *CourseGeneratorService) enqueueWithCapacity(ctx context.Context, repositories contract.TransactionalRepositories, job domain.GenerationJob) (domain.GenerationJob, error) {
+	if s.config.MaxPendingJobs > 0 {
+		pending, err := repositories.GenerationJobs().CountPendingWithAdmissionLock(ctx)
+		if err != nil {
+			return domain.GenerationJob{}, err
+		}
+		if pending >= s.config.MaxPendingJobs {
+			return domain.GenerationJob{}, contract.ErrGenerationQueueSaturated
+		}
+	}
+	return repositories.GenerationJobs().Enqueue(ctx, job)
 }
 
 func requestIDForTarget(ctx context.Context, repositories contract.TransactionalRepositories, kind domain.GenerationJobKind, targetID uuid.UUID) (uuid.UUID, error) {
@@ -356,12 +447,12 @@ func deterministicJobKey(prefix string, requestID uuid.UUID, payload json.RawMes
 	return fmt.Sprintf("%s:%s:%x", prefix, requestID, digest[:12])
 }
 
-func generationRequestIdempotencyKey(value string) string {
+func generationRequestIdempotencyKey(owner string, value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return ""
 	}
-	return "analysis:client:" + value
+	return "analysis:clerk_user:" + strings.TrimSpace(owner) + ":client:" + value
 }
 
 func generationBriefFromStructureParams(params contract.GenerateStructureParams) domain.GenerationBrief {

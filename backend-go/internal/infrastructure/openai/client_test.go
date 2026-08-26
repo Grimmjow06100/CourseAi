@@ -3,6 +3,7 @@ package openai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/errtrace"
 	"github.com/google/uuid"
 	openaisdk "github.com/openai/openai-go/v3"
 	"github.com/openai/openai-go/v3/option"
@@ -118,7 +120,7 @@ func TestCallStructuredJSONValidatesPromptStore(t *testing.T) {
 
 	client := openaisdk.NewClient(option.WithAPIKey("test-key"))
 	generator := NewCourseAIGenerator(&client, nil, Config{})
-	if _, err := generator.callStructuredJSON(context.Background(), "analysis", map[string]string{}, "schema", analysisSchema()); err != ErrMissingPromptStore {
+	if _, err := generator.callStructuredJSON(context.Background(), "analysis", map[string]string{}, "schema", analysisSchema()); !errors.Is(err, ErrMissingPromptStore) || errtrace.Stack(err) == "" {
 		t.Fatalf("missing store error = %v", err)
 	}
 	generator.prompts = testPromptStore{values: map[string]string{}}

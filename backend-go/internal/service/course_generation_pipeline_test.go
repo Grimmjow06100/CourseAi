@@ -21,29 +21,29 @@ func TestStagedGenerationJobsCompletePersistedPipeline(t *testing.T) {
 	ai := &pipelineAIStub{}
 	service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
 
-	started, err := service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
+	started, err := service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
 	if err != nil {
 		t.Fatalf("start generation: %v", err)
 	}
 	requestID := started.RequestID
 	analysisJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindAnalysis)
-	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+	if err := service.runAnalysisJob(authenticatedTestContext(), analysisJob); err != nil {
 		t.Fatalf("runAnalysisJob() error = %v", err)
 	}
 	architectureJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindArchitecture)
-	if err := service.runArchitectureJob(context.Background(), architectureJob); err != nil {
+	if err := service.runArchitectureJob(authenticatedTestContext(), architectureJob); err != nil {
 		t.Fatalf("runArchitectureJob() error = %v", err)
 	}
 	lessonPlanJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindLessonPlan)
-	if err := service.runLessonPlanJob(context.Background(), lessonPlanJob); err != nil {
+	if err := service.runLessonPlanJob(authenticatedTestContext(), lessonPlanJob); err != nil {
 		t.Fatalf("runLessonPlanJob() error = %v", err)
 	}
 	lessonContentJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindLessonContent)
-	if err := service.runLessonContentJob(context.Background(), lessonContentJob); err != nil {
+	if err := service.runLessonContentJob(authenticatedTestContext(), lessonContentJob); err != nil {
 		t.Fatalf("runLessonContentJob() error = %v", err)
 	}
 	finalizeJob := pipelineJobByKind(t, store, requestID, domain.GenerationJobKindFinalizeCourse)
-	if err := service.runFinalizeCourseJob(context.Background(), finalizeJob); err != nil {
+	if err := service.runFinalizeCourseJob(authenticatedTestContext(), finalizeJob); err != nil {
 		t.Fatalf("runFinalizeCourseJob() error = %v", err)
 	}
 	completedRequest := store.requests[requestID]
@@ -65,7 +65,7 @@ func TestStagedGenerationJobsCompletePersistedPipeline(t *testing.T) {
 		t.Fatalf("unexpected AI calls: %+v", ai)
 	}
 
-	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+	if err := service.runAnalysisJob(authenticatedTestContext(), analysisJob); err != nil {
 		t.Fatalf("idempotent completed analysis job error = %v", err)
 	}
 	if ai.lessonContentCalls != 1 {
@@ -81,12 +81,12 @@ func TestAnalysisJobWaitsForClarificationsBeforeEnqueuingArchitecture(t *testing
 	ai := &pipelineAIStub{needsClarification: true}
 	service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
 
-	started, err := service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
+	started, err := service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
 	if err != nil {
 		t.Fatalf("start generation: %v", err)
 	}
 	analysisJob := pipelineJobByKind(t, store, started.RequestID, domain.GenerationJobKindAnalysis)
-	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+	if err := service.runAnalysisJob(authenticatedTestContext(), analysisJob); err != nil {
 		t.Fatalf("runAnalysisJob() error = %v", err)
 	}
 
@@ -94,7 +94,7 @@ func TestAnalysisJobWaitsForClarificationsBeforeEnqueuingArchitecture(t *testing
 	if waiting.PipelineStatus != domain.PipelineStatusAwaitingClarification || len(waiting.ClarificationQuestions) != 1 {
 		t.Fatalf("request should wait for clarification: %+v", waiting)
 	}
-	jobs, err := store.jobs.ListByRequestID(context.Background(), started.RequestID)
+	jobs, err := store.jobs.ListByRequestID(authenticatedTestContext(), started.RequestID)
 	if err != nil {
 		t.Fatalf("list jobs: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestAnalysisJobWaitsForClarificationsBeforeEnqueuingArchitecture(t *testing
 		t.Fatalf("unexpected work while waiting: jobs=%d analysisCalls=%d", store.jobs.count(), ai.analysisCalls)
 	}
 
-	accepted, err := service.SubmitClarifications(context.Background(), contract.SubmitClarificationsParams{
+	accepted, err := service.SubmitClarifications(authenticatedTestContext(), contract.SubmitClarificationsParams{
 		RequestID: started.RequestID,
 		Answers: []domain.ClarificationAnswer{{
 			QuestionID:     domain.ClarificationIDCurrentLevel,
@@ -120,7 +120,7 @@ func TestAnalysisJobWaitsForClarificationsBeforeEnqueuingArchitecture(t *testing
 	if err != nil {
 		t.Fatalf("SubmitClarifications() error = %v", err)
 	}
-	architectureJob, err := store.jobs.FindByID(context.Background(), accepted.JobID)
+	architectureJob, err := store.jobs.FindByID(authenticatedTestContext(), accepted.JobID)
 	if err != nil || architectureJob.Kind != domain.GenerationJobKindArchitecture {
 		t.Fatalf("architecture continuation = %+v, %v", architectureJob, err)
 	}
@@ -141,12 +141,12 @@ func TestRetryResumesPersistedClarificationWithoutCallingAIAgain(t *testing.T) {
 	ai := &pipelineAIStub{needsClarification: true}
 	service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
 
-	started, err := service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
+	started, err := service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{Prompt: "Build a Linux course"})
 	if err != nil {
 		t.Fatalf("start generation: %v", err)
 	}
 	analysisJob := pipelineJobByKind(t, store, started.RequestID, domain.GenerationJobKindAnalysis)
-	if err := service.runAnalysisJob(context.Background(), analysisJob); err != nil {
+	if err := service.runAnalysisJob(authenticatedTestContext(), analysisJob); err != nil {
 		t.Fatalf("run analysis: %v", err)
 	}
 	failed := store.requests[started.RequestID]
@@ -155,15 +155,15 @@ func TestRetryResumesPersistedClarificationWithoutCallingAIAgain(t *testing.T) {
 	}
 	store.requests[started.RequestID] = failed
 
-	retry, err := service.RetryFullCourseGeneration(context.Background(), started.RequestID)
+	retry, err := service.RetryFullCourseGeneration(authenticatedTestContext(), started.RequestID)
 	if err != nil {
 		t.Fatalf("retry generation: %v", err)
 	}
-	retryJob, err := store.jobs.FindByID(context.Background(), retry.JobID)
+	retryJob, err := store.jobs.FindByID(authenticatedTestContext(), retry.JobID)
 	if err != nil || retryJob.Kind != domain.GenerationJobKindAnalysis {
 		t.Fatalf("clarification resume job = %+v, %v", retryJob, err)
 	}
-	if err := service.runAnalysisJob(context.Background(), retryJob); err != nil {
+	if err := service.runAnalysisJob(authenticatedTestContext(), retryJob); err != nil {
 		t.Fatalf("resume analysis state: %v", err)
 	}
 	resumed := store.requests[started.RequestID]
@@ -180,7 +180,7 @@ func TestAnalyzePromptPersistsFailureAndOutOfScopeCompletion(t *testing.T) {
 		store := newPipelineMemoryStore()
 		ai := &pipelineAIStub{analysisErr: errors.New("provider unavailable")}
 		service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
-		if _, err := service.AnalyzePrompt(context.Background(), contract.AnalyzePromptParams{Prompt: "Linux"}); err == nil {
+		if _, err := service.AnalyzePrompt(authenticatedTestContext(), contract.AnalyzePromptParams{Prompt: "Linux"}); err == nil {
 			t.Fatal("expected analysis failure")
 		}
 		for _, request := range store.requests {
@@ -196,7 +196,7 @@ func TestAnalyzePromptPersistsFailureAndOutOfScopeCompletion(t *testing.T) {
 		store := newPipelineMemoryStore()
 		ai := &pipelineAIStub{outOfScope: true}
 		service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
-		result, err := service.AnalyzePrompt(context.Background(), contract.AnalyzePromptParams{Prompt: "Write a poem"})
+		result, err := service.AnalyzePrompt(authenticatedTestContext(), contract.AnalyzePromptParams{Prompt: "Write a poem"})
 		if err != nil {
 			t.Fatalf("AnalyzePrompt() error = %v", err)
 		}
@@ -375,10 +375,13 @@ func (r pipelineMemoryRepositories) Quizzes() contract.QuizRepository {
 func (r pipelineMemoryRepositories) GenerationJobs() contract.GenerationJobQueue {
 	return r.store.jobs
 }
+func (r pipelineMemoryRepositories) Ownership() contract.OwnershipRepository {
+	return allowAllOwnership{}
+}
 
 func pipelineJobByKind(t *testing.T, store *pipelineMemoryStore, requestID uuid.UUID, kind domain.GenerationJobKind) domain.GenerationJob {
 	t.Helper()
-	jobs, err := store.jobs.ListByRequestID(context.Background(), requestID)
+	jobs, err := store.jobs.ListByRequestID(authenticatedTestContext(), requestID)
 	if err != nil {
 		t.Fatalf("list jobs: %v", err)
 	}
@@ -414,6 +417,18 @@ func (r pipelineRequestRepository) FindGenerationRequestByID(_ context.Context, 
 
 func (r pipelineRequestRepository) FindGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error) {
 	return r.FindGenerationRequestByID(ctx, id)
+}
+
+func (r pipelineRequestRepository) GetGenerationAdmissionUsage(context.Context, string, time.Time) (contract.GenerationAdmissionUsage, error) {
+	return contract.GenerationAdmissionUsage{}, nil
+}
+
+func (r pipelineRequestRepository) DeleteGenerationRequest(_ context.Context, id uuid.UUID) error {
+	if _, ok := r.store.requests[id]; !ok {
+		return contract.ErrGenerationRequestNotFound
+	}
+	delete(r.store.requests, id)
+	return nil
 }
 
 type pipelineCourseRepository struct {

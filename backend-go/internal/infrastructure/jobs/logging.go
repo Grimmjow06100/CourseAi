@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/errtrace"
 	"github.com/google/uuid"
 )
 
@@ -54,10 +55,12 @@ func errorLogArgs(err error) []any {
 	if errors.As(err, &coder) {
 		errorCode = coder.ErrorCode()
 	}
+	traced := errtrace.Capture(err)
 	return []any{
 		"error", err,
 		"error_type", fmt.Sprintf("%T", err),
 		"error_code", errorCode,
+		"stack", errtrace.Stack(traced),
 	}
 }
 

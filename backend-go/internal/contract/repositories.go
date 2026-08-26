@@ -2,10 +2,17 @@ package contract
 
 import (
 	"context"
+	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/google/uuid"
 )
+
+type GenerationAdmissionUsage struct {
+	ActiveRequests int64
+	DailyRequests  int64
+	PendingJobs    int64
+}
 
 type CourseOrderField string
 
@@ -17,6 +24,7 @@ const (
 )
 
 type CourseFilters struct {
+	ClerkUserID    string
 	Status         *domain.CourseGenerationStatus
 	Language       *domain.CourseLanguage
 	Search         string
@@ -25,11 +33,12 @@ type CourseFilters struct {
 	Pagination     Pagination
 }
 
-type UserRepository interface {
-	SaveUser(ctx context.Context, user domain.User) (domain.User, error)
-	FindUserByID(ctx context.Context, id uuid.UUID) (domain.User, error)
-	FindUserByUsername(ctx context.Context, username domain.Username) (domain.User, error)
-	DeleteUser(ctx context.Context, id uuid.UUID) error
+type OwnershipRepository interface {
+	OwnsGenerationRequest(ctx context.Context, id uuid.UUID, clerkUserID string) (bool, error)
+	OwnsGenerationJob(ctx context.Context, id uuid.UUID, clerkUserID string) (bool, error)
+	OwnsCourse(ctx context.Context, id uuid.UUID, clerkUserID string) (bool, error)
+	OwnsModule(ctx context.Context, id uuid.UUID, clerkUserID string) (bool, error)
+	OwnsLesson(ctx context.Context, id uuid.UUID, clerkUserID string) (bool, error)
 }
 
 type GenerationRequestRepository interface {
@@ -39,6 +48,8 @@ type GenerationRequestRepository interface {
 	FindGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error)
 	FindGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (domain.GenerationRequest, error)
 	FindGenerationStatusByID(ctx context.Context, id uuid.UUID) (GenerationStatus, error)
+	GetGenerationAdmissionUsage(ctx context.Context, clerkUserID string, createdSince time.Time) (GenerationAdmissionUsage, error)
+	DeleteGenerationRequest(ctx context.Context, id uuid.UUID) error
 }
 
 type CourseRepository interface {
@@ -52,6 +63,7 @@ type CourseRepository interface {
 	ListCourses(ctx context.Context, filters CourseFilters) (Page[domain.Course], error)
 	DeleteCourse(ctx context.Context, id uuid.UUID) error
 	DeleteCourseByRequestID(ctx context.Context, requestID uuid.UUID) error
+	DeleteCourseGeneration(ctx context.Context, courseID uuid.UUID) error
 }
 
 type ModuleRepository interface {

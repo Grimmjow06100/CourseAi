@@ -17,6 +17,7 @@ import (
 const createGenerationRequest = `-- name: CreateGenerationRequest :one
 INSERT INTO generation_requests (
   id,
+  clerk_user_id,
   initial_user_prompt,
   pipeline_status,
   current_step,
@@ -52,8 +53,8 @@ INSERT INTO generation_requests (
 VALUES (
   $1,
   $2,
-  $3::generation_pipeline_status,
-  $4,
+  $3,
+  $4::generation_pipeline_status,
   $5,
   $6,
   $7,
@@ -63,31 +64,33 @@ VALUES (
   $11,
   $12,
   $13,
-  $14::level,
+  $14,
   $15::level,
-  $16,
-  $17::course_language,
-  $18::jsonb,
+  $16::level,
+  $17,
+  $18::course_language,
   $19::jsonb,
-  $20,
-  $21::jsonb,
-  $22,
+  $20::jsonb,
+  $21,
+  $22::jsonb,
   $23,
-  $24::level,
+  $24,
   $25::level,
-  $26::jsonb,
-  $27::course_language,
-  $28,
+  $26::level,
+  $27::jsonb,
+  $28::course_language,
   $29,
   $30,
   $31,
-  $32
+  $32,
+  $33
 )
-RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
+RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id
 `
 
 type CreateGenerationRequestParams struct {
 	ID                        uuid.UUID                `db:"id" json:"id"`
+	ClerkUserID               string                   `db:"clerk_user_id" json:"clerk_user_id"`
 	InitialUserPrompt         string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
 	PipelineStatus            GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
 	CurrentStep               *string                  `db:"current_step" json:"current_step"`
@@ -124,6 +127,7 @@ type CreateGenerationRequestParams struct {
 func (q *Queries) CreateGenerationRequest(ctx context.Context, arg CreateGenerationRequestParams) (GenerationRequest, error) {
 	row := q.db.QueryRow(ctx, createGenerationRequest,
 		arg.ID,
+		arg.ClerkUserID,
 		arg.InitialUserPrompt,
 		arg.PipelineStatus,
 		arg.CurrentStep,
@@ -190,12 +194,69 @@ func (q *Queries) CreateGenerationRequest(ctx context.Context, arg CreateGenerat
 		&i.BriefConfirmedAt,
 		&i.ClarificationsSubmittedAt,
 		&i.ClarificationVersion,
+		&i.ClerkUserID,
 	)
 	return i, err
 }
 
+const deleteGenerationRequestByID = `-- name: DeleteGenerationRequestByID :execrows
+DELETE FROM generation_requests
+WHERE id = $1
+`
+
+func (q *Queries) DeleteGenerationRequestByID(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteGenerationRequestByID, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getGenerationAdmissionUsage = `-- name: GetGenerationAdmissionUsage :one
+WITH admission_lock AS (
+  SELECT pg_advisory_xact_lock(4931529157321281::bigint)
+)
+SELECT
+  (
+    SELECT count(*)::bigint
+    FROM generation_requests AS active_request
+    WHERE active_request.clerk_user_id = $1
+      AND active_request.pipeline_status IN ('queued', 'running', 'awaiting_clarification')
+  ) AS active_requests,
+  (
+    SELECT count(*)::bigint
+    FROM generation_requests AS daily_request
+    WHERE daily_request.clerk_user_id = $1
+      AND daily_request.created_at >= $2
+  ) AS daily_requests,
+  (
+    SELECT count(*)::bigint
+    FROM generation_jobs AS pending_job
+    WHERE pending_job.status IN ('queued', 'retry_scheduled', 'running')
+  ) AS pending_jobs
+FROM admission_lock
+`
+
+type GetGenerationAdmissionUsageParams struct {
+	ClerkUserID  string    `db:"clerk_user_id" json:"clerk_user_id"`
+	CreatedSince time.Time `db:"created_since" json:"created_since"`
+}
+
+type GetGenerationAdmissionUsageRow struct {
+	ActiveRequests int64 `db:"active_requests" json:"active_requests"`
+	DailyRequests  int64 `db:"daily_requests" json:"daily_requests"`
+	PendingJobs    int64 `db:"pending_jobs" json:"pending_jobs"`
+}
+
+func (q *Queries) GetGenerationAdmissionUsage(ctx context.Context, arg GetGenerationAdmissionUsageParams) (GetGenerationAdmissionUsageRow, error) {
+	row := q.db.QueryRow(ctx, getGenerationAdmissionUsage, arg.ClerkUserID, arg.CreatedSince)
+	var i GetGenerationAdmissionUsageRow
+	err := row.Scan(&i.ActiveRequests, &i.DailyRequests, &i.PendingJobs)
+	return i, err
+}
+
 const getGenerationRequestByCourseID = `-- name: GetGenerationRequestByCourseID :one
-SELECT gr.id, gr.initial_user_prompt, gr.pipeline_status, gr.current_step, gr.progress_percent, gr.failure_message, gr.started_at, gr.completed_at, gr.is_out_of_scope, gr.error_message, gr.warning_message, gr.suggested_title, gr.short_synopsis, gr.detected_current_level, gr.detected_target_level, gr.detected_goal, gr.detected_language, gr.clarification_questions, gr.raw_analysis_output, gr.created_at, gr.updated_at, gr.analysis_completed_at, gr.clarification_answers, gr.confirmed_title, gr.confirmed_synopsis, gr.confirmed_current_level, gr.confirmed_target_level, gr.confirmed_goals, gr.confirmed_language, gr.brief_confirmed_at, gr.clarifications_submitted_at, gr.clarification_version
+SELECT gr.id, gr.initial_user_prompt, gr.pipeline_status, gr.current_step, gr.progress_percent, gr.failure_message, gr.started_at, gr.completed_at, gr.is_out_of_scope, gr.error_message, gr.warning_message, gr.suggested_title, gr.short_synopsis, gr.detected_current_level, gr.detected_target_level, gr.detected_goal, gr.detected_language, gr.clarification_questions, gr.raw_analysis_output, gr.created_at, gr.updated_at, gr.analysis_completed_at, gr.clarification_answers, gr.confirmed_title, gr.confirmed_synopsis, gr.confirmed_current_level, gr.confirmed_target_level, gr.confirmed_goals, gr.confirmed_language, gr.brief_confirmed_at, gr.clarifications_submitted_at, gr.clarification_version, gr.clerk_user_id
 FROM generation_requests gr
 JOIN courses c ON c.request_id = gr.id
 WHERE c.id = $1
@@ -237,12 +298,13 @@ func (q *Queries) GetGenerationRequestByCourseID(ctx context.Context, courseID u
 		&i.BriefConfirmedAt,
 		&i.ClarificationsSubmittedAt,
 		&i.ClarificationVersion,
+		&i.ClerkUserID,
 	)
 	return i, err
 }
 
 const getGenerationRequestByID = `-- name: GetGenerationRequestByID :one
-SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
+SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id
 FROM generation_requests
 WHERE id = $1
 `
@@ -283,12 +345,13 @@ func (q *Queries) GetGenerationRequestByID(ctx context.Context, id uuid.UUID) (G
 		&i.BriefConfirmedAt,
 		&i.ClarificationsSubmittedAt,
 		&i.ClarificationVersion,
+		&i.ClerkUserID,
 	)
 	return i, err
 }
 
 const getGenerationRequestForUpdate = `-- name: GetGenerationRequestForUpdate :one
-SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
+SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id
 FROM generation_requests
 WHERE id = $1
 FOR UPDATE
@@ -330,6 +393,7 @@ func (q *Queries) GetGenerationRequestForUpdate(ctx context.Context, id uuid.UUI
 		&i.BriefConfirmedAt,
 		&i.ClarificationsSubmittedAt,
 		&i.ClarificationVersion,
+		&i.ClerkUserID,
 	)
 	return i, err
 }
@@ -403,44 +467,161 @@ func (q *Queries) GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (Ge
 	return i, err
 }
 
+const purgeRawGenerationOutputsBefore = `-- name: PurgeRawGenerationOutputsBefore :one
+WITH eligible_requests AS MATERIALIZED (
+  SELECT retained_request.id
+  FROM generation_requests AS retained_request
+  WHERE retained_request.pipeline_status IN ('completed', 'failed')
+    AND retained_request.updated_at < $1
+    AND (
+      retained_request.raw_analysis_output IS NOT NULL
+      OR EXISTS (
+        SELECT 1
+        FROM courses AS retained_course
+        WHERE retained_course.request_id = retained_request.id
+          AND retained_course.raw_architecture_output IS NOT NULL
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM modules AS retained_module
+        JOIN courses AS retained_course ON retained_course.id = retained_module.course_id
+        WHERE retained_course.request_id = retained_request.id
+          AND (retained_module.raw_module_output IS NOT NULL OR retained_module.raw_lessons_plan_output IS NOT NULL)
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM lessons AS retained_lesson
+        JOIN modules AS retained_module ON retained_module.id = retained_lesson.module_id
+        JOIN courses AS retained_course ON retained_course.id = retained_module.course_id
+        WHERE retained_course.request_id = retained_request.id
+          AND retained_lesson.raw_content_output IS NOT NULL
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM lesson_exercises AS retained_exercise
+        JOIN lessons AS retained_lesson ON retained_lesson.id = retained_exercise.lesson_id
+        JOIN modules AS retained_module ON retained_module.id = retained_lesson.module_id
+        JOIN courses AS retained_course ON retained_course.id = retained_module.course_id
+        WHERE retained_course.request_id = retained_request.id
+          AND retained_exercise.raw_ai_output IS NOT NULL
+      )
+      OR EXISTS (
+        SELECT 1
+        FROM lesson_quizzes AS retained_quiz
+        JOIN lessons AS retained_lesson ON retained_lesson.id = retained_quiz.lesson_id
+        JOIN modules AS retained_module ON retained_module.id = retained_lesson.module_id
+        JOIN courses AS retained_course ON retained_course.id = retained_module.course_id
+        WHERE retained_course.request_id = retained_request.id
+          AND retained_quiz.raw_ai_output IS NOT NULL
+      )
+    )
+  ORDER BY retained_request.updated_at ASC, retained_request.id ASC
+  LIMIT $2
+),
+purged_requests AS (
+  UPDATE generation_requests
+  SET raw_analysis_output = NULL
+  WHERE id IN (SELECT id FROM eligible_requests)
+),
+purged_courses AS (
+  UPDATE courses
+  SET raw_architecture_output = NULL
+  WHERE request_id IN (SELECT id FROM eligible_requests)
+),
+purged_modules AS (
+  UPDATE modules
+  SET raw_module_output = NULL,
+      raw_lessons_plan_output = NULL
+  WHERE course_id IN (SELECT id FROM courses WHERE request_id IN (SELECT id FROM eligible_requests))
+),
+purged_lessons AS (
+  UPDATE lessons
+  SET raw_content_output = NULL
+  WHERE module_id IN (
+    SELECT modules.id
+    FROM modules
+    JOIN courses ON courses.id = modules.course_id
+    WHERE courses.request_id IN (SELECT id FROM eligible_requests)
+  )
+),
+purged_exercises AS (
+  UPDATE lesson_exercises
+  SET raw_ai_output = NULL
+  WHERE lesson_id IN (
+    SELECT lessons.id
+    FROM lessons
+    JOIN modules ON modules.id = lessons.module_id
+    JOIN courses ON courses.id = modules.course_id
+    WHERE courses.request_id IN (SELECT id FROM eligible_requests)
+  )
+),
+purged_quizzes AS (
+  UPDATE lesson_quizzes
+  SET raw_ai_output = NULL
+  WHERE lesson_id IN (
+    SELECT lessons.id
+    FROM lessons
+    JOIN modules ON modules.id = lessons.module_id
+    JOIN courses ON courses.id = modules.course_id
+    WHERE courses.request_id IN (SELECT id FROM eligible_requests)
+  )
+)
+SELECT count(*)::bigint AS purged_requests
+FROM eligible_requests
+`
+
+type PurgeRawGenerationOutputsBeforeParams struct {
+	Cutoff    time.Time `db:"cutoff" json:"cutoff"`
+	LimitRows int32     `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) PurgeRawGenerationOutputsBefore(ctx context.Context, arg PurgeRawGenerationOutputsBeforeParams) (int64, error) {
+	row := q.db.QueryRow(ctx, purgeRawGenerationOutputsBefore, arg.Cutoff, arg.LimitRows)
+	var purged_requests int64
+	err := row.Scan(&purged_requests)
+	return purged_requests, err
+}
+
 const updateGenerationRequest = `-- name: UpdateGenerationRequest :one
 UPDATE generation_requests
 SET
-  initial_user_prompt = $1,
-  pipeline_status = $2::generation_pipeline_status,
-  current_step = $3,
-  progress_percent = $4,
-  failure_message = $5,
-  started_at = $6,
-  completed_at = $7,
-  is_out_of_scope = $8,
-  error_message = $9,
-  warning_message = $10,
-  suggested_title = $11,
-  short_synopsis = $12,
-  detected_current_level = $13::level,
-  detected_target_level = $14::level,
-  detected_goal = $15,
-  detected_language = $16::course_language,
-  clarification_questions = $17::jsonb,
-  raw_analysis_output = $18::jsonb,
-  analysis_completed_at = $19,
-  clarification_answers = $20::jsonb,
-  confirmed_title = $21,
-  confirmed_synopsis = $22,
-  confirmed_current_level = $23::level,
-  confirmed_target_level = $24::level,
-  confirmed_goals = $25::jsonb,
-  confirmed_language = $26::course_language,
-  brief_confirmed_at = $27,
-  clarifications_submitted_at = $28,
-  clarification_version = $29,
-  updated_at = $30
-WHERE id = $31
-RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version
+  clerk_user_id = $1,
+  initial_user_prompt = $2,
+  pipeline_status = $3::generation_pipeline_status,
+  current_step = $4,
+  progress_percent = $5,
+  failure_message = $6,
+  started_at = $7,
+  completed_at = $8,
+  is_out_of_scope = $9,
+  error_message = $10,
+  warning_message = $11,
+  suggested_title = $12,
+  short_synopsis = $13,
+  detected_current_level = $14::level,
+  detected_target_level = $15::level,
+  detected_goal = $16,
+  detected_language = $17::course_language,
+  clarification_questions = $18::jsonb,
+  raw_analysis_output = $19::jsonb,
+  analysis_completed_at = $20,
+  clarification_answers = $21::jsonb,
+  confirmed_title = $22,
+  confirmed_synopsis = $23,
+  confirmed_current_level = $24::level,
+  confirmed_target_level = $25::level,
+  confirmed_goals = $26::jsonb,
+  confirmed_language = $27::course_language,
+  brief_confirmed_at = $28,
+  clarifications_submitted_at = $29,
+  clarification_version = $30,
+  updated_at = $31
+WHERE id = $32
+RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id
 `
 
 type UpdateGenerationRequestParams struct {
+	ClerkUserID               string                   `db:"clerk_user_id" json:"clerk_user_id"`
 	InitialUserPrompt         string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
 	PipelineStatus            GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
 	CurrentStep               *string                  `db:"current_step" json:"current_step"`
@@ -476,6 +657,7 @@ type UpdateGenerationRequestParams struct {
 
 func (q *Queries) UpdateGenerationRequest(ctx context.Context, arg UpdateGenerationRequestParams) (GenerationRequest, error) {
 	row := q.db.QueryRow(ctx, updateGenerationRequest,
+		arg.ClerkUserID,
 		arg.InitialUserPrompt,
 		arg.PipelineStatus,
 		arg.CurrentStep,
@@ -542,6 +724,7 @@ func (q *Queries) UpdateGenerationRequest(ctx context.Context, arg UpdateGenerat
 		&i.BriefConfirmedAt,
 		&i.ClarificationsSubmittedAt,
 		&i.ClarificationVersion,
+		&i.ClerkUserID,
 	)
 	return i, err
 }

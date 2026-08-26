@@ -114,9 +114,10 @@ func (r *CourseRepository) ListCourses(ctx context.Context, filters contract.Cou
 
 	search := optionalSearch(filters.Search)
 	totalItems, err := r.queries.CountCourses(ctx, dbsqlc.CountCoursesParams{
-		Status:   sqlcStatusPtr(filters.Status),
-		Language: sqlcLanguagePtr(filters.Language),
-		Search:   search,
+		ClerkUserID: filters.ClerkUserID,
+		Status:      sqlcStatusPtr(filters.Status),
+		Language:    sqlcLanguagePtr(filters.Language),
+		Search:      search,
 	})
 	if err != nil {
 		return contract.Page[domain.Course]{}, err
@@ -131,11 +132,6 @@ func (r *CourseRepository) ListCourses(ctx context.Context, filters contract.Cou
 	if err != nil {
 		return contract.Page[domain.Course]{}, err
 	}
-	courses, err = relationLoader{queries: r.queries}.hydrateCourses(ctx, courses)
-	if err != nil {
-		return contract.Page[domain.Course]{}, err
-	}
-
 	totalPages := 0
 	if totalItems > 0 {
 		totalPages = int(math.Ceil(float64(totalItems) / float64(pagination.PageSize)))
@@ -173,6 +169,17 @@ func (r *CourseRepository) DeleteCourse(ctx context.Context, id uuid.UUID) error
 	return nil
 }
 
+func (r *CourseRepository) DeleteCourseGeneration(ctx context.Context, courseID uuid.UUID) error {
+	rowsAffected, err := r.queries.DeleteCourseGenerationByCourseID(ctx, courseID)
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return contract.ErrCourseNotFound
+	}
+	return nil
+}
+
 func (r *CourseRepository) hydrateCourse(ctx context.Context, course domain.Course) (domain.Course, error) {
 	courses, err := relationLoader{queries: r.queries}.hydrateCourses(ctx, []domain.Course{course})
 	if err != nil {
@@ -196,38 +203,38 @@ func (r *CourseRepository) listCourseRows(
 	case contract.CourseOrderByCreatedAt:
 		if filters.OrderDirection == contract.SortAscending {
 			return r.queries.ListCoursesCreatedAtAsc(ctx, dbsqlc.ListCoursesCreatedAtAscParams{
-				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+				ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 			})
 		}
 		return r.queries.ListCoursesCreatedAtDesc(ctx, dbsqlc.ListCoursesCreatedAtDescParams{
-			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 		})
 	case contract.CourseOrderByUpdatedAt:
 		if filters.OrderDirection == contract.SortAscending {
 			return r.queries.ListCoursesUpdatedAtAsc(ctx, dbsqlc.ListCoursesUpdatedAtAscParams{
-				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+				ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 			})
 		}
 		return r.queries.ListCoursesUpdatedAtDesc(ctx, dbsqlc.ListCoursesUpdatedAtDescParams{
-			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 		})
 	case contract.CourseOrderByTitle:
 		if filters.OrderDirection == contract.SortAscending {
 			return r.queries.ListCoursesTitleAsc(ctx, dbsqlc.ListCoursesTitleAscParams{
-				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+				ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 			})
 		}
 		return r.queries.ListCoursesTitleDesc(ctx, dbsqlc.ListCoursesTitleDescParams{
-			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 		})
 	case contract.CourseOrderByStatus:
 		if filters.OrderDirection == contract.SortAscending {
 			return r.queries.ListCoursesStatusAsc(ctx, dbsqlc.ListCoursesStatusAscParams{
-				Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+				ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 			})
 		}
 		return r.queries.ListCoursesStatusDesc(ctx, dbsqlc.ListCoursesStatusDescParams{
-			Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
+			ClerkUserID: filters.ClerkUserID, Status: status, Language: language, Search: search, OffsetRows: offset, LimitRows: limit,
 		})
 	default:
 		return nil, fmt.Errorf("invalid course order field: %s", filters.OrderBy)
@@ -242,6 +249,7 @@ func createCourseParams(course domain.Course) (dbsqlc.CreateCourseParams, error)
 	return dbsqlc.CreateCourseParams{
 		ID:                      course.ID,
 		RequestID:               course.RequestID,
+		ClerkUserID:             course.ClerkUserID,
 		Language:                dbsqlc.CourseLanguage(course.Language),
 		Status:                  dbsqlc.CourseGenerationStatus(course.Status),
 		InitialUserPrompt:       course.InitialUserPrompt,
@@ -269,6 +277,7 @@ func updateCourseParams(course domain.Course) (dbsqlc.UpdateCourseParams, error)
 	}
 	return dbsqlc.UpdateCourseParams{
 		RequestID:               course.RequestID,
+		ClerkUserID:             course.ClerkUserID,
 		Language:                dbsqlc.CourseLanguage(course.Language),
 		Status:                  dbsqlc.CourseGenerationStatus(course.Status),
 		InitialUserPrompt:       course.InitialUserPrompt,

@@ -119,13 +119,8 @@ func TestSQLCEntityMappers(t *testing.T) {
 	lessonID := uuid.New()
 	answer := "Linux"
 
-	user, err := userFromSQLC(dbsqlc.User{ID: uuid.New(), Username: "alice", Password: "hash", CreatedAt: now, UpdatedAt: now})
-	if err != nil || user.Username != "alice" {
-		t.Fatalf("userFromSQLC() = %+v, %v", user, err)
-	}
-
 	request, err := generationRequestFromSQLC(dbsqlc.GenerationRequest{
-		ID: requestID, InitialUserPrompt: "Linux", PipelineStatus: dbsqlc.GenerationPipelineStatus("queued"),
+		ID: requestID, ClerkUserID: "user_test", InitialUserPrompt: "Linux", PipelineStatus: dbsqlc.GenerationPipelineStatus("queued"),
 		ClarificationQuestions: json.RawMessage(`[]`), CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil || request.ID != requestID {
@@ -142,7 +137,7 @@ func TestSQLCEntityMappers(t *testing.T) {
 	}
 
 	courseRow := dbsqlc.Course{
-		ID: courseID, RequestID: requestID, Language: dbsqlc.CourseLanguage("fr"),
+		ID: courseID, RequestID: requestID, ClerkUserID: "user_test", Language: dbsqlc.CourseLanguage("fr"),
 		Status: dbsqlc.CourseGenerationStatus("analysis_completed"), InitialUserPrompt: "Linux",
 		Title: "Linux", Synopsis: "Course", CurrentLevel: dbsqlc.Level("beginner"), TargetLevel: dbsqlc.Level("advanced"),
 		Prerequisites: json.RawMessage(`[]`), Goals: json.RawMessage(`["admin"]`), AcquiredSkills: json.RawMessage(`[]`),

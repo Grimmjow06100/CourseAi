@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 
@@ -13,6 +15,11 @@ import (
 
 func bindJSON(c *gin.Context, target any) bool {
 	if err := c.ShouldBindJSON(target); err != nil {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
+			middlewares.AbortWithError(c, middlewares.PayloadTooLarge("request body is too large", err))
+			return false
+		}
 		middlewares.AbortWithError(c, middlewares.BadRequest("invalid request body", err))
 		return false
 	}

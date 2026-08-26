@@ -18,6 +18,7 @@ INSERT INTO generation_jobs (
   completed_at,
   last_error_code,
   last_error_message,
+  failure_handled_at,
   created_at,
   updated_at
 )
@@ -40,6 +41,7 @@ VALUES (
   sqlc.narg('completed_at'),
   sqlc.narg('last_error_code'),
   sqlc.narg('last_error_message'),
+  sqlc.narg('failure_handled_at'),
   @created_at,
   @updated_at
 )
@@ -183,3 +185,57 @@ SET
   updated_at = @requeued_at
 WHERE status = 'running'
   AND locked_until <= @requeued_at;
+
+-- name: ListUnreconciledFailedGenerationJobs :many
+SELECT *
+FROM generation_jobs
+WHERE status = 'failed'
+  AND failure_handled_at IS NULL
+ORDER BY completed_at ASC, id ASC
+LIMIT @limit_rows;
+
+-- name: MarkGenerationJobFailureHandled :execrows
+UPDATE generation_jobs AS job
+SET failure_handled_at = @handled_at,
+    updated_at = GREATEST(job.updated_at, @handled_at)
+WHERE job.id = @id
+  AND job.status = 'failed'
+  AND job.failure_handled_at IS NULL;
+
+-- name: PurgeTerminalGenerationJobsBefore :execrows
+DELETE FROM generation_jobs
+WHERE id IN (
+  SELECT root_job.id
+  FROM generation_jobs AS root_job
+  WHERE root_job.parent_job_id IS NULL
+    AND root_job.status IN ('completed', 'failed', 'cancelled')
+    AND root_job.updated_at < @cutoff
+    AND NOT EXISTS (
+      SELECT 1
+      FROM generation_jobs AS descendant
+      WHERE descendant.request_id = root_job.request_id
+        AND descendant.status NOT IN ('completed', 'failed', 'cancelled')
+    )
+  ORDER BY root_job.updated_at ASC, root_job.id ASC
+  LIMIT @limit_rows
+);
+
+-- name: GetGenerationQueueMetrics :one
+SELECT
+  count(*) FILTER (WHERE status = 'queued')::bigint AS queued,
+  count(*) FILTER (WHERE status = 'retry_scheduled')::bigint AS retry_scheduled,
+  count(*) FILTER (WHERE status = 'running')::bigint AS running,
+  count(*) FILTER (WHERE status = 'completed')::bigint AS completed,
+  count(*) FILTER (WHERE status = 'failed')::bigint AS failed,
+  count(*) FILTER (WHERE status = 'cancelled')::bigint AS cancelled,
+  count(*) FILTER (WHERE status = 'running' AND locked_until <= CURRENT_TIMESTAMP)::bigint AS expired_leases,
+  count(*) FILTER (WHERE status = 'failed' AND failure_handled_at IS NULL)::bigint AS unreconciled_failures
+FROM generation_jobs;
+
+-- name: CountPendingGenerationJobsWithAdmissionLock :one
+WITH admission_lock AS (
+  SELECT pg_advisory_xact_lock(4931529157321281::bigint)
+)
+SELECT count(*)::bigint
+FROM generation_jobs, admission_lock
+WHERE status IN ('queued', 'retry_scheduled', 'running');

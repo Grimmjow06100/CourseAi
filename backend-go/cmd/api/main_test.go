@@ -3,6 +3,9 @@ package main
 import (
 	"testing"
 	"time"
+
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/auth"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/jobs"
 )
 
 func TestLoadHTTPServerConfigUsesRailwayPort(t *testing.T) {
@@ -18,6 +21,46 @@ func TestLoadHTTPServerConfigUsesRailwayPort(t *testing.T) {
 	}
 }
 
+func TestValidateProductionConfigAcceptsHardenedConfiguration(t *testing.T) {
+	worker := jobs.DefaultWorkerConfig()
+	guardrails := apiGuardrailConfig{MaxBodyBytes: 64 * 1024, OpenAIMaxRetries: 0}
+	err := validateProductionConfig(
+		"production",
+		[]string{"https://app.example.com"},
+		auth.ClerkConfig{AuthorizedParties: []string{"https://app.example.com"}},
+		worker,
+		"gpt-5.6-luna",
+		12000,
+		guardrails,
+	)
+	if err != nil {
+		t.Fatalf("production config: %v", err)
+	}
+}
+
+func TestValidateProductionConfigRejectsUnsafeOrigin(t *testing.T) {
+	err := validateProductionConfig(
+		"production",
+		[]string{"http://localhost:5173"},
+		auth.ClerkConfig{AuthorizedParties: []string{"https://app.example.com"}},
+		jobs.DefaultWorkerConfig(),
+		"gpt-5.6-luna",
+		12000,
+		apiGuardrailConfig{MaxBodyBytes: 64 * 1024},
+	)
+	if err == nil {
+		t.Fatal("expected an HTTP production origin to be rejected")
+	}
+}
+
+func TestLoadAPIGuardrailConfigRejectsInvalidRetryBudget(t *testing.T) {
+	clearGuardrailEnvironment(t)
+	t.Setenv("OPENAI_MAX_RETRIES", "2")
+	if _, err := loadAPIGuardrailConfig(); err == nil {
+		t.Fatal("expected excessive SDK retries to be rejected")
+	}
+}
+
 func TestLoadHTTPServerConfigPrefersExplicitAddress(t *testing.T) {
 	clearHTTPConfigEnvironment(t)
 	t.Setenv("PORT", "9090")
@@ -29,6 +72,16 @@ func TestLoadHTTPServerConfigPrefersExplicitAddress(t *testing.T) {
 	}
 	if cfg.Address != ":7070" {
 		t.Fatalf("address = %q, want :7070", cfg.Address)
+	}
+}
+
+func clearGuardrailEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"HTTP_MAX_BODY_BYTES", "GENERATION_RATE_LIMIT_REQUESTS", "GENERATION_RATE_LIMIT_WINDOW",
+		"GENERATION_MAX_ACTIVE_PER_USER", "GENERATION_MAX_DAILY_PER_USER", "GENERATION_MAX_PENDING_JOBS", "OPENAI_MAX_RETRIES",
+	} {
+		t.Setenv(key, "")
 	}
 }
 

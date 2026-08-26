@@ -11,6 +11,7 @@ import (
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/dto"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/service"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/errtrace"
 	"github.com/gin-gonic/gin"
 )
 
@@ -44,9 +45,36 @@ func ServiceUnavailable(message string, err error) error {
 	return HTTPError{Status: http.StatusServiceUnavailable, Code: "service_unavailable", Message: message, Err: err}
 }
 
+func PayloadTooLarge(message string, err error) error {
+	return HTTPError{Status: http.StatusRequestEntityTooLarge, Code: "payload_too_large", Message: message, Err: err}
+}
+
+func TooManyRequests(message string, err error) error {
+	return HTTPError{Status: http.StatusTooManyRequests, Code: "rate_limit_exceeded", Message: message, Err: err}
+}
+
 func AbortWithError(c *gin.Context, err error) {
-	_ = c.Error(err)
+	_ = c.Error(errtrace.Capture(err))
 	c.Abort()
+}
+
+func Recovery() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				slog.ErrorContext(c.Request.Context(), "request panic",
+					"event", "http_request_panic",
+					"request_id", RequestIDFromContext(c.Request.Context()),
+					"method", c.Request.Method,
+					"path", c.Request.URL.Path,
+					"panic", recovered,
+					"stack", string(debug.Stack()),
+				)
+				c.AbortWithStatusJSON(http.StatusInternalServerError, dto.ErrorResponse{Code: "internal_error", Message: "internal server error"})
+			}
+		}()
+		c.Next()
+	}
 }
 
 func ErrorHandler() gin.HandlerFunc {
@@ -70,9 +98,10 @@ func writeError(c *gin.Context, err error) {
 		"status", status,
 		"code", code,
 		"error", err.Error(),
+		"request_id", RequestIDFromContext(c.Request.Context()),
 		"method", c.Request.Method,
 		"path", c.Request.URL.Path,
-		"stack", string(debug.Stack()),
+		"stack", errtrace.Stack(err),
 	)
 
 	c.JSON(status, dto.ErrorResponse{Code: code, Message: message})
@@ -84,6 +113,8 @@ func classifyError(err error) (int, string, string) {
 	}
 
 	switch {
+	case errors.Is(err, contract.ErrUnauthenticated):
+		return http.StatusUnauthorized, "unauthenticated", "authentication is required"
 	case errors.Is(err, contract.ErrCourseNotFound):
 		return http.StatusNotFound, "course_not_found", "course not found"
 	case errors.Is(err, contract.ErrGenerationRequestNotFound):
@@ -92,18 +123,20 @@ func classifyError(err error) (int, string, string) {
 		return http.StatusNotFound, "generation_job_not_found", "generation job not found"
 	case errors.Is(err, contract.ErrGenerationJobIdempotencyConflict):
 		return http.StatusConflict, "idempotency_conflict", "idempotency key is already used by another generation"
+	case errors.Is(err, contract.ErrGenerationActiveLimitExceeded):
+		return http.StatusTooManyRequests, "active_generation_limit_exceeded", "too many active generations"
+	case errors.Is(err, contract.ErrGenerationDailyLimitExceeded):
+		return http.StatusTooManyRequests, "daily_generation_limit_exceeded", "daily generation limit exceeded"
+	case errors.Is(err, contract.ErrGenerationQueueSaturated):
+		return http.StatusServiceUnavailable, "generation_queue_saturated", "generation capacity is temporarily exhausted"
 	case errors.Is(err, contract.ErrModuleNotFound):
 		return http.StatusNotFound, "module_not_found", "module not found"
 	case errors.Is(err, contract.ErrLessonNotFound):
 		return http.StatusNotFound, "lesson_not_found", "lesson not found"
-	case errors.Is(err, domain.ErrUserNotFound):
-		return http.StatusNotFound, "user_not_found", "user not found"
-	case errors.Is(err, domain.ErrUsernameAlreadyExists):
-		return http.StatusConflict, "username_already_exists", err.Error()
-	case errors.Is(err, service.ErrAuthentification):
-		return http.StatusUnauthorized, "invalid_credentials", err.Error()
 	case errors.Is(err, service.ErrPromptRequired):
 		return http.StatusBadRequest, "prompt_required", err.Error()
+	case errors.Is(err, service.ErrPromptTooLong):
+		return http.StatusBadRequest, "prompt_too_long", err.Error()
 	case errors.Is(err, service.ErrGenerationOutOfScope):
 		return http.StatusUnprocessableEntity, "generation_out_of_scope", err.Error()
 	case errors.Is(err, service.ErrGenerationNotCompleted):
@@ -136,8 +169,7 @@ func classifyError(err error) (int, string, string) {
 		errors.Is(err, domain.ErrInvalidOrder),
 		errors.Is(err, domain.ErrInvalidProgress),
 		errors.Is(err, domain.ErrInvalidDuration),
-		errors.Is(err, domain.ErrInvalidPassword),
-		errors.Is(err, domain.ErrInvalidUsername),
+		errors.Is(err, domain.ErrInvalidClerkUserID),
 		errors.Is(err, domain.ErrInvalidClarification),
 		errors.Is(err, domain.ErrInvalidClarificationAnswer),
 		errors.Is(err, domain.ErrClarificationAnswerMissing),

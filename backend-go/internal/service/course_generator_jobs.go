@@ -311,7 +311,7 @@ func (s *CourseGeneratorService) enqueueLessonPlanJobs(ctx context.Context, pare
 			if err != nil {
 				return err
 			}
-			if _, err := repositories.GenerationJobs().Enqueue(ctx, job); err != nil {
+			if _, err := s.enqueueWithCapacity(ctx, repositories, job); err != nil {
 				return err
 			}
 		}
@@ -399,7 +399,7 @@ func (s *CourseGeneratorService) enqueueLessonContentJobs(ctx context.Context, r
 			if err != nil {
 				return err
 			}
-			if _, err := repositories.GenerationJobs().Enqueue(ctx, job); err != nil {
+			if _, err := s.enqueueWithCapacity(ctx, repositories, job); err != nil {
 				return err
 			}
 		}
@@ -429,7 +429,7 @@ func (s *CourseGeneratorService) enqueueFinalizeIfReady(ctx context.Context, req
 		if err != nil {
 			return err
 		}
-		_, err = repositories.GenerationJobs().Enqueue(ctx, job)
+		_, err = s.enqueueWithCapacity(ctx, repositories, job)
 		return err
 	})
 }
@@ -518,7 +518,7 @@ func (s *CourseGeneratorService) enqueueArchitectureJobWithRepositories(
 	if err != nil {
 		return domain.GenerationJob{}, err
 	}
-	return repositories.GenerationJobs().Enqueue(ctx, job)
+	return s.enqueueWithCapacity(ctx, repositories, job)
 }
 
 func architectureJobKey(requestID uuid.UUID, version int, brief domain.GenerationBrief) (string, error) {

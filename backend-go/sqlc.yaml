@@ -7,6 +7,10 @@ sql:
       - "migrations/00002_add_structured_lesson_activities.sql"
       - "migrations/00003_generation_jobs.sql"
       - "migrations/00004_generation_clarifications.sql"
+      - "migrations/00005_migrate_users_to_clerk.sql"
+      - "migrations/00006_add_clerk_ownership_and_webhooks.sql"
+      - "migrations/00007_remove_clerk_user_sync.sql"
+      - "migrations/00008_generation_operational_safety.sql"
     queries: "internal/db/queries"
     gen:
       go:

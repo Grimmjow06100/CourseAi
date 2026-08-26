@@ -1,52 +1,81 @@
 package http
 
 import (
+	"context"
+	"strings"
+	"time"
+
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/apidocs"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/handlers"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/middlewares"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 )
 
 type RouterConfig struct {
-	AuthService             contract.AuthService
 	CourseCatalogService    contract.CourseCatalogService
 	CourseGenerationService contract.CourseGenerationService
-	TokenManager            contract.TokenManager
+	Authentication          gin.HandlerFunc
 	AllowedOrigins          []string
+	AppEnv                  string
+	MaxBodyBytes            int64
+	GenerationRateRequests  int
+	GenerationRateWindow    time.Duration
+	ReadyCheck              func(ctx context.Context) error
+	WorkerEnabled           bool
 }
 
 func NewRouter(cfg RouterConfig) *gin.Engine {
+	binding.EnableDecoderDisallowUnknownFields = true
+	binding.EnableDecoderUseNumber = true
+	if cfg.MaxBodyBytes == 0 {
+		cfg.MaxBodyBytes = 64 * 1024
+	}
+	if cfg.GenerationRateRequests == 0 {
+		cfg.GenerationRateRequests = 10
+	}
+	if cfg.GenerationRateWindow == 0 {
+		cfg.GenerationRateWindow = time.Minute
+	}
+	rateLimiter, err := middlewares.NewUserRateLimiter(cfg.GenerationRateRequests, cfg.GenerationRateWindow)
+	if err != nil {
+		panic(err)
+	}
 	router := gin.New()
-	router.Use(gin.Logger())
-	router.Use(gin.Recovery())
+	router.Use(middlewares.RequestID())
+	router.Use(middlewares.RequestLogger(nil))
+	router.Use(middlewares.Recovery())
 	router.Use(middlewares.CORS(cfg.AllowedOrigins))
 	router.Use(middlewares.ErrorHandler())
+	router.Use(middlewares.BodyLimit(cfg.MaxBodyBytes))
+	if !strings.EqualFold(strings.TrimSpace(cfg.AppEnv), "production") {
+		apidocs.Register(router)
+	}
 
-	healthHandler := handlers.NewHealthHandler()
-	authHandler := handlers.NewAuthHandler(cfg.AuthService)
+	healthHandler := handlers.NewHealthHandler(cfg.ReadyCheck, cfg.WorkerEnabled)
 	generationHandler := handlers.NewGenerationHandler(cfg.CourseGenerationService)
 	courseHandler := handlers.NewCourseHandler(cfg.CourseCatalogService)
 
-	router.GET("/health", healthHandler.Health)
+	router.GET("/health", healthHandler.Ready)
+	router.GET("/health/live", healthHandler.Live)
+	router.GET("/health/ready", healthHandler.Ready)
 
 	api := router.Group("/api")
-	registerAuthRoutes(api, authHandler)
-	registerGenerationRoutes(api, generationHandler)
+	if cfg.Authentication == nil {
+		cfg.Authentication = middlewares.RejectUnauthenticated()
+	}
+	api.Use(cfg.Authentication)
+	registerGenerationRoutes(api, generationHandler, rateLimiter.Middleware())
 	registerCourseRoutes(api, courseHandler)
 
 	return router
 }
 
-func registerAuthRoutes(router gin.IRouter, handler *handlers.AuthHandler) {
-	auth := router.Group("/auth")
-	auth.POST("/signup", handler.SignUp)
-	auth.POST("/login", handler.Login)
-}
-
-func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHandler) {
+func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHandler, rateLimit gin.HandlerFunc) {
 	generations := router.Group("/generations")
+	generations.Use(rateLimit)
 	generations.POST("", handler.Start)
-	generations.POST("/analyze", handler.Analyze)
 	generations.POST("/:requestID/clarifications", handler.SubmitClarifications)
 	generations.POST("/:requestID/structure", handler.Structure)
 	generations.POST("/:requestID/structure/retry", handler.RetryStructure)
@@ -55,6 +84,7 @@ func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHa
 	generations.GET("/:requestID/status", handler.Status)
 	generations.GET("/:requestID/result", handler.Result)
 	generations.POST("/:requestID/retry", handler.Retry)
+	generations.DELETE("/:requestID", handler.Delete)
 
 	jobs := router.Group("/generation-jobs")
 	jobs.GET("/:jobID", handler.JobStatus)
@@ -73,4 +103,5 @@ func registerCourseRoutes(router gin.IRouter, handler *handlers.CourseHandler) {
 
 	lessons := router.Group("/lessons")
 	lessons.GET("/:lessonID", handler.GetLesson)
+	lessons.GET("/:lessonID/solutions", handler.GetLessonSolutions)
 }

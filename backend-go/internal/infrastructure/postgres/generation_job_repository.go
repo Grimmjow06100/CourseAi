@@ -207,11 +207,69 @@ func (r *GenerationJobRepository) RequeueExpired(ctx context.Context, now time.T
 	return r.queries.RequeueExpiredGenerationJobs(ctx, now)
 }
 
+func (r *GenerationJobRepository) CountPendingWithAdmissionLock(ctx context.Context) (int64, error) {
+	return r.queries.CountPendingGenerationJobsWithAdmissionLock(ctx)
+}
+
+func (r *GenerationJobRepository) ListUnreconciledFailures(ctx context.Context, limit int) ([]domain.GenerationJob, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("%w: reconciliation limit", domain.ErrInvalidCollection)
+	}
+	rows, err := r.queries.ListUnreconciledFailedGenerationJobs(ctx, int32(limit))
+	if err != nil {
+		return nil, err
+	}
+	return generationJobsFromSQLC(rows)
+}
+
+func (r *GenerationJobRepository) MarkFailureHandled(ctx context.Context, jobID uuid.UUID, handledAt time.Time) error {
+	if jobID == uuid.Nil || handledAt.IsZero() {
+		return fmt.Errorf("%w: terminal failure reconciliation", domain.ErrBlankField)
+	}
+	rows, err := r.queries.MarkGenerationJobFailureHandled(ctx, dbsqlc.MarkGenerationJobFailureHandledParams{
+		HandledAt: pointer.To(handledAt),
+		ID:        jobID,
+	})
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return contract.ErrGenerationJobNotFound
+	}
+	return nil
+}
+
+func (r *GenerationJobRepository) PurgeTerminalBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error) {
+	if cutoff.IsZero() || limit <= 0 {
+		return 0, fmt.Errorf("%w: retention cutoff", domain.ErrBlankField)
+	}
+	return r.queries.PurgeTerminalGenerationJobsBefore(ctx, dbsqlc.PurgeTerminalGenerationJobsBeforeParams{Cutoff: cutoff, LimitRows: int32(limit)})
+}
+
+func (r *GenerationJobRepository) PurgeRawOutputsBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error) {
+	if cutoff.IsZero() || limit <= 0 {
+		return 0, fmt.Errorf("%w: raw output retention cutoff", domain.ErrBlankField)
+	}
+	return r.queries.PurgeRawGenerationOutputsBefore(ctx, dbsqlc.PurgeRawGenerationOutputsBeforeParams{Cutoff: cutoff, LimitRows: int32(limit)})
+}
+
+func (r *GenerationJobRepository) GetQueueMetrics(ctx context.Context) (contract.GenerationQueueMetrics, error) {
+	row, err := r.queries.GetGenerationQueueMetrics(ctx)
+	if err != nil {
+		return contract.GenerationQueueMetrics{}, err
+	}
+	return contract.GenerationQueueMetrics{
+		Queued: row.Queued, RetryScheduled: row.RetryScheduled, Running: row.Running,
+		Completed: row.Completed, Failed: row.Failed, Cancelled: row.Cancelled,
+		ExpiredLeases: row.ExpiredLeases, UnreconciledFailures: row.UnreconciledFailures,
+	}, nil
+}
+
 func validateQueuedGenerationJob(job domain.GenerationJob) error {
 	if err := job.Validate(); err != nil {
 		return err
 	}
-	if job.Status != domain.GenerationJobStatusQueued || job.AttemptCount != 0 || job.LockedBy != nil || job.LockedUntil != nil || job.StartedAt != nil || job.CompletedAt != nil || job.LastErrorCode != nil || job.LastErrorMessage != nil {
+	if job.Status != domain.GenerationJobStatusQueued || job.AttemptCount != 0 || job.LockedBy != nil || job.LockedUntil != nil || job.StartedAt != nil || job.CompletedAt != nil || job.LastErrorCode != nil || job.LastErrorMessage != nil || job.FailureHandledAt != nil {
 		return domain.ErrInvalidGenerationJobState
 	}
 	return nil
@@ -237,6 +295,7 @@ func enqueueGenerationJobParams(job domain.GenerationJob) dbsqlc.EnqueueGenerati
 		CompletedAt:      pointer.Clone(job.CompletedAt),
 		LastErrorCode:    pointer.Clone(job.LastErrorCode),
 		LastErrorMessage: pointer.Clone(job.LastErrorMessage),
+		FailureHandledAt: pointer.Clone(job.FailureHandledAt),
 		CreatedAt:        job.CreatedAt,
 		UpdatedAt:        job.UpdatedAt,
 	}

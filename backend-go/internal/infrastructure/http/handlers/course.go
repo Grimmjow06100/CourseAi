@@ -163,3 +163,20 @@ func (h *CourseHandler) GetLesson(c *gin.Context) {
 
 	c.JSON(http.StatusOK, dto.LessonFromDomain(lesson))
 }
+
+func (h *CourseHandler) GetLessonSolutions(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("course catalog service is unavailable", nil))
+		return
+	}
+	lessonID, ok := parseUUIDParam(c, "lessonID")
+	if !ok {
+		return
+	}
+	lesson, err := h.service.GetLesson(c.Request.Context(), lessonID)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.LessonSolutionsFromDomain(lesson))
+}

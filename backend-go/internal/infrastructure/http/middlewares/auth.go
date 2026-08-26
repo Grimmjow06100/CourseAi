@@ -1,47 +1,70 @@
 package middlewares
 
 import (
+	"net/http"
 	"strings"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
+	"github.com/clerk/clerk-sdk-go/v2"
+	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 	"github.com/gin-gonic/gin"
 )
 
-const UserIDContextKey = "user_id"
+func ClerkAuthentication(authorizedParties []string, extraOptions ...clerkhttp.AuthorizationOption) gin.HandlerFunc {
+	allowed := make(map[string]struct{}, len(authorizedParties))
+	for _, party := range authorizedParties {
+		if normalized := strings.TrimSpace(party); normalized != "" {
+			allowed[normalized] = struct{}{}
+		}
+	}
 
-func AuthRequired(tokenManager contract.TokenManager) gin.HandlerFunc {
+	options := []clerkhttp.AuthorizationOption{
+		clerkhttp.AuthorizedParty(func(party string) bool {
+			_, ok := allowed[party]
+			return party != "" && ok
+		}),
+		clerkhttp.AuthorizationFailureHandler(http.HandlerFunc(writeClerkUnauthorized)),
+	}
+	options = append(options, extraOptions...)
+
 	return func(c *gin.Context) {
-		if tokenManager == nil {
-			AbortWithError(c, ServiceUnavailable("auth service is unavailable", nil))
-			return
-		}
+		continued := false
+		verified := clerkhttp.WithHeaderAuthorization(options...)(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			claims, ok := clerk.SessionClaimsFromContext(request.Context())
+			if !ok || claims == nil {
+				writeClerkUnauthorized(w, request)
+				return
+			}
+			subject := strings.TrimSpace(claims.Subject)
+			if !strings.HasPrefix(subject, "user_") {
+				writeClerkUnauthorized(w, request)
+				return
+			}
 
-		token := bearerToken(c.GetHeader("Authorization"))
-		if token == "" {
-			AbortWithError(c, Unauthorized("missing bearer token", nil))
-			return
+			principal := contract.Principal{
+				UserID:    subject,
+				SessionID: strings.TrimSpace(claims.SessionID),
+			}
+			continued = true
+			c.Request = request.WithContext(contract.ContextWithPrincipal(request.Context(), principal))
+			c.Next()
+		}))
+		verified.ServeHTTP(c.Writer, c.Request)
+		if !continued {
+			c.Abort()
 		}
-
-		userID, err := tokenManager.VerifyToken(token)
-		if err != nil {
-			AbortWithError(c, Unauthorized("invalid bearer token", err))
-			return
-		}
-
-		c.Set(UserIDContextKey, userID)
-		c.Next()
 	}
 }
 
-func bearerToken(header string) string {
-	header = strings.TrimSpace(header)
-	if header == "" {
-		return ""
+func RejectUnauthenticated() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		writeClerkUnauthorized(c.Writer, c.Request)
+		c.Abort()
 	}
+}
 
-	parts := strings.SplitN(header, " ", 2)
-	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
-		return ""
-	}
-	return strings.TrimSpace(parts[1])
+func writeClerkUnauthorized(writer http.ResponseWriter, _ *http.Request) {
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(http.StatusUnauthorized)
+	_, _ = writer.Write([]byte(`{"code":"unauthenticated","message":"authentication is required"}`))
 }

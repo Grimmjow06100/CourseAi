@@ -10,7 +10,7 @@ func TestGenerationRequestLifecycleWithoutClarification(t *testing.T) {
 	t.Parallel()
 
 	createdAt := time.Date(2026, time.August, 13, 9, 0, 0, 0, time.UTC)
-	request, err := NewGenerationRequestAt("  create   a Linux course ", createdAt)
+	request, err := NewGenerationRequestAt("  create   a Linux course ", "user_test", createdAt)
 	if err != nil {
 		t.Fatalf("NewGenerationRequestAt() error = %v", err)
 	}
@@ -56,7 +56,7 @@ func TestGenerationRequestClarificationPauseAndResume(t *testing.T) {
 	t.Parallel()
 
 	now := time.Date(2026, time.August, 13, 10, 0, 0, 0, time.UTC)
-	request, err := NewGenerationRequestAt("Linux", now)
+	request, err := NewGenerationRequestAt("Linux", "user_test", now)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -107,7 +107,7 @@ func TestGenerationRequestClarificationPauseAndResume(t *testing.T) {
 func TestGenerationRequestFailureCanBeRestarted(t *testing.T) {
 	t.Parallel()
 
-	request, err := NewGenerationRequestAt("Linux", time.Unix(0, 0))
+	request, err := NewGenerationRequestAt("Linux", "user_test", time.Unix(0, 0))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -127,7 +127,7 @@ func TestGenerationRequestFailureCanBeRestarted(t *testing.T) {
 func TestGenerationRequestRejectsInvalidTransitionsAndData(t *testing.T) {
 	t.Parallel()
 
-	request, err := NewGenerationRequestAt("Linux", time.Unix(0, 0))
+	request, err := NewGenerationRequestAt("Linux", "user_test", time.Unix(0, 0))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}

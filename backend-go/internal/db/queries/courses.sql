@@ -18,7 +18,8 @@ INSERT INTO courses (
   final_project_constraints,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 )
 VALUES (
   @id,
@@ -39,7 +40,8 @@ VALUES (
   @final_project_constraints::jsonb,
   sqlc.narg('raw_architecture_output')::jsonb,
   @created_at,
-  @updated_at
+  @updated_at,
+  @clerk_user_id
 )
 RETURNING
   id,
@@ -61,12 +63,14 @@ RETURNING
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at;
+  updated_at,
+  clerk_user_id;
 
 -- name: UpdateCourse :one
 UPDATE courses
 SET
   request_id = @request_id,
+  clerk_user_id = @clerk_user_id,
   language = @language::course_language,
   status = @status::course_generation_status,
   initial_user_prompt = @initial_user_prompt,
@@ -104,7 +108,8 @@ RETURNING
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at;
+  updated_at,
+  clerk_user_id;
 
 -- name: GetCourseByID :one
 SELECT
@@ -127,7 +132,8 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
 WHERE id = @id;
 
@@ -152,7 +158,8 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
 WHERE request_id = @request_id;
 
@@ -194,7 +201,8 @@ SELECT
 -- name: CountCourses :one
 SELECT count(*)::bigint
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -224,9 +232,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -258,9 +268,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -292,9 +304,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -326,9 +340,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -360,9 +376,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -394,9 +412,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -428,9 +448,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -462,9 +484,11 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
+WHERE clerk_user_id = @clerk_user_id
+  AND (sqlc.narg('status')::course_generation_status IS NULL OR status = sqlc.narg('status')::course_generation_status)
   AND (sqlc.narg('language')::course_language IS NULL OR language = sqlc.narg('language')::course_language)
   AND (
     sqlc.narg('search')::text IS NULL
@@ -482,3 +506,11 @@ WHERE id = @id;
 -- name: DeleteCourseByRequestID :execrows
 DELETE FROM courses
 WHERE request_id = @request_id;
+
+-- name: DeleteCourseGenerationByCourseID :execrows
+DELETE FROM generation_requests
+WHERE id = (
+  SELECT request_id
+  FROM courses
+  WHERE courses.id = @course_id
+);

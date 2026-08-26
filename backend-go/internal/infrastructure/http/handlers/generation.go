@@ -280,6 +280,22 @@ func (h *GenerationHandler) Retry(c *gin.Context) {
 	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
 
+func (h *GenerationHandler) Delete(c *gin.Context) {
+	if h.service == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+	requestID, ok := parseUUIDParam(c, "requestID")
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteGenerationRequest(c.Request.Context(), requestID); err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func generateStructureParamsFromRequest(requestID uuid.UUID, request dto.GenerateStructureRequest) (contract.GenerateStructureParams, error) {
 	currentLevel, err := domain.ParseLevel(request.CurrentLevel)
 	if err != nil {

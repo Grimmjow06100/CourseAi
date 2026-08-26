@@ -35,7 +35,7 @@ func TestGenerationJobExecutorDispatchesEveryJobKind(t *testing.T) {
 			runner := &recordingGenerationJobRunner{}
 			executor := newGenerationJobExecutor(runner)
 			job := executableGenerationJob(t, requestID, test.kind, test.target, json.RawMessage(`{}`))
-			if err := executor.Execute(context.Background(), job); err != nil {
+			if err := executor.Execute(authenticatedTestContext(), job); err != nil {
 				t.Fatalf("execute job: %v", err)
 			}
 			if runner.kind != test.kind || runner.requestID != requestID {
@@ -54,7 +54,7 @@ func TestGenerationJobExecutorRejectsInvalidPayloads(t *testing.T) {
 	requestID := uuid.New()
 	for _, payload := range []json.RawMessage{json.RawMessage(`{"unexpected":true}`), json.RawMessage(`{"title":`)} {
 		job := executableGenerationJob(t, requestID, domain.GenerationJobKindArchitecture, nil, payload)
-		if err := newGenerationJobExecutor(&recordingGenerationJobRunner{}).Execute(context.Background(), job); !errors.Is(err, domain.ErrInvalidGenerationJobPayload) {
+		if err := newGenerationJobExecutor(&recordingGenerationJobRunner{}).Execute(authenticatedTestContext(), job); !errors.Is(err, domain.ErrInvalidGenerationJobPayload) {
 			t.Fatalf("error = %v, want ErrInvalidGenerationJobPayload", err)
 		}
 	}
@@ -71,7 +71,7 @@ func TestGenerationJobExecutorRequiresClaimedJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new job: %v", err)
 	}
-	if err := newGenerationJobExecutor(&recordingGenerationJobRunner{}).Execute(context.Background(), job); !errors.Is(err, ErrGenerationJobNotExecutable) {
+	if err := newGenerationJobExecutor(&recordingGenerationJobRunner{}).Execute(authenticatedTestContext(), job); !errors.Is(err, ErrGenerationJobNotExecutable) {
 		t.Fatalf("error = %v, want ErrGenerationJobNotExecutable", err)
 	}
 }
@@ -80,7 +80,7 @@ func TestGenerationJobExecutorRequiresRunner(t *testing.T) {
 	t.Parallel()
 
 	job := executableGenerationJob(t, uuid.New(), domain.GenerationJobKindAnalysis, nil, json.RawMessage(`{}`))
-	if err := NewGenerationJobExecutor(nil).Execute(context.Background(), job); !errors.Is(err, ErrGenerationJobExecutorDependency) {
+	if err := NewGenerationJobExecutor(nil).Execute(authenticatedTestContext(), job); !errors.Is(err, ErrGenerationJobExecutorDependency) {
 		t.Fatalf("error = %v, want ErrGenerationJobExecutorDependency", err)
 	}
 }

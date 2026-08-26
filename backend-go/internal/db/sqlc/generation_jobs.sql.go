@@ -61,7 +61,7 @@ SET
 FROM candidate
 WHERE job.id = candidate.id
   AND $2 > CURRENT_TIMESTAMP
-RETURNING job.id, job.request_id, job.parent_job_id, job.kind, job.status, job.target_id, job.idempotency_key, job.payload, job.priority, job.attempt_count, job.max_attempts, job.available_at, job.locked_by, job.locked_until, job.started_at, job.completed_at, job.last_error_code, job.last_error_message, job.created_at, job.updated_at
+RETURNING job.id, job.request_id, job.parent_job_id, job.kind, job.status, job.target_id, job.idempotency_key, job.payload, job.priority, job.attempt_count, job.max_attempts, job.available_at, job.locked_by, job.locked_until, job.started_at, job.completed_at, job.last_error_code, job.last_error_message, job.created_at, job.updated_at, job.failure_handled_at
 `
 
 type ClaimNextGenerationJobParams struct {
@@ -93,6 +93,7 @@ func (q *Queries) ClaimNextGenerationJob(ctx context.Context, arg ClaimNextGener
 		&i.LastErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailureHandledAt,
 	)
 	return i, err
 }
@@ -134,6 +135,22 @@ func (q *Queries) CompleteGenerationJob(ctx context.Context, arg CompleteGenerat
 	return result.RowsAffected(), nil
 }
 
+const countPendingGenerationJobsWithAdmissionLock = `-- name: CountPendingGenerationJobsWithAdmissionLock :one
+WITH admission_lock AS (
+  SELECT pg_advisory_xact_lock(4931529157321281::bigint)
+)
+SELECT count(*)::bigint
+FROM generation_jobs, admission_lock
+WHERE status IN ('queued', 'retry_scheduled', 'running')
+`
+
+func (q *Queries) CountPendingGenerationJobsWithAdmissionLock(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingGenerationJobsWithAdmissionLock)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const enqueueGenerationJob = `-- name: EnqueueGenerationJob :one
 INSERT INTO generation_jobs (
   id,
@@ -154,6 +171,7 @@ INSERT INTO generation_jobs (
   completed_at,
   last_error_code,
   last_error_message,
+  failure_handled_at,
   created_at,
   updated_at
 )
@@ -177,10 +195,11 @@ VALUES (
   $17,
   $18,
   $19,
-  $20
+  $20,
+  $21
 )
 ON CONFLICT (idempotency_key) DO NOTHING
-RETURNING id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at
+RETURNING id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at
 `
 
 type EnqueueGenerationJobParams struct {
@@ -202,6 +221,7 @@ type EnqueueGenerationJobParams struct {
 	CompletedAt      *time.Time          `db:"completed_at" json:"completed_at"`
 	LastErrorCode    *string             `db:"last_error_code" json:"last_error_code"`
 	LastErrorMessage *string             `db:"last_error_message" json:"last_error_message"`
+	FailureHandledAt *time.Time          `db:"failure_handled_at" json:"failure_handled_at"`
 	CreatedAt        time.Time           `db:"created_at" json:"created_at"`
 	UpdatedAt        time.Time           `db:"updated_at" json:"updated_at"`
 }
@@ -226,6 +246,7 @@ func (q *Queries) EnqueueGenerationJob(ctx context.Context, arg EnqueueGeneratio
 		arg.CompletedAt,
 		arg.LastErrorCode,
 		arg.LastErrorMessage,
+		arg.FailureHandledAt,
 		arg.CreatedAt,
 		arg.UpdatedAt,
 	)
@@ -251,6 +272,7 @@ func (q *Queries) EnqueueGenerationJob(ctx context.Context, arg EnqueueGeneratio
 		&i.LastErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailureHandledAt,
 	)
 	return i, err
 }
@@ -297,7 +319,7 @@ func (q *Queries) FailGenerationJob(ctx context.Context, arg FailGenerationJobPa
 }
 
 const getGenerationJobByID = `-- name: GetGenerationJobByID :one
-SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at
 FROM generation_jobs
 WHERE id = $1
 `
@@ -326,12 +348,13 @@ func (q *Queries) GetGenerationJobByID(ctx context.Context, id uuid.UUID) (Gener
 		&i.LastErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailureHandledAt,
 	)
 	return i, err
 }
 
 const getGenerationJobByIdempotencyKey = `-- name: GetGenerationJobByIdempotencyKey :one
-SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at
 FROM generation_jobs
 WHERE idempotency_key = $1
 `
@@ -360,12 +383,53 @@ func (q *Queries) GetGenerationJobByIdempotencyKey(ctx context.Context, idempote
 		&i.LastErrorMessage,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.FailureHandledAt,
+	)
+	return i, err
+}
+
+const getGenerationQueueMetrics = `-- name: GetGenerationQueueMetrics :one
+SELECT
+  count(*) FILTER (WHERE status = 'queued')::bigint AS queued,
+  count(*) FILTER (WHERE status = 'retry_scheduled')::bigint AS retry_scheduled,
+  count(*) FILTER (WHERE status = 'running')::bigint AS running,
+  count(*) FILTER (WHERE status = 'completed')::bigint AS completed,
+  count(*) FILTER (WHERE status = 'failed')::bigint AS failed,
+  count(*) FILTER (WHERE status = 'cancelled')::bigint AS cancelled,
+  count(*) FILTER (WHERE status = 'running' AND locked_until <= CURRENT_TIMESTAMP)::bigint AS expired_leases,
+  count(*) FILTER (WHERE status = 'failed' AND failure_handled_at IS NULL)::bigint AS unreconciled_failures
+FROM generation_jobs
+`
+
+type GetGenerationQueueMetricsRow struct {
+	Queued               int64 `db:"queued" json:"queued"`
+	RetryScheduled       int64 `db:"retry_scheduled" json:"retry_scheduled"`
+	Running              int64 `db:"running" json:"running"`
+	Completed            int64 `db:"completed" json:"completed"`
+	Failed               int64 `db:"failed" json:"failed"`
+	Cancelled            int64 `db:"cancelled" json:"cancelled"`
+	ExpiredLeases        int64 `db:"expired_leases" json:"expired_leases"`
+	UnreconciledFailures int64 `db:"unreconciled_failures" json:"unreconciled_failures"`
+}
+
+func (q *Queries) GetGenerationQueueMetrics(ctx context.Context) (GetGenerationQueueMetricsRow, error) {
+	row := q.db.QueryRow(ctx, getGenerationQueueMetrics)
+	var i GetGenerationQueueMetricsRow
+	err := row.Scan(
+		&i.Queued,
+		&i.RetryScheduled,
+		&i.Running,
+		&i.Completed,
+		&i.Failed,
+		&i.Cancelled,
+		&i.ExpiredLeases,
+		&i.UnreconciledFailures,
 	)
 	return i, err
 }
 
 const listGenerationJobsByRequestID = `-- name: ListGenerationJobsByRequestID :many
-SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at
 FROM generation_jobs
 WHERE request_id = $1
 ORDER BY created_at ASC, id ASC
@@ -401,6 +465,7 @@ func (q *Queries) ListGenerationJobsByRequestID(ctx context.Context, requestID u
 			&i.LastErrorMessage,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.FailureHandledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -410,6 +475,111 @@ func (q *Queries) ListGenerationJobsByRequestID(ctx context.Context, requestID u
 		return nil, err
 	}
 	return items, nil
+}
+
+const listUnreconciledFailedGenerationJobs = `-- name: ListUnreconciledFailedGenerationJobs :many
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at
+FROM generation_jobs
+WHERE status = 'failed'
+  AND failure_handled_at IS NULL
+ORDER BY completed_at ASC, id ASC
+LIMIT $1
+`
+
+func (q *Queries) ListUnreconciledFailedGenerationJobs(ctx context.Context, limitRows int32) ([]GenerationJob, error) {
+	rows, err := q.db.Query(ctx, listUnreconciledFailedGenerationJobs, limitRows)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GenerationJob{}
+	for rows.Next() {
+		var i GenerationJob
+		if err := rows.Scan(
+			&i.ID,
+			&i.RequestID,
+			&i.ParentJobID,
+			&i.Kind,
+			&i.Status,
+			&i.TargetID,
+			&i.IdempotencyKey,
+			&i.Payload,
+			&i.Priority,
+			&i.AttemptCount,
+			&i.MaxAttempts,
+			&i.AvailableAt,
+			&i.LockedBy,
+			&i.LockedUntil,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.LastErrorCode,
+			&i.LastErrorMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.FailureHandledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markGenerationJobFailureHandled = `-- name: MarkGenerationJobFailureHandled :execrows
+UPDATE generation_jobs AS job
+SET failure_handled_at = $1,
+    updated_at = GREATEST(job.updated_at, $1)
+WHERE job.id = $2
+  AND job.status = 'failed'
+  AND job.failure_handled_at IS NULL
+`
+
+type MarkGenerationJobFailureHandledParams struct {
+	HandledAt *time.Time `db:"handled_at" json:"handled_at"`
+	ID        uuid.UUID  `db:"id" json:"id"`
+}
+
+func (q *Queries) MarkGenerationJobFailureHandled(ctx context.Context, arg MarkGenerationJobFailureHandledParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markGenerationJobFailureHandled, arg.HandledAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgeTerminalGenerationJobsBefore = `-- name: PurgeTerminalGenerationJobsBefore :execrows
+DELETE FROM generation_jobs
+WHERE id IN (
+  SELECT root_job.id
+  FROM generation_jobs AS root_job
+  WHERE root_job.parent_job_id IS NULL
+    AND root_job.status IN ('completed', 'failed', 'cancelled')
+    AND root_job.updated_at < $1
+    AND NOT EXISTS (
+      SELECT 1
+      FROM generation_jobs AS descendant
+      WHERE descendant.request_id = root_job.request_id
+        AND descendant.status NOT IN ('completed', 'failed', 'cancelled')
+    )
+  ORDER BY root_job.updated_at ASC, root_job.id ASC
+  LIMIT $2
+)
+`
+
+type PurgeTerminalGenerationJobsBeforeParams struct {
+	Cutoff    time.Time `db:"cutoff" json:"cutoff"`
+	LimitRows int32     `db:"limit_rows" json:"limit_rows"`
+}
+
+func (q *Queries) PurgeTerminalGenerationJobsBefore(ctx context.Context, arg PurgeTerminalGenerationJobsBeforeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeTerminalGenerationJobsBefore, arg.Cutoff, arg.LimitRows)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const renewGenerationJobLease = `-- name: RenewGenerationJobLease :execrows

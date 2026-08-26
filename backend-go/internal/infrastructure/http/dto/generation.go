@@ -10,20 +10,20 @@ import (
 )
 
 type StartGenerationRequest struct {
-	Prompt string `json:"prompt" binding:"required"`
+	Prompt string `json:"prompt" binding:"required,max=4000"`
 }
 
 type AnalyzeGenerationRequest struct {
-	Prompt string `json:"prompt" binding:"required"`
+	Prompt string `json:"prompt" binding:"required,max=4000"`
 }
 
 type GenerateStructureRequest struct {
-	Title        string   `json:"title" binding:"required"`
-	Synopsis     string   `json:"synopsis" binding:"required"`
-	CurrentLevel string   `json:"currentLevel" binding:"required"`
-	TargetLevel  string   `json:"targetLevel" binding:"required"`
-	Goals        []string `json:"goals" binding:"required"`
-	Language     string   `json:"language" binding:"required"`
+	Title        string   `json:"title" binding:"required,max=200"`
+	Synopsis     string   `json:"synopsis" binding:"required,max=2000"`
+	CurrentLevel string   `json:"currentLevel" binding:"required,oneof=beginner intermediate advanced expert unknown"`
+	TargetLevel  string   `json:"targetLevel" binding:"required,oneof=beginner intermediate advanced expert unknown"`
+	Goals        []string `json:"goals" binding:"required,min=1,max=10,dive,required,max=500"`
+	Language     string   `json:"language" binding:"required,oneof=fr en"`
 }
 
 type SubmitClarificationsRequest struct {
@@ -35,7 +35,7 @@ type SubmitClarificationsRequest struct {
 
 type ClarificationAnswerRequest struct {
 	QuestionID     string   `json:"questionId" binding:"required,oneof=goals currentLevel targetLevel"`
-	SelectedValues []string `json:"selectedValues" binding:"required,min=1,max=4,dive,required"`
+	SelectedValues []string `json:"selectedValues" binding:"required,min=1,max=4,dive,required,max=200"`
 }
 
 type GenerationStartedResponse struct {
@@ -186,7 +186,7 @@ func GenerationJobFromDomain(job domain.GenerationJob) GenerationJobResponse {
 		StartedAt:        job.StartedAt,
 		CompletedAt:      job.CompletedAt,
 		LastErrorCode:    job.LastErrorCode,
-		LastErrorMessage: job.LastErrorMessage,
+		LastErrorMessage: publicGenerationFailure(job.LastErrorMessage),
 		CreatedAt:        job.CreatedAt,
 		UpdatedAt:        job.UpdatedAt,
 	}
@@ -200,7 +200,7 @@ func GenerationStatusFromContract(status contract.GenerationStatus) GenerationSt
 		CourseStatus:           pointer.Map(status.CourseStatus, func(value domain.CourseGenerationStatus) string { return string(value) }),
 		CurrentStep:            status.CurrentStep,
 		ProgressPercent:        status.ProgressPercent,
-		FailureMessage:         status.FailureMessage,
+		FailureMessage:         publicGenerationFailure(status.FailureMessage),
 		IsOutOfScope:           status.IsOutOfScope,
 		ErrorMessage:           status.ErrorMessage,
 		WarningMessage:         status.WarningMessage,
@@ -242,7 +242,7 @@ func GenerationRequestFromDomain(request domain.GenerationRequest) GenerationReq
 		PipelineStatus:            string(request.PipelineStatus),
 		CurrentStep:               request.CurrentStep,
 		ProgressPercent:           request.ProgressPercent,
-		FailureMessage:            request.FailureMessage,
+		FailureMessage:            publicGenerationFailure(request.FailureMessage),
 		StartedAt:                 request.StartedAt,
 		CompletedAt:               request.CompletedAt,
 		IsOutOfScope:              request.IsOutOfScope,
@@ -264,6 +264,14 @@ func GenerationRequestFromDomain(request domain.GenerationRequest) GenerationReq
 		CreatedAt:                 request.CreatedAt,
 		UpdatedAt:                 request.UpdatedAt,
 	}
+}
+
+func publicGenerationFailure(message *string) *string {
+	if message == nil {
+		return nil
+	}
+	publicMessage := "generation failed; retry the operation or contact support with the request id"
+	return &publicMessage
 }
 
 func clarificationQuestionsFromDomain(questions []domain.ClarificationQuestion) []ClarificationQuestionResponse {

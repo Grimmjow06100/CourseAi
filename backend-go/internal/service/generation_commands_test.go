@@ -25,7 +25,7 @@ func TestStartFullCourseGenerationOnlyPersistsCommand(t *testing.T) {
 		CourseGeneratorConfig{},
 	)
 
-	started, err := service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{
+	started, err := service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{
 		Prompt:         "Build a Linux course",
 		IdempotencyKey: "request-42",
 	})
@@ -41,12 +41,39 @@ func TestStartFullCourseGenerationOnlyPersistsCommand(t *testing.T) {
 	if len(requests) != 1 || queue.count() != 1 {
 		t.Fatalf("requests=%d jobs=%d, want one atomic command", len(requests), queue.count())
 	}
-	job, err := queue.FindByID(context.Background(), started.JobID)
+	job, err := queue.FindByID(authenticatedTestContext(), started.JobID)
 	if err != nil {
 		t.Fatalf("find queued job: %v", err)
 	}
 	if job.Kind != domain.GenerationJobKindAnalysis || job.RequestID != started.RequestID {
 		t.Fatalf("unexpected queued job: %+v", job)
+	}
+}
+
+func TestStartFullCourseGenerationEnforcesPersistentAdmissionLimits(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name  string
+		usage contract.GenerationAdmissionUsage
+		want  error
+	}{
+		{name: "active", usage: contract.GenerationAdmissionUsage{ActiveRequests: 1}, want: contract.ErrGenerationActiveLimitExceeded},
+		{name: "daily", usage: contract.GenerationAdmissionUsage{DailyRequests: 1}, want: contract.ErrGenerationDailyLimitExceeded},
+		{name: "queue", usage: contract.GenerationAdmissionUsage{PendingJobs: 1}, want: contract.ErrGenerationQueueSaturated},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			service := NewCourseGeneratorService(
+				fakeCourseAI{},
+				&fakeUnitOfWork{requests: make(map[uuid.UUID]domain.GenerationRequest), jobs: newMemoryGenerationJobQueue(), admissionUsage: test.usage},
+				fixedClock{now: time.Now()},
+				CourseGeneratorConfig{MaxActivePerUser: 1, MaxDailyPerUser: 1, MaxPendingJobs: 1},
+			)
+			_, err := service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{Prompt: "Linux"})
+			if !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+		})
 	}
 }
 
@@ -63,11 +90,11 @@ func TestStartFullCourseGenerationIsIdempotent(t *testing.T) {
 	)
 	params := contract.StartGenerationParams{Prompt: "Build a Docker course", IdempotencyKey: "same-command"}
 
-	first, err := service.StartFullCourseGeneration(context.Background(), params)
+	first, err := service.StartFullCourseGeneration(authenticatedTestContext(), params)
 	if err != nil {
 		t.Fatalf("first command: %v", err)
 	}
-	second, err := service.StartFullCourseGeneration(context.Background(), params)
+	second, err := service.StartFullCourseGeneration(authenticatedTestContext(), params)
 	if err != nil {
 		t.Fatalf("idempotent command: %v", err)
 	}
@@ -75,7 +102,7 @@ func TestStartFullCourseGenerationIsIdempotent(t *testing.T) {
 		t.Fatalf("idempotency failed: first=%+v second=%+v requests=%d jobs=%d", first, second, len(requests), queue.count())
 	}
 
-	_, err = service.StartFullCourseGeneration(context.Background(), contract.StartGenerationParams{
+	_, err = service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{
 		Prompt:         "A different prompt",
 		IdempotencyKey: params.IdempotencyKey,
 	})
@@ -96,11 +123,11 @@ func TestEnqueueCourseStructureAndRetry(t *testing.T) {
 		requests: requests, courses: courses, jobs: queue,
 	}, fixedClock{now: now}, CourseGeneratorConfig{})
 
-	started, err := service.EnqueueCourseStructure(context.Background(), validStructureParams(request.ID))
+	started, err := service.EnqueueCourseStructure(authenticatedTestContext(), validStructureParams(request.ID))
 	if err != nil {
 		t.Fatalf("EnqueueCourseStructure() error = %v", err)
 	}
-	job, err := queue.FindByID(context.Background(), started.JobID)
+	job, err := queue.FindByID(authenticatedTestContext(), started.JobID)
 	if err != nil {
 		t.Fatalf("find architecture job: %v", err)
 	}
@@ -118,7 +145,7 @@ func TestEnqueueCourseStructureAndRetry(t *testing.T) {
 	step := stepLessonPlan
 	failed.CurrentStep = &step
 	requests[request.ID] = failed
-	retried, err := service.EnqueueStructureRetry(context.Background(), validStructureParams(request.ID))
+	retried, err := service.EnqueueStructureRetry(authenticatedTestContext(), validStructureParams(request.ID))
 	if err != nil {
 		t.Fatalf("EnqueueStructureRetry() error = %v", err)
 	}
@@ -131,7 +158,7 @@ func TestSubmitClarificationsPersistsBriefAndEnqueuesArchitecture(t *testing.T) 
 	t.Parallel()
 
 	now := time.Date(2026, time.August, 13, 13, 0, 0, 0, time.UTC)
-	request, err := domain.NewGenerationRequestAt("Build a Linux course", now)
+	request, err := domain.NewGenerationRequestAt("Build a Linux course", "user_test", now)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -169,7 +196,7 @@ func TestSubmitClarificationsPersistsBriefAndEnqueuesArchitecture(t *testing.T) 
 		}},
 		Title: "Linux administration", Synopsis: "Production Linux", Language: domain.CourseLanguageEN,
 	}
-	started, err := service.SubmitClarifications(context.Background(), params)
+	started, err := service.SubmitClarifications(authenticatedTestContext(), params)
 	if err != nil {
 		t.Fatalf("SubmitClarifications() error = %v", err)
 	}
@@ -177,12 +204,12 @@ func TestSubmitClarificationsPersistsBriefAndEnqueuesArchitecture(t *testing.T) 
 	if persisted.PipelineStatus != domain.PipelineStatusQueued || persisted.ConfirmedBrief == nil || persisted.ConfirmedBrief.CurrentLevel != domain.LevelBeginner {
 		t.Fatalf("unexpected persisted clarification state: %+v", persisted)
 	}
-	job, err := queue.FindByID(context.Background(), started.JobID)
+	job, err := queue.FindByID(authenticatedTestContext(), started.JobID)
 	if err != nil || job.Kind != domain.GenerationJobKindArchitecture {
 		t.Fatalf("architecture job = %+v, %v", job, err)
 	}
 
-	repeated, err := service.SubmitClarifications(context.Background(), params)
+	repeated, err := service.SubmitClarifications(authenticatedTestContext(), params)
 	if err != nil || repeated.JobID != started.JobID || queue.count() != 1 {
 		t.Fatalf("idempotent submission = %+v, %v, jobs=%d", repeated, err, queue.count())
 	}
@@ -208,22 +235,22 @@ func TestEnqueueTargetedContentJobsAndGetJob(t *testing.T) {
 		jobs:     queue,
 	}, fixedClock{now: now}, CourseGeneratorConfig{})
 
-	lessonStarted, err := service.EnqueueLessonContentGeneration(context.Background(), lessonID)
+	lessonStarted, err := service.EnqueueLessonContentGeneration(authenticatedTestContext(), lessonID)
 	if err != nil {
 		t.Fatalf("EnqueueLessonContentGeneration() error = %v", err)
 	}
-	moduleStarted, err := service.EnqueueModuleContentGeneration(context.Background(), moduleID)
+	moduleStarted, err := service.EnqueueModuleContentGeneration(authenticatedTestContext(), moduleID)
 	if err != nil {
 		t.Fatalf("EnqueueModuleContentGeneration() error = %v", err)
 	}
 	if lessonStarted.JobID == moduleStarted.JobID || queue.count() != 2 {
 		t.Fatalf("unexpected targeted jobs: lesson=%+v module=%+v count=%d", lessonStarted, moduleStarted, queue.count())
 	}
-	job, err := service.GetGenerationJob(context.Background(), lessonStarted.JobID)
+	job, err := service.GetGenerationJob(authenticatedTestContext(), lessonStarted.JobID)
 	if err != nil || job.TargetID == nil || *job.TargetID != lessonID {
 		t.Fatalf("GetGenerationJob() = %+v, %v", job, err)
 	}
-	if _, err := service.GetGenerationJob(context.Background(), uuid.Nil); !errors.Is(err, domain.ErrBlankField) {
+	if _, err := service.GetGenerationJob(authenticatedTestContext(), uuid.Nil); !errors.Is(err, domain.ErrBlankField) {
 		t.Fatalf("nil job id error = %v", err)
 	}
 }
@@ -248,10 +275,10 @@ func TestGenerationCommandHelpers(t *testing.T) {
 	if first != second || first == third {
 		t.Fatal("deterministic job key is not stable or payload-sensitive")
 	}
-	if generationRequestIdempotencyKey("  client-key ") != "analysis:client:client-key" || generationRequestIdempotencyKey(" ") != "" {
+	if generationRequestIdempotencyKey("user_test", "  client-key ") != "analysis:clerk_user:user_test:client:client-key" || generationRequestIdempotencyKey("user_test", " ") != "" {
 		t.Fatal("generation request idempotency key normalization is incorrect")
 	}
-	if _, err := requestIDForTarget(context.Background(), fakeRepositories{}, domain.GenerationJobKindAnalysis, uuid.New()); !errors.Is(err, domain.ErrInvalidGenerationJobKind) {
+	if _, err := requestIDForTarget(authenticatedTestContext(), fakeRepositories{}, domain.GenerationJobKindAnalysis, uuid.New()); !errors.Is(err, domain.ErrInvalidGenerationJobKind) {
 		t.Fatalf("unsupported target kind error = %v", err)
 	}
 }
@@ -355,6 +382,12 @@ func (q *memoryGenerationJobQueue) Cancel(context.Context, uuid.UUID, time.Time)
 
 func (q *memoryGenerationJobQueue) RequeueExpired(context.Context, time.Time) (int64, error) {
 	return 0, nil
+}
+
+func (q *memoryGenerationJobQueue) CountPendingWithAdmissionLock(context.Context) (int64, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return int64(len(q.jobs)), nil
 }
 
 func (q *memoryGenerationJobQueue) count() int {

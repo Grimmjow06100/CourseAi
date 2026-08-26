@@ -228,6 +228,7 @@ func generationTestRouter(service contract.CourseGenerationService) *gin.Engine 
 	router.GET("/api/generations/:requestID/status", handler.Status)
 	router.GET("/api/generations/:requestID/result", handler.Result)
 	router.POST("/api/generations/:requestID/retry", handler.Retry)
+	router.DELETE("/api/generations/:requestID", handler.Delete)
 	return router
 }
 
@@ -255,6 +256,7 @@ type generationServiceStub struct {
 	status               func(context.Context, uuid.UUID) (contract.GenerationStatus, error)
 	result               func(context.Context, uuid.UUID) (contract.GenerationResult, error)
 	retry                func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
+	deleteRequest        func(context.Context, uuid.UUID) error
 }
 
 func (s *generationServiceStub) StartFullCourseGeneration(ctx context.Context, params contract.StartGenerationParams) (contract.GenerationStarted, error) {
@@ -348,6 +350,13 @@ func (s *generationServiceStub) RetryFullCourseGeneration(ctx context.Context, i
 		return contract.GenerationStarted{}, nil
 	}
 	return s.retry(ctx, id)
+}
+
+func (s *generationServiceStub) DeleteGenerationRequest(ctx context.Context, id uuid.UUID) error {
+	if s.deleteRequest == nil {
+		return nil
+	}
+	return s.deleteRequest(ctx, id)
 }
 
 var _ contract.CourseGenerationService = (*generationServiceStub)(nil)

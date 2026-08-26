@@ -30,6 +30,19 @@ type CourseResponse struct {
 	UpdatedAt               time.Time        `json:"updatedAt"`
 }
 
+type CourseSummaryResponse struct {
+	ID           string    `json:"id"`
+	RequestID    string    `json:"requestId"`
+	Language     string    `json:"language"`
+	Status       string    `json:"status"`
+	Title        string    `json:"title"`
+	Synopsis     string    `json:"synopsis"`
+	CurrentLevel string    `json:"currentLevel"`
+	TargetLevel  string    `json:"targetLevel"`
+	CreatedAt    time.Time `json:"createdAt"`
+	UpdatedAt    time.Time `json:"updatedAt"`
+}
+
 type ModuleResponse struct {
 	ID                   string           `json:"id"`
 	CourseID             string           `json:"courseId"`
@@ -71,7 +84,6 @@ type ExerciseResponse struct {
 	Objective            string         `json:"objective"`
 	InstructionsMarkdown string         `json:"instructionsMarkdown"`
 	ContentMarkdown      string         `json:"contentMarkdown"`
-	CorrectionMarkdown   string         `json:"correctionMarkdown"`
 	Payload              map[string]any `json:"payload"`
 	CreatedAt            time.Time      `json:"createdAt"`
 	UpdatedAt            time.Time      `json:"updatedAt"`
@@ -90,12 +102,10 @@ type QuizResponse struct {
 }
 
 type QuizQuestionResponse struct {
-	Order      int                  `json:"order"`
-	Type       string               `json:"type"`
-	Question   string               `json:"question"`
-	Options    []QuizOptionResponse `json:"options"`
-	Answer     QuizAnswerResponse   `json:"answer"`
-	Correction string               `json:"correction"`
+	Order    int                  `json:"order"`
+	Type     string               `json:"type"`
+	Question string               `json:"question"`
+	Options  []QuizOptionResponse `json:"options"`
 }
 
 type QuizOptionResponse struct {
@@ -106,6 +116,28 @@ type QuizOptionResponse struct {
 type QuizAnswerResponse struct {
 	Answer  *string  `json:"answer"`
 	Answers []string `json:"answers"`
+}
+
+type LessonSolutionsResponse struct {
+	LessonID  string                     `json:"lessonId"`
+	Exercises []ExerciseSolutionResponse `json:"exercises"`
+	Quizzes   []QuizSolutionResponse     `json:"quizzes"`
+}
+
+type ExerciseSolutionResponse struct {
+	ExerciseID         string `json:"exerciseId"`
+	CorrectionMarkdown string `json:"correctionMarkdown"`
+}
+
+type QuizSolutionResponse struct {
+	QuizID    string                         `json:"quizId"`
+	Questions []QuizQuestionSolutionResponse `json:"questions"`
+}
+
+type QuizQuestionSolutionResponse struct {
+	Order      int                `json:"order"`
+	Answer     QuizAnswerResponse `json:"answer"`
+	Correction string             `json:"correction"`
 }
 
 func CourseFromDomain(course domain.Course) CourseResponse {
@@ -199,7 +231,6 @@ func ExerciseFromDomain(exercise domain.Exercise) ExerciseResponse {
 		Objective:            exercise.Objective,
 		InstructionsMarkdown: exercise.InstructionsMarkdown,
 		ContentMarkdown:      exercise.ContentMarkdown,
-		CorrectionMarkdown:   exercise.CorrectionMarkdown,
 		Payload:              exercisePayloadFromDomain(exercise.Payload),
 		CreatedAt:            exercise.CreatedAt,
 		UpdatedAt:            exercise.UpdatedAt,
@@ -233,19 +264,39 @@ func QuizQuestionFromDomain(question domain.QuizQuestion) QuizQuestionResponse {
 			Text:  option.Text,
 		})
 	}
-	answers := question.Answer.Answers
-	if answers == nil {
-		answers = []string{}
-	}
-
 	return QuizQuestionResponse{
-		Order:      question.Order,
-		Type:       string(question.Type),
-		Question:   question.Question,
-		Options:    options,
-		Answer:     QuizAnswerResponse{Answer: question.Answer.Answer, Answers: answers},
-		Correction: question.Correction,
+		Order:    question.Order,
+		Type:     string(question.Type),
+		Question: question.Question,
+		Options:  options,
 	}
+}
+
+func LessonSolutionsFromDomain(lesson domain.Lesson) LessonSolutionsResponse {
+	exercises := make([]ExerciseSolutionResponse, 0, len(lesson.Exercises))
+	for _, exercise := range lesson.Exercises {
+		exercises = append(exercises, ExerciseSolutionResponse{
+			ExerciseID:         exercise.ID.String(),
+			CorrectionMarkdown: exercise.CorrectionMarkdown,
+		})
+	}
+	quizzes := make([]QuizSolutionResponse, 0, len(lesson.Quizzes))
+	for _, quiz := range lesson.Quizzes {
+		questions := make([]QuizQuestionSolutionResponse, 0, len(quiz.Questions))
+		for _, question := range quiz.Questions {
+			answers := question.Answer.Answers
+			if answers == nil {
+				answers = []string{}
+			}
+			questions = append(questions, QuizQuestionSolutionResponse{
+				Order:      question.Order,
+				Answer:     QuizAnswerResponse{Answer: question.Answer.Answer, Answers: answers},
+				Correction: question.Correction,
+			})
+		}
+		quizzes = append(quizzes, QuizSolutionResponse{QuizID: quiz.ID.String(), Questions: questions})
+	}
+	return LessonSolutionsResponse{LessonID: lesson.ID.String(), Exercises: exercises, Quizzes: quizzes}
 }
 
 func exercisePayloadFromDomain(payload domain.ExercisePayload) map[string]any {
@@ -259,13 +310,18 @@ func exercisePayloadFromDomain(payload domain.ExercisePayload) map[string]any {
 	return values
 }
 
-func CoursePageFromDomain(page contract.Page[domain.Course]) PageResponse[CourseResponse] {
-	items := make([]CourseResponse, 0, len(page.Items))
+func CoursePageFromDomain(page contract.Page[domain.Course]) PageResponse[CourseSummaryResponse] {
+	items := make([]CourseSummaryResponse, 0, len(page.Items))
 	for _, course := range page.Items {
-		items = append(items, CourseFromDomain(course))
+		items = append(items, CourseSummaryResponse{
+			ID: course.ID.String(), RequestID: course.RequestID.String(), Language: string(course.Language),
+			Status: string(course.Status), Title: course.Title, Synopsis: course.Synopsis,
+			CurrentLevel: string(course.CurrentLevel), TargetLevel: string(course.TargetLevel),
+			CreatedAt: course.CreatedAt, UpdatedAt: course.UpdatedAt,
+		})
 	}
 
-	return PageResponse[CourseResponse]{
+	return PageResponse[CourseSummaryResponse]{
 		Items:       items,
 		Page:        page.Page,
 		PageSize:    page.PageSize,

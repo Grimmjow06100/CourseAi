@@ -25,7 +25,7 @@ func TestCourseCatalogServiceDelegatesOperations(t *testing.T) {
 	modules := &catalogModuleRepository{module: wantModule, modules: []domain.Module{wantModule}}
 	lessons := &catalogLessonRepository{lesson: wantLesson, lessons: []domain.Lesson{wantLesson}}
 	service := NewCourseCatalogService(catalogUnitOfWork{repositories: catalogRepositories{courses: courses, modules: modules, lessons: lessons}})
-	ctx := context.Background()
+	ctx := authenticatedTestContext()
 
 	if got, err := service.GetCourse(ctx, courseID); err != nil || got.ID != courseID {
 		t.Fatalf("GetCourse() = %+v, %v", got, err)
@@ -55,14 +55,14 @@ func TestCourseCatalogServiceValidatesDependenciesAndPropagatesErrors(t *testing
 	t.Parallel()
 
 	var nilService *CourseCatalogService
-	if _, err := nilService.GetCourse(context.Background(), uuid.New()); !errors.Is(err, ErrCourseCatalogDependency) {
+	if _, err := nilService.GetCourse(authenticatedTestContext(), uuid.New()); !errors.Is(err, ErrCourseCatalogDependency) {
 		t.Fatalf("nil service error = %v", err)
 	}
 	repositoryErr := errors.New("query failed")
 	service := NewCourseCatalogService(catalogUnitOfWork{repositories: catalogRepositories{
 		courses: &catalogCourseRepository{err: repositoryErr},
 	}})
-	if _, err := service.GetCourse(context.Background(), uuid.New()); !errors.Is(err, repositoryErr) {
+	if _, err := service.GetCourse(authenticatedTestContext(), uuid.New()); !errors.Is(err, repositoryErr) {
 		t.Fatalf("repository error = %v, want wrapped query error", err)
 	}
 }
@@ -85,6 +85,9 @@ type catalogRepositories struct {
 func (r catalogRepositories) Courses() contract.CourseRepository { return r.courses }
 func (r catalogRepositories) Modules() contract.ModuleRepository { return r.modules }
 func (r catalogRepositories) Lessons() contract.LessonRepository { return r.lessons }
+func (r catalogRepositories) Ownership() contract.OwnershipRepository {
+	return allowAllOwnership{}
+}
 
 type catalogCourseRepository struct {
 	contract.CourseRepository
@@ -100,7 +103,7 @@ func (r *catalogCourseRepository) FindCourseByID(context.Context, uuid.UUID) (do
 func (r *catalogCourseRepository) ListCourses(context.Context, contract.CourseFilters) (contract.Page[domain.Course], error) {
 	return r.page, r.err
 }
-func (r *catalogCourseRepository) DeleteCourse(_ context.Context, id uuid.UUID) error {
+func (r *catalogCourseRepository) DeleteCourseGeneration(_ context.Context, id uuid.UUID) error {
 	r.deletedID = id
 	return r.err
 }

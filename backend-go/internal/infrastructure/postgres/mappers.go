@@ -31,17 +31,6 @@ type quizAnswerJSON struct {
 	Answers []string `json:"answers"`
 }
 
-func userFromSQLC(row dbsqlc.User) (domain.User, error) {
-	user := domain.User{
-		ID:           row.ID,
-		Username:     domain.Username(row.Username),
-		PasswordHash: row.Password,
-		CreatedAt:    row.CreatedAt,
-		UpdatedAt:    row.UpdatedAt,
-	}
-	return user, user.Validate()
-}
-
 func generationRequestFromSQLC(row dbsqlc.GenerationRequest) (domain.GenerationRequest, error) {
 	status, err := domain.ParseGenerationPipelineStatus(string(row.PipelineStatus))
 	if err != nil {
@@ -50,6 +39,7 @@ func generationRequestFromSQLC(row dbsqlc.GenerationRequest) (domain.GenerationR
 
 	request := domain.GenerationRequest{
 		ID:                        row.ID,
+		ClerkUserID:               row.ClerkUserID,
 		InitialUserPrompt:         row.InitialUserPrompt,
 		PipelineStatus:            status,
 		CurrentStep:               row.CurrentStep,
@@ -138,6 +128,7 @@ func generationJobFromSQLC(row dbsqlc.GenerationJob) (domain.GenerationJob, erro
 		CompletedAt:      pointer.Clone(row.CompletedAt),
 		LastErrorCode:    pointer.Clone(row.LastErrorCode),
 		LastErrorMessage: pointer.Clone(row.LastErrorMessage),
+		FailureHandledAt: pointer.Clone(row.FailureHandledAt),
 		CreatedAt:        row.CreatedAt,
 		UpdatedAt:        row.UpdatedAt,
 	}
@@ -165,6 +156,7 @@ func courseFromSQLC(row dbsqlc.Course) (domain.Course, error) {
 	course := domain.Course{
 		ID:                      row.ID,
 		RequestID:               row.RequestID,
+		ClerkUserID:             row.ClerkUserID,
 		Language:                language,
 		Status:                  status,
 		InitialUserPrompt:       row.InitialUserPrompt,

@@ -17,7 +17,7 @@ func TestGenerationRequestClarificationRoundTrip(t *testing.T) {
 	repository := postgres.NewGenerationRequestRepository(tx)
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
-	request, err := domain.NewGenerationRequestAt("Build a Linux course", now)
+	request, err := domain.NewGenerationRequestAt("Build a Linux course", "user_test", now)
 	if err != nil {
 		t.Fatalf("new generation request: %v", err)
 	}

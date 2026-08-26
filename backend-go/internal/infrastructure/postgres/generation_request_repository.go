@@ -3,6 +3,8 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"strings"
+	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	dbsqlc "github.com/Grimmjow06100/course-ai/backend-go/internal/db/sqlc"
@@ -56,6 +58,32 @@ func (r *GenerationRequestRepository) FindGenerationRequestByID(ctx context.Cont
 		return domain.GenerationRequest{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}
 	return generationRequestFromSQLC(row)
+}
+
+func (r *GenerationRequestRepository) GetGenerationAdmissionUsage(ctx context.Context, clerkUserID string, createdSince time.Time) (contract.GenerationAdmissionUsage, error) {
+	row, err := r.queries.GetGenerationAdmissionUsage(ctx, dbsqlc.GetGenerationAdmissionUsageParams{
+		ClerkUserID:  strings.TrimSpace(clerkUserID),
+		CreatedSince: createdSince,
+	})
+	if err != nil {
+		return contract.GenerationAdmissionUsage{}, err
+	}
+	return contract.GenerationAdmissionUsage{
+		ActiveRequests: row.ActiveRequests,
+		DailyRequests:  row.DailyRequests,
+		PendingJobs:    row.PendingJobs,
+	}, nil
+}
+
+func (r *GenerationRequestRepository) DeleteGenerationRequest(ctx context.Context, id uuid.UUID) error {
+	rows, err := r.queries.DeleteGenerationRequestByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return contract.ErrGenerationRequestNotFound
+	}
+	return nil
 }
 
 func (r *GenerationRequestRepository) FindGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error) {
@@ -144,6 +172,7 @@ func createGenerationRequestParams(request domain.GenerationRequest) (dbsqlc.Cre
 	}
 	return dbsqlc.CreateGenerationRequestParams{
 		ID:                        request.ID,
+		ClerkUserID:               request.ClerkUserID,
 		InitialUserPrompt:         request.InitialUserPrompt,
 		PipelineStatus:            dbsqlc.GenerationPipelineStatus(request.PipelineStatus),
 		CurrentStep:               request.CurrentStep,
@@ -192,6 +221,7 @@ func updateGenerationRequestParams(request domain.GenerationRequest) (dbsqlc.Upd
 		return dbsqlc.UpdateGenerationRequestParams{}, err
 	}
 	return dbsqlc.UpdateGenerationRequestParams{
+		ClerkUserID:               request.ClerkUserID,
 		InitialUserPrompt:         request.InitialUserPrompt,
 		PipelineStatus:            dbsqlc.GenerationPipelineStatus(request.PipelineStatus),
 		CurrentStep:               request.CurrentStep,

@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
-	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/errtrace"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
@@ -14,21 +14,14 @@ func ensureBulkInsertCount(entity string, expected int, inserted int64) error {
 	if inserted == int64(expected) {
 		return nil
 	}
-	return fmt.Errorf("bulk insert %s: inserted %d of %d rows", entity, inserted, expected)
+	return errtrace.Capture(fmt.Errorf("bulk insert %s: inserted %d of %d rows", entity, inserted, expected))
 }
 
 func mapNoRows(err error, notFound error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
-		return notFound
+		return errtrace.Capture(notFound)
 	}
-	return err
-}
-
-func mapUserWriteError(err error) error {
-	if isUniqueViolation(err, "users_username_key") {
-		return domain.ErrUsernameAlreadyExists
-	}
-	return err
+	return errtrace.Capture(err)
 }
 
 func isUniqueViolation(err error, constraint string) bool {

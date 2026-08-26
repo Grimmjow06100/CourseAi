@@ -51,7 +51,7 @@ func TestNormalizeStructureParamsNormalizesGoals(t *testing.T) {
 
 func TestGenerateCourseStructureRequiresAnalyzedRequest(t *testing.T) {
 	clock := fixedClock{now: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)}
-	request, err := domain.NewGenerationRequestAt("je veux une formation sur linux", clock.Now())
+	request, err := domain.NewGenerationRequestAt("je veux une formation sur linux", "user_test", clock.Now())
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestGenerateCourseStructureRequiresAnalyzedRequest(t *testing.T) {
 		CourseGeneratorConfig{},
 	)
 
-	_, err = service.GenerateCourseStructure(context.Background(), validStructureParams(request.ID))
+	_, err = service.GenerateCourseStructure(authenticatedTestContext(), validStructureParams(request.ID))
 	if !errors.Is(err, ErrGenerationAnalysisRequired) {
 		t.Fatalf("expected analysis required error, got %v", err)
 	}
@@ -71,7 +71,7 @@ func TestGenerateCourseStructureRequiresAnalyzedRequest(t *testing.T) {
 
 func TestNormalizeGeneratedCourseAllowsGeneratedModulesWithoutIDs(t *testing.T) {
 	clock := fixedClock{now: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)}
-	request, err := domain.NewGenerationRequestAt("je veux une formation sur linux", clock.Now())
+	request, err := domain.NewGenerationRequestAt("je veux une formation sur linux", "user_test", clock.Now())
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestRetryCourseStructureRequiresFailedRequest(t *testing.T) {
 		CourseGeneratorConfig{},
 	)
 
-	_, err := service.RetryCourseStructure(context.Background(), validStructureParams(request.ID))
+	_, err := service.RetryCourseStructure(authenticatedTestContext(), validStructureParams(request.ID))
 	if !errors.Is(err, ErrGenerationStructureRetryNotAllowed) {
 		t.Fatalf("expected structure retry not allowed error, got %v", err)
 	}
@@ -160,7 +160,7 @@ func TestRetryCourseStructureRequiresStructureFailureStep(t *testing.T) {
 		CourseGeneratorConfig{},
 	)
 
-	_, err := service.RetryCourseStructure(context.Background(), validStructureParams(request.ID))
+	_, err := service.RetryCourseStructure(authenticatedTestContext(), validStructureParams(request.ID))
 	if !errors.Is(err, ErrGenerationStructureRetryStepMismatch) {
 		t.Fatalf("expected structure retry step mismatch error, got %v", err)
 	}
@@ -182,7 +182,7 @@ func TestPrepareStructureRetryDeletesPartialCourseAndRestartsRequest(t *testing.
 	}
 	service := NewCourseGeneratorService(fakeCourseAI{}, uow, clock, CourseGeneratorConfig{})
 
-	updatedRequest, err := service.prepareStructureRetry(context.Background(), request.ID)
+	updatedRequest, err := service.prepareStructureRetry(authenticatedTestContext(), request.ID)
 	if err != nil {
 		t.Fatalf("prepare structure retry: %v", err)
 	}
@@ -236,7 +236,7 @@ func TestGetGenerationStatusExposesAnalysisAndClarificationAction(t *testing.T) 
 	t.Parallel()
 
 	now := time.Date(2026, time.August, 15, 10, 0, 0, 0, time.UTC)
-	request, err := domain.NewGenerationRequestAt("Build a Linux course", now)
+	request, err := domain.NewGenerationRequestAt("Build a Linux course", "user_test", now)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestGetGenerationStatusExposesAnalysisAndClarificationAction(t *testing.T) 
 	service := NewCourseGeneratorService(fakeCourseAI{}, &fakeUnitOfWork{
 		requests: map[uuid.UUID]domain.GenerationRequest{request.ID: request},
 	}, fixedClock{now: now}, CourseGeneratorConfig{})
-	status, err := service.GetGenerationStatus(context.Background(), request.ID)
+	status, err := service.GetGenerationStatus(authenticatedTestContext(), request.ID)
 	if err != nil {
 		t.Fatalf("GetGenerationStatus() error = %v", err)
 	}
@@ -408,7 +408,7 @@ func validStructureParams(requestID uuid.UUID) contract.GenerateStructureParams 
 func analyzedGenerationRequest(t *testing.T, now time.Time) domain.GenerationRequest {
 	t.Helper()
 
-	request, err := domain.NewGenerationRequestAt("je veux une formation sur linux", now)
+	request, err := domain.NewGenerationRequestAt("je veux une formation sur linux", "user_test", now)
 	if err != nil {
 		t.Fatalf("create request: %v", err)
 	}
@@ -462,16 +462,17 @@ func (fakeCourseAI) GenerateLessonContent(context.Context, contract.LessonConten
 }
 
 type fakeUnitOfWork struct {
-	requests map[uuid.UUID]domain.GenerationRequest
-	courses  contract.CourseRepository
-	modules  contract.ModuleRepository
-	lessons  contract.LessonRepository
-	jobs     contract.GenerationJobQueue
+	requests       map[uuid.UUID]domain.GenerationRequest
+	courses        contract.CourseRepository
+	modules        contract.ModuleRepository
+	lessons        contract.LessonRepository
+	jobs           contract.GenerationJobQueue
+	admissionUsage contract.GenerationAdmissionUsage
 }
 
 func (u *fakeUnitOfWork) WithinTx(ctx context.Context, fn func(context.Context, contract.TransactionalRepositories) error) error {
 	return fn(ctx, fakeRepositories{
-		requests: fakeGenerationRequestRepository{requests: u.requests},
+		requests: fakeGenerationRequestRepository{requests: u.requests, admissionUsage: u.admissionUsage},
 		courses:  u.courses,
 		modules:  u.modules,
 		lessons:  u.lessons,
@@ -487,8 +488,8 @@ type fakeRepositories struct {
 	jobs     contract.GenerationJobQueue
 }
 
-func (r fakeRepositories) Users() contract.UserRepository {
-	return nil
+func (r fakeRepositories) Ownership() contract.OwnershipRepository {
+	return allowAllOwnership{}
 }
 
 func (r fakeRepositories) GenerationRequests() contract.GenerationRequestRepository {
@@ -517,6 +518,28 @@ func (r fakeRepositories) Exercises() contract.ExerciseRepository {
 
 func (r fakeRepositories) Quizzes() contract.QuizRepository {
 	return nil
+}
+
+type allowAllOwnership struct{ contract.OwnershipRepository }
+
+func (allowAllOwnership) OwnsGenerationRequest(context.Context, uuid.UUID, string) (bool, error) {
+	return true, nil
+}
+
+func (allowAllOwnership) OwnsGenerationJob(context.Context, uuid.UUID, string) (bool, error) {
+	return true, nil
+}
+
+func (allowAllOwnership) OwnsCourse(context.Context, uuid.UUID, string) (bool, error) {
+	return true, nil
+}
+
+func (allowAllOwnership) OwnsModule(context.Context, uuid.UUID, string) (bool, error) {
+	return true, nil
+}
+
+func (allowAllOwnership) OwnsLesson(context.Context, uuid.UUID, string) (bool, error) {
+	return true, nil
 }
 
 type fakeCourseRepository struct {
@@ -568,13 +591,18 @@ func (r *fakeCourseRepository) DeleteCourse(context.Context, uuid.UUID) error {
 	panic("not used")
 }
 
+func (r *fakeCourseRepository) DeleteCourseGeneration(context.Context, uuid.UUID) error {
+	panic("not used")
+}
+
 func (r *fakeCourseRepository) DeleteCourseByRequestID(_ context.Context, requestID uuid.UUID) error {
 	r.deletedRequestID = requestID
 	return r.deleteErr
 }
 
 type fakeGenerationRequestRepository struct {
-	requests map[uuid.UUID]domain.GenerationRequest
+	requests       map[uuid.UUID]domain.GenerationRequest
+	admissionUsage contract.GenerationAdmissionUsage
 }
 
 func (r fakeGenerationRequestRepository) SaveGenerationRequest(_ context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
@@ -625,4 +653,16 @@ func (r fakeGenerationRequestRepository) FindGenerationStatusByID(_ context.Cont
 		DetectedLanguage:       request.DetectedLanguage,
 		ClarificationQuestions: request.ClarificationQuestions,
 	}, nil
+}
+
+func (r fakeGenerationRequestRepository) GetGenerationAdmissionUsage(context.Context, string, time.Time) (contract.GenerationAdmissionUsage, error) {
+	return r.admissionUsage, nil
+}
+
+func (r fakeGenerationRequestRepository) DeleteGenerationRequest(_ context.Context, id uuid.UUID) error {
+	if _, ok := r.requests[id]; !ok {
+		return contract.ErrGenerationRequestNotFound
+	}
+	delete(r.requests, id)
+	return nil
 }

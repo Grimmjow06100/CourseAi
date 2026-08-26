@@ -95,4 +95,5 @@ type CourseGenerationService interface {
 	GetGenerationStatus(ctx context.Context, requestID uuid.UUID) (GenerationStatus, error)
 	GetGenerationResult(ctx context.Context, requestID uuid.UUID) (GenerationResult, error)
 	RetryFullCourseGeneration(ctx context.Context, requestID uuid.UUID) (GenerationStarted, error)
+	DeleteGenerationRequest(ctx context.Context, requestID uuid.UUID) error
 }

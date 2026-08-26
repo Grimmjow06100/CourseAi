@@ -23,9 +23,16 @@ func (s *CourseCatalogService) GetCourse(ctx context.Context, id uuid.UUID) (dom
 	if err := s.validateDependencies(); err != nil {
 		return domain.Course{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return domain.Course{}, err
+	}
 
 	var course domain.Course
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedCourse, id, owner); err != nil {
+			return err
+		}
 		foundCourse, err := repositories.Courses().FindCourseByID(ctx, id)
 		if err != nil {
 			return err
@@ -40,9 +47,14 @@ func (s *CourseCatalogService) ListCourses(ctx context.Context, filters contract
 	if err := s.validateDependencies(); err != nil {
 		return contract.Page[domain.Course]{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.Page[domain.Course]{}, err
+	}
+	filters.ClerkUserID = owner
 
 	var courses contract.Page[domain.Course]
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		page, err := repositories.Courses().ListCourses(ctx, filters)
 		if err != nil {
 			return err
@@ -57,9 +69,16 @@ func (s *CourseCatalogService) DeleteCourse(ctx context.Context, id uuid.UUID) e
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return err
+	}
 
 	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		return repositories.Courses().DeleteCourse(ctx, id)
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedCourse, id, owner); err != nil {
+			return err
+		}
+		return repositories.Courses().DeleteCourseGeneration(ctx, id)
 	})
 }
 
@@ -67,9 +86,16 @@ func (s *CourseCatalogService) GetModule(ctx context.Context, id uuid.UUID) (dom
 	if err := s.validateDependencies(); err != nil {
 		return domain.Module{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return domain.Module{}, err
+	}
 
 	var module domain.Module
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedModule, id, owner); err != nil {
+			return err
+		}
 		foundModule, err := repositories.Modules().FindModuleByID(ctx, id)
 		if err != nil {
 			return err
@@ -84,9 +110,16 @@ func (s *CourseCatalogService) ListModulesByCourseID(ctx context.Context, course
 	if err := s.validateDependencies(); err != nil {
 		return nil, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var modules []domain.Module
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedCourse, courseID, owner); err != nil {
+			return err
+		}
 		foundModules, err := repositories.Modules().ListModulesByCourseID(ctx, courseID)
 		if err != nil {
 			return err
@@ -101,9 +134,16 @@ func (s *CourseCatalogService) GetLesson(ctx context.Context, id uuid.UUID) (dom
 	if err := s.validateDependencies(); err != nil {
 		return domain.Lesson{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return domain.Lesson{}, err
+	}
 
 	var lesson domain.Lesson
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedLesson, id, owner); err != nil {
+			return err
+		}
 		foundLesson, err := repositories.Lessons().FindLessonByID(ctx, id)
 		if err != nil {
 			return err
@@ -118,9 +158,16 @@ func (s *CourseCatalogService) ListLessonsByModuleID(ctx context.Context, module
 	if err := s.validateDependencies(); err != nil {
 		return nil, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return nil, err
+	}
 
 	var lessons []domain.Lesson
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedModule, moduleID, owner); err != nil {
+			return err
+		}
 		foundLessons, err := repositories.Lessons().ListLessonsByModuleID(ctx, moduleID)
 		if err != nil {
 			return err

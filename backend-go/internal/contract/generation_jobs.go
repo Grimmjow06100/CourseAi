@@ -20,6 +20,7 @@ type GenerationJobQueue interface {
 	Fail(ctx context.Context, claim domain.JobClaim, cause error, failedAt time.Time) error
 	Cancel(ctx context.Context, id uuid.UUID, cancelledAt time.Time) error
 	RequeueExpired(ctx context.Context, now time.Time) (int64, error)
+	CountPendingWithAdmissionLock(ctx context.Context) (int64, error)
 }
 
 type GenerationJobExecutor interface {
@@ -29,4 +30,30 @@ type GenerationJobExecutor interface {
 // GenerationJobFailureHandler synchronizes application state after a terminal job failure.
 type GenerationJobFailureHandler interface {
 	HandleTerminalFailure(ctx context.Context, job domain.GenerationJob, cause error) error
+}
+
+// GenerationJobFailureReconciler repairs terminal job failures whose request/course transition was interrupted.
+type GenerationJobFailureReconciler interface {
+	ListUnreconciledFailures(ctx context.Context, limit int) ([]domain.GenerationJob, error)
+	MarkFailureHandled(ctx context.Context, jobID uuid.UUID, handledAt time.Time) error
+}
+
+type GenerationJobRetention interface {
+	PurgeTerminalBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error)
+	PurgeRawOutputsBefore(ctx context.Context, cutoff time.Time, limit int) (int64, error)
+}
+
+type GenerationQueueMetrics struct {
+	Queued               int64
+	RetryScheduled       int64
+	Running              int64
+	Completed            int64
+	Failed               int64
+	Cancelled            int64
+	ExpiredLeases        int64
+	UnreconciledFailures int64
+}
+
+type GenerationQueueMetricsProvider interface {
+	GetQueueMetrics(ctx context.Context) (GenerationQueueMetrics, error)
 }

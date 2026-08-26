@@ -56,6 +56,7 @@ type AnalysisSummary struct {
 
 type GenerationRequest struct {
 	ID                        uuid.UUID
+	ClerkUserID               string
 	InitialUserPrompt         string
 	PipelineStatus            GenerationPipelineStatus
 	CurrentStep               *string
@@ -84,11 +85,11 @@ type GenerationRequest struct {
 	UpdatedAt                 time.Time
 }
 
-func NewGenerationRequest(prompt string) (GenerationRequest, error) {
-	return NewGenerationRequestAt(prompt, time.Now())
+func NewGenerationRequest(prompt string, clerkUserID string) (GenerationRequest, error) {
+	return NewGenerationRequestAt(prompt, clerkUserID, time.Now())
 }
 
-func NewGenerationRequestAt(prompt string, now time.Time) (GenerationRequest, error) {
+func NewGenerationRequestAt(prompt string, clerkUserID string, now time.Time) (GenerationRequest, error) {
 	id, err := uuid.NewRandom()
 	if err != nil {
 		return GenerationRequest{}, fmt.Errorf("%w: %v", ErrNewUUIDCreation, err)
@@ -96,6 +97,7 @@ func NewGenerationRequestAt(prompt string, now time.Time) (GenerationRequest, er
 
 	request := GenerationRequest{
 		ID:                id,
+		ClerkUserID:       normalizeText(clerkUserID),
 		InitialUserPrompt: normalizeText(prompt),
 		PipelineStatus:    PipelineStatusQueued,
 		ProgressPercent:   0,
@@ -112,6 +114,9 @@ func NewGenerationRequestAt(prompt string, now time.Time) (GenerationRequest, er
 func (r GenerationRequest) Validate() error {
 	if r.ID == uuid.Nil {
 		return fmt.Errorf("%w: generation request id", ErrBlankField)
+	}
+	if err := validateClerkUserID(r.ClerkUserID); err != nil {
+		return fmt.Errorf("%w: generation request clerk user id", err)
 	}
 	if err := requireNotBlank("initial user prompt", r.InitialUserPrompt); err != nil {
 		return err

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
@@ -29,6 +30,7 @@ const (
 var (
 	ErrCourseGeneratorDependency            = errors.New("course generator service dependency is missing")
 	ErrPromptRequired                       = errors.New("generation prompt is required")
+	ErrPromptTooLong                        = errors.New("generation prompt exceeds 4000 characters")
 	ErrGenerationOutOfScope                 = errors.New("generation request is out of scope")
 	ErrGenerationAnalysisRequired           = errors.New("generation request must be analyzed before structure generation")
 	ErrGenerationBriefRequired              = errors.New("generation request requires a confirmed brief")
@@ -50,6 +52,9 @@ type CourseGeneratorConfig struct {
 	JobStatusURLFormat     string
 	ResultURLFormat        string
 	ClarificationURLFormat string
+	MaxActivePerUser       int64
+	MaxDailyPerUser        int64
+	MaxPendingJobs         int64
 }
 
 type CourseGeneratorService struct {
@@ -65,6 +70,15 @@ func NewCourseGeneratorService(
 	clock contract.Clock,
 	config CourseGeneratorConfig,
 ) *CourseGeneratorService {
+	if config.MaxActivePerUser == 0 {
+		config.MaxActivePerUser = 2
+	}
+	if config.MaxDailyPerUser == 0 {
+		config.MaxDailyPerUser = 10
+	}
+	if config.MaxPendingJobs == 0 {
+		config.MaxPendingJobs = 500
+	}
 	return &CourseGeneratorService{
 		ai:     ai,
 		uow:    uow,
@@ -73,8 +87,29 @@ func NewCourseGeneratorService(
 	}
 }
 
+func (s *CourseGeneratorService) enforceGenerationAdmission(ctx context.Context, repository contract.GenerationRequestRepository, owner string) error {
+	usage, err := repository.GetGenerationAdmissionUsage(ctx, owner, s.now().Add(-24*time.Hour))
+	if err != nil {
+		return err
+	}
+	if s.config.MaxActivePerUser > 0 && usage.ActiveRequests >= s.config.MaxActivePerUser {
+		return contract.ErrGenerationActiveLimitExceeded
+	}
+	if s.config.MaxDailyPerUser > 0 && usage.DailyRequests >= s.config.MaxDailyPerUser {
+		return contract.ErrGenerationDailyLimitExceeded
+	}
+	if s.config.MaxPendingJobs > 0 && usage.PendingJobs >= s.config.MaxPendingJobs {
+		return contract.ErrGenerationQueueSaturated
+	}
+	return nil
+}
+
 func (s *CourseGeneratorService) AnalyzePrompt(ctx context.Context, params contract.AnalyzePromptParams) (contract.GenerationAnalysisResult, error) {
 	if err := s.validateDependencies(); err != nil {
+		return contract.GenerationAnalysisResult{}, err
+	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
 		return contract.GenerationAnalysisResult{}, err
 	}
 
@@ -82,8 +117,11 @@ func (s *CourseGeneratorService) AnalyzePrompt(ctx context.Context, params contr
 	if prompt == "" {
 		return contract.GenerationAnalysisResult{}, ErrPromptRequired
 	}
+	if utf8.RuneCountInString(prompt) > 4000 {
+		return contract.GenerationAnalysisResult{}, ErrPromptTooLong
+	}
 
-	request, err := domain.NewGenerationRequestAt(prompt, s.now())
+	request, err := domain.NewGenerationRequestAt(prompt, owner, s.now())
 	if err != nil {
 		return contract.GenerationAnalysisResult{}, err
 	}
@@ -313,9 +351,16 @@ func (s *CourseGeneratorService) GetGenerationStatus(ctx context.Context, reques
 	if err := s.validateDependencies(); err != nil {
 		return contract.GenerationStatus{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.GenerationStatus{}, err
+	}
 
 	var status contract.GenerationStatus
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
+			return err
+		}
 		var err error
 		status, err = repositories.GenerationRequests().FindGenerationStatusByID(ctx, requestID)
 		return err
@@ -336,9 +381,16 @@ func (s *CourseGeneratorService) GetGenerationResult(ctx context.Context, reques
 	if err := s.validateDependencies(); err != nil {
 		return contract.GenerationResult{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.GenerationResult{}, err
+	}
 
 	var result contract.GenerationResult
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
+			return err
+		}
 		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
 		if err != nil {
 			return err
@@ -368,10 +420,17 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 	if err := s.validateDependencies(); err != nil {
 		return contract.GenerationStarted{}, err
 	}
+	owner, err := authenticatedOwner(ctx)
+	if err != nil {
+		return contract.GenerationStarted{}, err
+	}
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
+			return err
+		}
 		locked, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
@@ -397,7 +456,7 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 			if err != nil {
 				return err
 			}
-			job, err = repositories.GenerationJobs().Enqueue(ctx, created)
+			job, err = s.enqueueWithCapacity(ctx, repositories, created)
 			return err
 		}
 		if locked.ConfirmedBrief == nil {
@@ -419,7 +478,7 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 				if err != nil {
 					return err
 				}
-				job, err = repositories.GenerationJobs().Enqueue(ctx, created)
+				job, err = s.enqueueWithCapacity(ctx, repositories, created)
 				return err
 			}
 			if err := locked.RestartFromFailure(stepAnalysisCompleted, 25, s.now()); err != nil {
@@ -871,6 +930,7 @@ func (s *CourseGeneratorService) normalizeGeneratedCourse(request domain.Generat
 	if generatedCourse.ID == uuid.Nil {
 		course, err := domain.NewCourseAt(domain.NewCourseParams{
 			RequestID:               request.ID,
+			ClerkUserID:             request.ClerkUserID,
 			Language:                generatedCourse.Language,
 			InitialUserPrompt:       textutil.FirstNonBlank(generatedCourse.InitialUserPrompt, request.InitialUserPrompt),
 			Title:                   generatedCourse.Title,
@@ -897,6 +957,12 @@ func (s *CourseGeneratorService) normalizeGeneratedCourse(request domain.Generat
 	}
 	if generatedCourse.RequestID != request.ID {
 		return domain.Course{}, fmt.Errorf("%w: course request id does not match generation request id", domain.ErrInvalidCollection)
+	}
+	if strings.TrimSpace(generatedCourse.ClerkUserID) == "" {
+		generatedCourse.ClerkUserID = request.ClerkUserID
+	}
+	if generatedCourse.ClerkUserID != request.ClerkUserID {
+		return domain.Course{}, fmt.Errorf("%w: course clerk user id does not match generation request", domain.ErrInvalidCollection)
 	}
 	if strings.TrimSpace(generatedCourse.InitialUserPrompt) == "" {
 		generatedCourse.InitialUserPrompt = request.InitialUserPrompt
@@ -1226,14 +1292,7 @@ func isEmptyGeneratedCourse(course domain.Course) bool {
 }
 
 func failureMessage(err error) string {
-	if err == nil {
-		return "generation failed"
-	}
-	message := strings.TrimSpace(err.Error())
-	if message == "" {
-		return "generation failed"
-	}
-	return message
+	return "generation failed; retry the operation or contact support with the request id"
 }
 
 func normalizeStructureParams(params contract.GenerateStructureParams) (contract.GenerateStructureParams, error) {

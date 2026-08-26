@@ -30,8 +30,8 @@ func TestGenerationJobQueueAgainstPostgres(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	requestID := uuid.New()
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO generation_requests (id, initial_user_prompt, updated_at)
-		VALUES ($1, 'job integration test', $2)`, requestID, now); err != nil {
+		INSERT INTO generation_requests (id, clerk_user_id, initial_user_prompt, updated_at)
+		VALUES ($1, 'user_integration', 'job integration test', $2)`, requestID, now); err != nil {
 		t.Fatalf("insert generation request: %v", err)
 	}
 
@@ -194,6 +194,36 @@ func TestGenerationJobQueueAgainstPostgres(t *testing.T) {
 	if exhausted.Status != domain.GenerationJobStatusFailed || exhausted.CompletedAt == nil || exhausted.LastErrorCode == nil || *exhausted.LastErrorCode != "max_attempts_exhausted" {
 		t.Fatalf("unexpected exhausted state: %+v", exhausted)
 	}
+	unreconciled, err := repository.ListUnreconciledFailures(ctx, 10)
+	if err != nil || len(unreconciled) != 1 || unreconciled[0].ID != exhausted.ID {
+		t.Fatalf("unreconciled failures = %+v, %v", unreconciled, err)
+	}
+	if err := repository.MarkFailureHandled(ctx, exhausted.ID, time.Now()); err != nil {
+		t.Fatalf("mark failure handled: %v", err)
+	}
+
+	crashed := newIntegrationGenerationJob(t, requestID, "request:crashed-last-attempt", time.Now())
+	crashed.MaxAttempts = 1
+	crashed.Priority = 30
+	crashed, err = repository.Enqueue(ctx, crashed)
+	if err != nil {
+		t.Fatalf("enqueue crashed job: %v", err)
+	}
+	crashed, err = repository.ClaimNext(ctx, "worker-crashed", time.Now().Add(time.Minute))
+	if err != nil {
+		t.Fatalf("claim crashed job: %v", err)
+	}
+	crashedAt := time.Now()
+	if _, err := tx.Exec(ctx, `UPDATE generation_jobs SET locked_until = $2 WHERE id = $1`, crashed.ID, crashedAt.Add(-time.Second)); err != nil {
+		t.Fatalf("expire crashed job lease: %v", err)
+	}
+	if count, err := repository.RequeueExpired(ctx, crashedAt); err != nil || count != 1 {
+		t.Fatalf("reap crashed job = %d, %v", count, err)
+	}
+	unreconciled, err = repository.ListUnreconciledFailures(ctx, 10)
+	if err != nil || len(unreconciled) != 1 || unreconciled[0].ID != crashed.ID {
+		t.Fatalf("crashed unreconciled failures = %+v, %v", unreconciled, err)
+	}
 }
 
 func TestGenerationJobConcurrentClaimsReturnDifferentJobs(t *testing.T) {
@@ -202,8 +232,8 @@ func TestGenerationJobConcurrentClaimsReturnDifferentJobs(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	requestID := uuid.New()
 	if _, err := pool.Exec(ctx, `
-		INSERT INTO generation_requests (id, initial_user_prompt, updated_at)
-		VALUES ($1, 'concurrent claim integration test', $2)`, requestID, now); err != nil {
+		INSERT INTO generation_requests (id, clerk_user_id, initial_user_prompt, updated_at)
+		VALUES ($1, 'user_integration', 'concurrent claim integration test', $2)`, requestID, now); err != nil {
 		t.Fatalf("insert generation request: %v", err)
 	}
 	defer func() {

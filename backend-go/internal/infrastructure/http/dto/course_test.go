@@ -1,13 +1,13 @@
 package dto
 
 import (
-	"reflect"
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
-	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
 	"github.com/google/uuid"
 )
 
@@ -55,8 +55,18 @@ func TestCourseFromDomainMapsNestedAggregate(t *testing.T) {
 	if !gotLesson.HasContent || !gotLesson.HasStructuredActivities || len(gotLesson.Exercises) != 1 || len(gotLesson.Quizzes) != 1 {
 		t.Fatalf("unexpected lesson response: %+v", gotLesson)
 	}
-	if gotLesson.Quizzes[0].Questions[0].Answer.Answer == nil || *gotLesson.Quizzes[0].Questions[0].Answer.Answer != "ls" {
-		t.Fatal("quiz answer was not mapped")
+	encoded, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal public course response: %v", err)
+	}
+	for _, forbiddenKey := range []string{`"correctionMarkdown"`, `"answer"`, `"answers"`, `"correction"`} {
+		if strings.Contains(string(encoded), forbiddenKey) {
+			t.Errorf("public course response exposes %s", forbiddenKey)
+		}
+	}
+	solutions := LessonSolutionsFromDomain(lesson)
+	if len(solutions.Quizzes) != 1 || solutions.Quizzes[0].Questions[0].Answer.Answer == nil || *solutions.Quizzes[0].Questions[0].Answer.Answer != "ls" {
+		t.Fatal("quiz answer was not mapped to the explicit solution response")
 	}
 	gotLesson.Exercises[0].Payload["new"] = true
 	if _, exists := payload["new"]; exists {
@@ -77,11 +87,13 @@ func TestCoursePageFromDomainPreservesPagination(t *testing.T) {
 	}
 }
 
-func TestQuizQuestionFromDomainUsesEmptyAnswersArray(t *testing.T) {
+func TestLessonSolutionsFromDomainUsesEmptyAnswersArray(t *testing.T) {
 	t.Parallel()
 
-	response := QuizQuestionFromDomain(domain.QuizQuestion{Answer: domain.QuizAnswer{Answer: pointer.To("yes")}})
-	if response.Answer.Answers == nil || !reflect.DeepEqual(response.Answer.Answers, []string{}) {
-		t.Fatalf("Answers = %#v, want non-nil empty slice", response.Answer.Answers)
+	lesson := domain.Lesson{ID: uuid.New(), Quizzes: []domain.Quiz{{ID: uuid.New(), Questions: []domain.QuizQuestion{{Order: 1}}}}}
+	response := LessonSolutionsFromDomain(lesson)
+	answers := response.Quizzes[0].Questions[0].Answer.Answers
+	if answers == nil || len(answers) != 0 {
+		t.Fatalf("Answers = %#v, want non-nil empty slice", answers)
 	}
 }

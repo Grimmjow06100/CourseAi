@@ -18,6 +18,12 @@ const (
 	defaultShutdownTimeout     = 20 * time.Second
 	defaultCleanupTimeout      = 5 * time.Second
 	defaultReaperInterval      = 30 * time.Second
+	defaultReconciliationBatch = 100
+	defaultRetentionEnabled    = true
+	defaultRetentionPeriod     = 30 * 24 * time.Hour
+	defaultRetentionInterval   = 6 * time.Hour
+	defaultRetentionBatch      = 100
+	defaultMetricsInterval     = time.Minute
 	defaultMaxAttempts         = 3
 	defaultRetryBaseDelay      = 5 * time.Second
 	defaultRetryMaxDelay       = 2 * time.Minute
@@ -38,6 +44,12 @@ type WorkerConfig struct {
 	ShutdownTimeout     time.Duration
 	CleanupTimeout      time.Duration
 	ReaperInterval      time.Duration
+	ReconciliationBatch int
+	RetentionEnabled    bool
+	RetentionPeriod     time.Duration
+	RetentionInterval   time.Duration
+	RetentionBatch      int
+	MetricsInterval     time.Duration
 	DefaultMaxAttempts  int
 	RetryBaseDelay      time.Duration
 	RetryMaxDelay       time.Duration
@@ -56,6 +68,12 @@ func DefaultWorkerConfig() WorkerConfig {
 		ShutdownTimeout:     defaultShutdownTimeout,
 		CleanupTimeout:      defaultCleanupTimeout,
 		ReaperInterval:      defaultReaperInterval,
+		ReconciliationBatch: defaultReconciliationBatch,
+		RetentionEnabled:    defaultRetentionEnabled,
+		RetentionPeriod:     defaultRetentionPeriod,
+		RetentionInterval:   defaultRetentionInterval,
+		RetentionBatch:      defaultRetentionBatch,
+		MetricsInterval:     defaultMetricsInterval,
 		DefaultMaxAttempts:  defaultMaxAttempts,
 		RetryBaseDelay:      defaultRetryBaseDelay,
 		RetryMaxDelay:       defaultRetryMaxDelay,
@@ -97,6 +115,24 @@ func LoadWorkerConfig() (WorkerConfig, error) {
 	if cfg.ReaperInterval, err = workerConfigValue("GENERATION_JOB_REAPER_INTERVAL", defaults.ReaperInterval); err != nil {
 		return WorkerConfig{}, err
 	}
+	if cfg.ReconciliationBatch, err = workerConfigValue("GENERATION_JOB_RECONCILIATION_BATCH", defaults.ReconciliationBatch); err != nil {
+		return WorkerConfig{}, err
+	}
+	if cfg.RetentionEnabled, err = workerConfigValue("GENERATION_RETENTION_ENABLED", defaults.RetentionEnabled); err != nil {
+		return WorkerConfig{}, err
+	}
+	if cfg.RetentionPeriod, err = workerConfigValue("GENERATION_RETENTION_PERIOD", defaults.RetentionPeriod); err != nil {
+		return WorkerConfig{}, err
+	}
+	if cfg.RetentionInterval, err = workerConfigValue("GENERATION_RETENTION_INTERVAL", defaults.RetentionInterval); err != nil {
+		return WorkerConfig{}, err
+	}
+	if cfg.RetentionBatch, err = workerConfigValue("GENERATION_RETENTION_BATCH", defaults.RetentionBatch); err != nil {
+		return WorkerConfig{}, err
+	}
+	if cfg.MetricsInterval, err = workerConfigValue("GENERATION_METRICS_INTERVAL", defaults.MetricsInterval); err != nil {
+		return WorkerConfig{}, err
+	}
 	if cfg.DefaultMaxAttempts, err = workerConfigValue("GENERATION_JOB_MAX_ATTEMPTS", defaults.DefaultMaxAttempts); err != nil {
 		return WorkerConfig{}, err
 	}
@@ -134,6 +170,11 @@ func (c WorkerConfig) Validate() error {
 		{c.ShutdownTimeout <= 0, "shutdown timeout", c.ShutdownTimeout},
 		{c.CleanupTimeout <= 0, "cleanup timeout", c.CleanupTimeout},
 		{c.ReaperInterval <= 0, "reaper interval", c.ReaperInterval},
+		{c.ReconciliationBatch <= 0, "reconciliation batch", c.ReconciliationBatch},
+		{c.RetentionPeriod <= 0, "retention period", c.RetentionPeriod},
+		{c.RetentionInterval <= 0, "retention interval", c.RetentionInterval},
+		{c.RetentionBatch <= 0, "retention batch", c.RetentionBatch},
+		{c.MetricsInterval <= 0, "metrics interval", c.MetricsInterval},
 		{c.DefaultMaxAttempts <= 0, "default max attempts", c.DefaultMaxAttempts},
 		{c.RetryBaseDelay <= 0, "retry base delay", c.RetryBaseDelay},
 		{c.RetryMaxDelay <= 0, "retry max delay", c.RetryMaxDelay},

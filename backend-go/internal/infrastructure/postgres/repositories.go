@@ -4,13 +4,14 @@ import (
 	"context"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/errtrace"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Repositories exposes PostgreSQL implementations behind the application contract.
 type Repositories struct {
-	users              *UserRepository
+	ownership          *OwnershipRepository
 	generationRequests *GenerationRequestRepository
 	generationJobs     *GenerationJobRepository
 	courses            *CourseRepository
@@ -22,7 +23,7 @@ type Repositories struct {
 
 func NewRepositories(db DBTX) *Repositories {
 	return &Repositories{
-		users:              NewUserRepository(db),
+		ownership:          NewOwnershipRepository(db),
 		generationRequests: NewGenerationRequestRepository(db),
 		generationJobs:     NewGenerationJobRepository(db),
 		courses:            NewCourseRepository(db),
@@ -33,8 +34,8 @@ func NewRepositories(db DBTX) *Repositories {
 	}
 }
 
-func (r *Repositories) Users() contract.UserRepository {
-	return r.users
+func (r *Repositories) Ownership() contract.OwnershipRepository {
+	return r.ownership
 }
 
 func (r *Repositories) GenerationRequests() contract.GenerationRequestRepository {
@@ -77,7 +78,7 @@ func NewUnitOfWork(pool *pgxpool.Pool) *UnitOfWork {
 func (u *UnitOfWork) WithinTx(ctx context.Context, fn func(ctx context.Context, repositories contract.TransactionalRepositories) error) error {
 	tx, err := u.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return err
+		return errtrace.Wrap(err, "begin PostgreSQL transaction")
 	}
 
 	committed := false
@@ -88,11 +89,11 @@ func (u *UnitOfWork) WithinTx(ctx context.Context, fn func(ctx context.Context, 
 	}()
 
 	if err := fn(ctx, NewRepositories(tx)); err != nil {
-		return err
+		return errtrace.Capture(err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return err
+		return errtrace.Wrap(err, "commit PostgreSQL transaction")
 	}
 	committed = true
 	return nil

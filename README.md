@@ -8,9 +8,9 @@ Le backend officiel du projet est le backend Go situe dans `backend-go/`.
 
 Le backend Go contient aujourd'hui :
 
-- un modele de domaine pour `Course`, `Module`, `Lesson`, `GenerationRequest` et `User` ;
-- des contracts applicatifs pour les repositories, services, auth, transactions et generation IA ;
-- une couche service avec auth, catalogue, commandes de generation et executeur de jobs ;
+- un modele de domaine pour `Course`, `Module`, `Lesson` et `GenerationRequest` ;
+- des contracts applicatifs pour les repositories, l'identite, les transactions et la generation IA ;
+- une couche service avec autorisation Clerk, catalogue, commandes de generation et executeur de jobs ;
 - une infrastructure PostgreSQL basee sur `pgx` ;
 - un adapter OpenAI qui implemente `contract.CourseAIGenerator` avec Structured Outputs ;
 - une implementation `PromptStore` dans l'infrastructure ;
@@ -18,7 +18,7 @@ Le backend Go contient aujourd'hui :
 - une API HTTP Gin avec commandes asynchrones, statut de jobs, CORS et arret gracieux ;
 - une queue PostgreSQL durable avec worker pool, leases, heartbeat, retries et reprise apres redemarrage ;
 - des logs JSON structures pour chaque worker et chaque issue de job, avec correlation, tentative et duree ;
-- une auth JWT + bcrypt ;
+- une authentification Clerk avec ownership des demandes, jobs et formations ;
 - une base PostgreSQL locale via Docker Compose.
 
 La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/openai` et les prompts Markdown de `backend-go/prompts`.
@@ -27,7 +27,7 @@ La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/
 
 - Backend : Go, Gin, pgx, Goose
 - Base de donnees : PostgreSQL 16
-- Auth : JWT, bcrypt
+- Auth : Clerk et session token bearer
 - IA : OpenAI SDK Responses API avec Structured Outputs
 - Frontend : React + Vite dans `frontend/`
 - Infra locale : Docker Compose pour PostgreSQL
@@ -43,7 +43,7 @@ La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/
 │   │   ├── domain/       # entites et regles metier pures
 │   │   ├── service/      # use cases applicatifs
 │   │   ├── infrastructure/
-│   │   │   ├── auth/     # JWT et bcrypt
+│   │   │   ├── auth/     # configuration de la verification des sessions Clerk
 │   │   │   ├── clock/    # horloge systeme
 │   │   │   ├── http/     # Gin router, handlers, DTOs, middlewares
 │   │   │   ├── openai/   # adapter CourseAIGenerator
@@ -64,7 +64,7 @@ La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/
 
 ## Prerequis
 
-- Go 1.26+
+- Go 1.27+
 - Docker Desktop
 - Goose CLI pour les migrations
 - Une cle OpenAI valide
@@ -106,6 +106,15 @@ Healthcheck :
 GET http://localhost:8080/health
 ```
 
+Documentation interactive et contrat OpenAPI :
+
+```txt
+Swagger UI :    http://localhost:8080/docs
+OpenAPI JSON :  http://localhost:8080/docs/openapi.json
+```
+
+La spécification documente toutes les routes, leurs paramètres, payloads, réponses, statuts asynchrones et erreurs. Un test compare automatiquement ce contrat avec les routes enregistrées dans Gin afin d'éviter qu'un nouvel endpoint reste non documenté.
+
 ## Variables d'environnement
 
 A la racine du projet, pour PostgreSQL local :
@@ -138,12 +147,16 @@ GOOSE_DRIVER=postgres
 GOOSE_DBSTRING=postgresql://course_ai:course_ai_password@localhost:5433/course_ai?sslmode=disable
 GOOSE_MIGRATION_DIR=./migrations
 PROMPTS_DIR=./prompts
-JWT_SECRET=change_me_in_local_env
-JWT_TOKEN_TTL=24h
+CLERK_SECRET_KEY=sk_test_xxx
+CLERK_AUTHORIZED_PARTIES=http://localhost:5173
 OPENAI_API_KEY=sk-your-api-key
 CORS_ALLOWED_ORIGINS=http://localhost:5173
 GENERATION_WORKER_ENABLED=true
 GENERATION_WORKER_CONCURRENCY=1
+OPENAI_MAX_RETRIES=0
+HTTP_MAX_BODY_BYTES=65536
+GENERATION_MAX_ACTIVE_PER_USER=2
+GENERATION_MAX_DAILY_PER_USER=10
 
 ```
 
@@ -151,12 +164,9 @@ GENERATION_WORKER_CONCURRENCY=1
 
 ## Routes HTTP
 
-Auth :
+La référence détaillée et directement testable se trouve dans Swagger UI. La liste suivante sert d'aperçu rapide.
 
-```http
-POST /api/auth/signup
-POST /api/auth/login
-```
+Toutes les routes metier `/api` exigent un session token Clerk dans `Authorization: Bearer <token>`. `/health`, `/health/live`, `/health/ready` et les preflights CORS restent publics.
 
 Catalogue de cours :
 
@@ -168,13 +178,13 @@ GET    /api/courses/:courseID/modules
 GET    /api/modules/:moduleID
 GET    /api/modules/:moduleID/lessons
 GET    /api/lessons/:lessonID
+GET    /api/lessons/:lessonID/solutions
 ```
 
 Generation IA :
 
 ```http
 POST /api/generations
-POST /api/generations/analyze
 POST /api/generations/:requestID/clarifications
 POST /api/generations/:requestID/structure
 POST /api/generations/:requestID/structure/retry
@@ -183,36 +193,30 @@ POST /api/generations/modules/:moduleID/contents
 GET  /api/generations/:requestID/status
 GET  /api/generations/:requestID/result
 POST /api/generations/:requestID/retry
+DELETE /api/generations/:requestID
 GET  /api/generation-jobs/:jobID
 ```
 
 `POST /api/generations` persiste la demande, enfile un job d'analyse et retourne immediatement `202 Accepted`. Si l'analyse manque d'informations, le statut passe a `awaiting_clarification` sans conserver de worker actif. Sinon, la pipeline enfile automatiquement l'architecture.
-`POST /api/generations/analyze` analyse un prompt et retourne le premier jet : hors scope eventuel, titre, synopsis, niveaux detectes, objectif, langue et questions de clarification.
 `POST /api/generations/:requestID/clarifications` valide et persiste les reponses ainsi que le brief confirme, puis enfile atomiquement le job d'architecture. Les valeurs envoyees doivent correspondre aux champs `value` des options retournees par le statut.
 `POST /api/generations/:requestID/structure` enfile la formation, ses modules et le plan des lessons. Cette route ne genere pas le contenu Markdown.
 `POST /api/generations/:requestID/structure/retry` relance uniquement l'etape structure sur une request `failed` dont l'echec vient de `architecture_generation` ou `lesson_plan_generation`; le body est le meme que `/structure` et les donnees partielles sont supprimees avant relance.
 `POST /api/generations/lessons/:lessonID/content` et `POST /api/generations/modules/:moduleID/contents` retournent aussi `202`; suivre leur etat avec `GET /api/generation-jobs/:jobID`.
 
-Le header `Idempotency-Key` est recommande sur `POST /api/generations`. Les migrations `00001` a `00004` doivent etre appliquees avant le demarrage du worker.
+Le header `Idempotency-Key` est recommande sur `POST /api/generations` et est scope par Clerk User ID. Les migrations `00001` a `00008` doivent etre appliquees avant le demarrage. `00008` ajoute la reconciliation durable des echecs de jobs et les index operationnels.
 
 ## Exemples rapides
 
-Creer un utilisateur :
+Les comptes sont crees dans le frontend avec Clerk. Pour appeler une route metier :
 
 ```http
-POST /api/auth/signup
-Content-Type: application/json
-
-{
-  "username": "samy",
-  "password": "Password!"
-}
+Authorization: Bearer <session-token-clerk>
 ```
 
-Analyser une demande de formation :
+Demarrer l'analyse asynchrone d'une demande de formation :
 
 ```http
-POST /api/generations/analyze
+POST /api/generations
 Content-Type: application/json
 
 {

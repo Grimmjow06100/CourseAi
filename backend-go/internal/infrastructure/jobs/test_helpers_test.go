@@ -155,6 +155,12 @@ func (q *fakeJobQueue) RequeueExpired(context.Context, time.Time) (int64, error)
 	return 0, nil
 }
 
+func (q *fakeJobQueue) CountPendingWithAdmissionLock(context.Context) (int64, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return int64(len(q.pending)), nil
+}
+
 func (q *fakeJobQueue) snapshot() (renewals, completed, retries, failures, requeues int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

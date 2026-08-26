@@ -20,15 +20,15 @@ func TestBulkPersistenceAgainstPostgres(t *testing.T) {
 	requestID := uuid.New()
 	courseID := uuid.New()
 	if _, err := tx.Exec(ctx, `
-		INSERT INTO generation_requests (id, initial_user_prompt, updated_at)
-		VALUES ($1, 'integration test', $2)`, requestID, now); err != nil {
+		INSERT INTO generation_requests (id, clerk_user_id, initial_user_prompt, updated_at)
+		VALUES ($1, 'user_integration', 'integration test', $2)`, requestID, now); err != nil {
 		t.Fatalf("insert generation request: %v", err)
 	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO courses (
-			id, request_id, language, status, initial_user_prompt, title, synopsis,
+			id, request_id, clerk_user_id, language, status, initial_user_prompt, title, synopsis,
 			current_level, target_level, updated_at
-		) VALUES ($1, $2, 'fr', 'structure_generated', 'integration test', 'Linux',
+		) VALUES ($1, $2, 'user_integration', 'fr', 'structure_generated', 'integration test', 'Linux',
 			'Linux course', 'beginner', 'intermediate', $3)`, courseID, requestID, now); err != nil {
 		t.Fatalf("insert course: %v", err)
 	}

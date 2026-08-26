@@ -152,6 +152,7 @@ func newValidCourseForTest(t *testing.T, now time.Time) Course {
 	t.Helper()
 	course, err := NewCourseAt(NewCourseParams{
 		RequestID:         uuid.New(),
+		ClerkUserID:       "user_course_test",
 		Language:          CourseLanguageEN,
 		InitialUserPrompt: "Learn Linux",
 		Title:             "Linux",

@@ -8,4 +8,5 @@ bin
 tmp
 coverage.out
 *.test
+*.exe
 formation.json

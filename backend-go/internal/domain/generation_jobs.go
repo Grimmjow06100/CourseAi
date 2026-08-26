@@ -170,6 +170,7 @@ type GenerationJob struct {
 	CompletedAt      *time.Time
 	LastErrorCode    *string
 	LastErrorMessage *string
+	FailureHandledAt *time.Time
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 }
@@ -312,6 +313,9 @@ func (j GenerationJob) Validate() error {
 	}
 	if (j.Status == GenerationJobStatusQueued || j.Status == GenerationJobStatusRunning || j.Status == GenerationJobStatusCompleted) &&
 		(j.LastErrorCode != nil || j.LastErrorMessage != nil) {
+		return ErrInvalidGenerationJobState
+	}
+	if j.FailureHandledAt != nil && j.Status != GenerationJobStatusFailed {
 		return ErrInvalidGenerationJobState
 	}
 	return nil

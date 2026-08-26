@@ -16,24 +16,31 @@ import (
 const countCourses = `-- name: CountCourses :one
 SELECT count(*)::bigint
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 `
 
 type CountCoursesParams struct {
-	Status   *CourseGenerationStatus `db:"status" json:"status"`
-	Language *CourseLanguage         `db:"language" json:"language"`
-	Search   *string                 `db:"search" json:"search"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
 }
 
 func (q *Queries) CountCourses(ctx context.Context, arg CountCoursesParams) (int64, error) {
-	row := q.db.QueryRow(ctx, countCourses, arg.Status, arg.Language, arg.Search)
+	row := q.db.QueryRow(ctx, countCourses,
+		arg.ClerkUserID,
+		arg.Status,
+		arg.Language,
+		arg.Search,
+	)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
@@ -59,7 +66,8 @@ INSERT INTO courses (
   final_project_constraints,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 )
 VALUES (
   $1,
@@ -80,7 +88,8 @@ VALUES (
   $16::jsonb,
   $17::jsonb,
   $18,
-  $19
+  $19,
+  $20
 )
 RETURNING
   id,
@@ -102,7 +111,8 @@ RETURNING
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 `
 
 type CreateCourseParams struct {
@@ -125,6 +135,7 @@ type CreateCourseParams struct {
 	RawArchitectureOutput   json.RawMessage        `db:"raw_architecture_output" json:"raw_architecture_output"`
 	CreatedAt               time.Time              `db:"created_at" json:"created_at"`
 	UpdatedAt               time.Time              `db:"updated_at" json:"updated_at"`
+	ClerkUserID             string                 `db:"clerk_user_id" json:"clerk_user_id"`
 }
 
 func (q *Queries) CreateCourse(ctx context.Context, arg CreateCourseParams) (Course, error) {
@@ -148,6 +159,7 @@ func (q *Queries) CreateCourse(ctx context.Context, arg CreateCourseParams) (Cou
 		arg.RawArchitectureOutput,
 		arg.CreatedAt,
 		arg.UpdatedAt,
+		arg.ClerkUserID,
 	)
 	var i Course
 	err := row.Scan(
@@ -171,6 +183,7 @@ func (q *Queries) CreateCourse(ctx context.Context, arg CreateCourseParams) (Cou
 		&i.RawArchitectureOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ClerkUserID,
 	)
 	return i, err
 }
@@ -201,6 +214,23 @@ func (q *Queries) DeleteCourseByRequestID(ctx context.Context, requestID uuid.UU
 	return result.RowsAffected(), nil
 }
 
+const deleteCourseGenerationByCourseID = `-- name: DeleteCourseGenerationByCourseID :execrows
+DELETE FROM generation_requests
+WHERE id = (
+  SELECT request_id
+  FROM courses
+  WHERE courses.id = $1
+)
+`
+
+func (q *Queries) DeleteCourseGenerationByCourseID(ctx context.Context, courseID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteCourseGenerationByCourseID, courseID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getCourseByID = `-- name: GetCourseByID :one
 SELECT
   id,
@@ -222,7 +252,8 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
 WHERE id = $1
 `
@@ -251,6 +282,7 @@ func (q *Queries) GetCourseByID(ctx context.Context, id uuid.UUID) (Course, erro
 		&i.RawArchitectureOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ClerkUserID,
 	)
 	return i, err
 }
@@ -276,7 +308,8 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
 WHERE request_id = $1
 `
@@ -305,6 +338,7 @@ func (q *Queries) GetCourseByRequestID(ctx context.Context, requestID uuid.UUID)
 		&i.RawArchitectureOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ClerkUserID,
 	)
 	return i, err
 }
@@ -373,30 +407,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY created_at ASC, id ASC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesCreatedAtAscParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesCreatedAtAsc(ctx context.Context, arg ListCoursesCreatedAtAscParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesCreatedAtAsc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -431,6 +469,7 @@ func (q *Queries) ListCoursesCreatedAtAsc(ctx context.Context, arg ListCoursesCr
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -463,30 +502,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY created_at DESC, id DESC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesCreatedAtDescParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesCreatedAtDesc(ctx context.Context, arg ListCoursesCreatedAtDescParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesCreatedAtDesc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -521,6 +564,7 @@ func (q *Queries) ListCoursesCreatedAtDesc(ctx context.Context, arg ListCoursesC
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -553,30 +597,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY status ASC, id ASC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesStatusAscParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesStatusAsc(ctx context.Context, arg ListCoursesStatusAscParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesStatusAsc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -611,6 +659,7 @@ func (q *Queries) ListCoursesStatusAsc(ctx context.Context, arg ListCoursesStatu
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -643,30 +692,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY status DESC, id DESC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesStatusDescParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesStatusDesc(ctx context.Context, arg ListCoursesStatusDescParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesStatusDesc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -701,6 +754,7 @@ func (q *Queries) ListCoursesStatusDesc(ctx context.Context, arg ListCoursesStat
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -733,30 +787,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY title ASC, id ASC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesTitleAscParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesTitleAsc(ctx context.Context, arg ListCoursesTitleAscParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesTitleAsc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -791,6 +849,7 @@ func (q *Queries) ListCoursesTitleAsc(ctx context.Context, arg ListCoursesTitleA
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -823,30 +882,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY title DESC, id DESC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesTitleDescParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesTitleDesc(ctx context.Context, arg ListCoursesTitleDescParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesTitleDesc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -881,6 +944,7 @@ func (q *Queries) ListCoursesTitleDesc(ctx context.Context, arg ListCoursesTitle
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -913,30 +977,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY updated_at ASC, id ASC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesUpdatedAtAscParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesUpdatedAtAsc(ctx context.Context, arg ListCoursesUpdatedAtAscParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesUpdatedAtAsc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -971,6 +1039,7 @@ func (q *Queries) ListCoursesUpdatedAtAsc(ctx context.Context, arg ListCoursesUp
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -1003,30 +1072,34 @@ SELECT
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 FROM courses
-WHERE ($1::course_generation_status IS NULL OR status = $1::course_generation_status)
-  AND ($2::course_language IS NULL OR language = $2::course_language)
+WHERE clerk_user_id = $1
+  AND ($2::course_generation_status IS NULL OR status = $2::course_generation_status)
+  AND ($3::course_language IS NULL OR language = $3::course_language)
   AND (
-    $3::text IS NULL
-    OR btrim($3::text) = ''
-    OR title ILIKE '%' || $3::text || '%'
-    OR synopsis ILIKE '%' || $3::text || '%'
+    $4::text IS NULL
+    OR btrim($4::text) = ''
+    OR title ILIKE '%' || $4::text || '%'
+    OR synopsis ILIKE '%' || $4::text || '%'
   )
 ORDER BY updated_at DESC, id DESC
-LIMIT $5 OFFSET $4
+LIMIT $6 OFFSET $5
 `
 
 type ListCoursesUpdatedAtDescParams struct {
-	Status     *CourseGenerationStatus `db:"status" json:"status"`
-	Language   *CourseLanguage         `db:"language" json:"language"`
-	Search     *string                 `db:"search" json:"search"`
-	OffsetRows int32                   `db:"offset_rows" json:"offset_rows"`
-	LimitRows  int32                   `db:"limit_rows" json:"limit_rows"`
+	ClerkUserID string                  `db:"clerk_user_id" json:"clerk_user_id"`
+	Status      *CourseGenerationStatus `db:"status" json:"status"`
+	Language    *CourseLanguage         `db:"language" json:"language"`
+	Search      *string                 `db:"search" json:"search"`
+	OffsetRows  int32                   `db:"offset_rows" json:"offset_rows"`
+	LimitRows   int32                   `db:"limit_rows" json:"limit_rows"`
 }
 
 func (q *Queries) ListCoursesUpdatedAtDesc(ctx context.Context, arg ListCoursesUpdatedAtDescParams) ([]Course, error) {
 	rows, err := q.db.Query(ctx, listCoursesUpdatedAtDesc,
+		arg.ClerkUserID,
 		arg.Status,
 		arg.Language,
 		arg.Search,
@@ -1061,6 +1134,7 @@ func (q *Queries) ListCoursesUpdatedAtDesc(ctx context.Context, arg ListCoursesU
 			&i.RawArchitectureOutput,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ClerkUserID,
 		); err != nil {
 			return nil, err
 		}
@@ -1076,23 +1150,24 @@ const updateCourse = `-- name: UpdateCourse :one
 UPDATE courses
 SET
   request_id = $1,
-  language = $2::course_language,
-  status = $3::course_generation_status,
-  initial_user_prompt = $4,
-  title = $5,
-  synopsis = $6,
-  target_audience = $7,
-  current_level = $8::level,
-  target_level = $9::level,
-  prerequisites = $10::jsonb,
-  goals = $11::jsonb,
-  acquired_skills = $12::jsonb,
-  final_project_title = $13,
-  final_project_description = $14,
-  final_project_constraints = $15::jsonb,
-  raw_architecture_output = $16::jsonb,
-  updated_at = $17
-WHERE id = $18
+  clerk_user_id = $2,
+  language = $3::course_language,
+  status = $4::course_generation_status,
+  initial_user_prompt = $5,
+  title = $6,
+  synopsis = $7,
+  target_audience = $8,
+  current_level = $9::level,
+  target_level = $10::level,
+  prerequisites = $11::jsonb,
+  goals = $12::jsonb,
+  acquired_skills = $13::jsonb,
+  final_project_title = $14,
+  final_project_description = $15,
+  final_project_constraints = $16::jsonb,
+  raw_architecture_output = $17::jsonb,
+  updated_at = $18
+WHERE id = $19
 RETURNING
   id,
   request_id,
@@ -1113,11 +1188,13 @@ RETURNING
   generation_payload,
   raw_architecture_output,
   created_at,
-  updated_at
+  updated_at,
+  clerk_user_id
 `
 
 type UpdateCourseParams struct {
 	RequestID               uuid.UUID              `db:"request_id" json:"request_id"`
+	ClerkUserID             string                 `db:"clerk_user_id" json:"clerk_user_id"`
 	Language                CourseLanguage         `db:"language" json:"language"`
 	Status                  CourseGenerationStatus `db:"status" json:"status"`
 	InitialUserPrompt       string                 `db:"initial_user_prompt" json:"initial_user_prompt"`
@@ -1140,6 +1217,7 @@ type UpdateCourseParams struct {
 func (q *Queries) UpdateCourse(ctx context.Context, arg UpdateCourseParams) (Course, error) {
 	row := q.db.QueryRow(ctx, updateCourse,
 		arg.RequestID,
+		arg.ClerkUserID,
 		arg.Language,
 		arg.Status,
 		arg.InitialUserPrompt,
@@ -1180,6 +1258,7 @@ func (q *Queries) UpdateCourse(ctx context.Context, arg UpdateCourseParams) (Cou
 		&i.RawArchitectureOutput,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ClerkUserID,
 	)
 	return i, err
 }

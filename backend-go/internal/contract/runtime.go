@@ -10,7 +10,7 @@ type Clock interface {
 }
 
 type TransactionalRepositories interface {
-	Users() UserRepository
+	Ownership() OwnershipRepository
 	GenerationRequests() GenerationRequestRepository
 	GenerationJobs() GenerationJobQueue
 	Courses() CourseRepository

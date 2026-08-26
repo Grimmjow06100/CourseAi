@@ -10,6 +10,7 @@ import (
 
 type NewCourseParams struct {
 	RequestID               uuid.UUID
+	ClerkUserID             string
 	Language                CourseLanguage
 	InitialUserPrompt       string
 	Title                   string
@@ -28,6 +29,7 @@ type NewCourseParams struct {
 type Course struct {
 	ID                      uuid.UUID
 	RequestID               uuid.UUID
+	ClerkUserID             string
 	Language                CourseLanguage
 	Status                  CourseGenerationStatus
 	InitialUserPrompt       string
@@ -61,6 +63,7 @@ func NewCourseAt(params NewCourseParams, now time.Time) (Course, error) {
 	course := Course{
 		ID:                      id,
 		RequestID:               params.RequestID,
+		ClerkUserID:             normalizeText(params.ClerkUserID),
 		Language:                params.Language,
 		Status:                  CourseStatusAnalysisCompleted,
 		InitialUserPrompt:       normalizeText(params.InitialUserPrompt),
@@ -95,6 +98,9 @@ func (c Course) ValidateCourseOnly() error {
 	}
 	if c.RequestID == uuid.Nil {
 		return fmt.Errorf("%w: request id", ErrBlankField)
+	}
+	if err := validateClerkUserID(c.ClerkUserID); err != nil {
+		return fmt.Errorf("%w: course clerk user id", err)
 	}
 	if err := c.Language.Validate(); err != nil {
 		return err

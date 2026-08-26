@@ -1,0 +1,2573 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Course AI API",
+    "version": "1.0.0",
+    "description": "API HTTP du MVP Course AI protégée par des sessions Clerk. La génération complète est asynchrone et s'appuie sur des jobs PostgreSQL durables."
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Hôte courant"
+    }
+  ],
+  "tags": [
+    {
+      "name": "System",
+      "description": "État de fonctionnement du service"
+    },
+    {
+      "name": "Generations",
+      "description": "Orchestration asynchrone de la génération de formations"
+    },
+    {
+      "name": "Generation jobs",
+      "description": "Suivi technique des jobs asynchrones"
+    },
+    {
+      "name": "Courses",
+      "description": "Lecture et suppression des formations persistées"
+    },
+    {
+      "name": "Modules",
+      "description": "Lecture des modules et de leurs leçons"
+    },
+    {
+      "name": "Lessons",
+      "description": "Lecture des leçons et de leur contenu structuré"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "operationId": "getHealth",
+        "summary": "Vérifier la disponibilité de l'API",
+        "responses": {
+          "200": {
+            "description": "Le processus HTTP est disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                },
+                "example": {
+                  "status": "ok"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/live": {
+      "get": {
+        "tags": ["System"],
+        "operationId": "getLiveness",
+        "summary": "Vérifier que le processus HTTP est vivant",
+        "responses": {
+          "200": {
+            "description": "Le processus HTTP répond.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthResponse"}}}
+          }
+        },
+        "security": []
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "tags": ["System"],
+        "operationId": "getReadiness",
+        "summary": "Vérifier PostgreSQL et le worker de génération",
+        "responses": {
+          "200": {
+            "description": "L'API est prête à accepter du trafic.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReadinessResponse"}}}
+          },
+          "503": {
+            "description": "PostgreSQL est indisponible ou le worker est désactivé.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReadinessResponse"}}}
+          }
+        },
+        "security": []
+      }
+    },
+    "/api/generations": {
+      "post": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "startFullGeneration",
+        "summary": "Démarrer une génération complète",
+        "description": "Persiste la demande et enfile un job d'analyse. La réponse 202 est immédiate. Si l'analyse requiert des précisions, la pipeline passe à awaiting_clarification et le client doit appeler l'URL fournie dans actionRequired. Dans le cas contraire, le job d'architecture est automatiquement enfilé.",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Clé stable recommandée pour rejouer la création sans dupliquer la demande. Réutiliser une clé avec un autre prompt retourne 409.",
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            },
+            "example": "course-linux-2026-08-18"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartGenerationRequest"
+              },
+              "example": {
+                "prompt": "Je veux une formation sur Linux pour administrer des serveurs."
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}": {
+      "delete": {
+        "tags": ["Generations"],
+        "operationId": "deleteGenerationRequest",
+        "summary": "Supprimer une demande et toutes ses données",
+        "description": "Supprime atomiquement la demande possédée par l'utilisateur, ses jobs, son cours et tout le graphe pédagogique par cascade PostgreSQL.",
+        "parameters": [{"$ref": "#/components/parameters/RequestID"}],
+        "responses": {
+          "204": {"description": "Demande supprimée."},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    },
+    "/api/generations/{requestID}/clarifications": {
+      "post": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "submitGenerationClarifications",
+        "summary": "Soumettre les clarifications et continuer la génération",
+        "description": "Valide les réponses contre les questions persistées, confirme le brief puis enfile atomiquement le job d'architecture. selectedValues doit utiliser les champs value reçus dans clarificationQuestions. Un rejeu strictement identique est idempotent.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitClarificationsRequest"
+              },
+              "example": {
+                "answers": [
+                  {
+                    "questionId": "currentLevel",
+                    "selectedValues": [
+                      "beginner"
+                    ]
+                  },
+                  {
+                    "questionId": "targetLevel",
+                    "selectedValues": [
+                      "advanced"
+                    ]
+                  },
+                  {
+                    "questionId": "goals",
+                    "selectedValues": [
+                      "server_administration"
+                    ]
+                  }
+                ],
+                "title": "Administration Linux de débutant à avancé",
+                "synopsis": "Une progression pratique couvrant le shell, le système et l'administration de serveurs.",
+                "language": "fr"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/structure": {
+      "post": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "generateCourseStructure",
+        "summary": "Enfiler la génération de la structure",
+        "description": "Confirme le brief s'il ne l'est pas encore et enfile l'architecture, les modules et les plans de leçons. Cette opération ne génère pas le contenu détaillé des leçons et refuse une demande encore en attente de clarification.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateStructureRequest"
+              },
+              "example": {
+                "title": "Formation Docker pour déployer une API",
+                "synopsis": "Une progression pratique de l'image au déploiement.",
+                "currentLevel": "beginner",
+                "targetLevel": "intermediate",
+                "goals": [
+                  "Comprendre Docker",
+                  "Conteneuriser une API"
+                ],
+                "language": "fr"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/structure/retry": {
+      "post": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "retryCourseStructure",
+        "summary": "Relancer uniquement la structure",
+        "description": "Disponible seulement pour une pipeline failed dont currentStep correspond à architecture_generation ou lesson_plan_generation. Les données partielles de structure sont supprimées avant l'enfilage du nouveau job.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateStructureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/lessons/{lessonID}/content": {
+      "post": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "generateLessonContent",
+        "summary": "Enfiler la génération du contenu d'une leçon",
+        "description": "Enfile un job ciblé qui remplace atomiquement le Markdown, les exercices et les quiz persistés de la leçon.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LessonID"
+          }
+        ],
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/modules/{moduleID}/contents": {
+      "post": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "generateModuleLessonContents",
+        "summary": "Enfiler le contenu de toutes les leçons d'un module",
+        "description": "Enfile un job parent de module qui orchestre la génération du contenu de chaque leçon du module.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ModuleID"
+          }
+        ],
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/status": {
+      "get": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "getGenerationStatus",
+        "summary": "Consulter l'état fonctionnel d'une génération",
+        "description": "Endpoint de polling principal. actionRequired indique au frontend qu'une soumission de clarifications est nécessaire.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "État courant de la pipeline.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/result": {
+      "get": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "getGenerationResult",
+        "summary": "Récupérer le résultat complet d'une génération",
+        "description": "Retourne la demande et le graphe complet course/modules/lessons/activities. Tant que la pipeline n'est pas completed, l'API retourne 409.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formation complète générée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationResultResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/retry": {
+      "post": {
+        "tags": [
+          "Generations"
+        ],
+        "operationId": "retryFullGeneration",
+        "summary": "Relancer une génération échouée",
+        "description": "Relance la pipeline durable à partir de son checkpoint. Seules les générations failed sont éligibles.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "responses": {
+          "202": {
+            "$ref": "#/components/responses/GenerationAccepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/generation-jobs/{jobID}": {
+      "get": {
+        "tags": [
+          "Generation jobs"
+        ],
+        "operationId": "getGenerationJob",
+        "summary": "Consulter l'état technique d'un job",
+        "description": "Expose le type, les tentatives, le verrou et l'erreur terminale d'un job asynchrone.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/JobID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "État du job.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationJobResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/courses": {
+      "get": {
+        "tags": [
+          "Courses"
+        ],
+        "operationId": "listCourses",
+        "summary": "Lister les formations",
+        "description": "Retourne une page de formations triées. pageSize est normalisé par le backend et limité à 100.",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Recherche textuelle insensible à la casse dans le titre ou le synopsis.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtre sur l'état de génération du cours.",
+            "schema": {
+              "$ref": "#/components/schemas/CourseStatus"
+            }
+          },
+          {
+            "name": "language",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/Language"
+            }
+          },
+          {
+            "name": "orderBy",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created_at",
+                "updated_at",
+                "title",
+                "status"
+              ],
+              "default": "created_at"
+            }
+          },
+          {
+            "name": "orderDirection",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "default": "desc"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page de formations.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoursePageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/courses/{courseID}": {
+      "get": {
+        "tags": [
+          "Courses"
+        ],
+        "operationId": "getCourse",
+        "summary": "Récupérer une formation complète",
+        "description": "Charge le cours et toutes ses relations : modules, leçons, exercices et quiz.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CourseID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formation trouvée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CourseResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Courses"
+        ],
+        "operationId": "deleteCourse",
+        "summary": "Supprimer une formation",
+        "description": "Supprime le cours et ses relations selon les contraintes de cascade PostgreSQL.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CourseID"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Formation supprimée, sans corps de réponse."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/courses/{courseID}/modules": {
+      "get": {
+        "tags": [
+          "Courses",
+          "Modules"
+        ],
+        "operationId": "listCourseModules",
+        "summary": "Lister les modules d'une formation",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CourseID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Modules ordonnés du cours.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ModuleResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/modules/{moduleID}": {
+      "get": {
+        "tags": [
+          "Modules"
+        ],
+        "operationId": "getModule",
+        "summary": "Récupérer un module",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ModuleID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Module trouvé avec ses leçons.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModuleResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/modules/{moduleID}/lessons": {
+      "get": {
+        "tags": [
+          "Modules",
+          "Lessons"
+        ],
+        "operationId": "listModuleLessons",
+        "summary": "Lister les leçons d'un module",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ModuleID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leçons ordonnées du module.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LessonResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lessons/{lessonID}": {
+      "get": {
+        "tags": [
+          "Lessons"
+        ],
+        "operationId": "getLesson",
+        "summary": "Récupérer une leçon complète",
+        "description": "Retourne le Markdown, les exercices structurés et les quiz de la leçon.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LessonID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Leçon trouvée.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/lessons/{lessonID}/solutions": {
+      "get": {
+        "tags": ["Lessons"],
+        "operationId": "getLessonSolutions",
+        "summary": "Révéler les solutions d'une leçon",
+        "description": "Retourne explicitement les corrections des exercices et les réponses des quiz. Les endpoints ordinaires n'exposent jamais ces données.",
+        "parameters": [{"$ref": "#/components/parameters/LessonID"}],
+        "responses": {
+          "200": {
+            "description": "Solutions de la leçon.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LessonSolutionsResponse"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "CourseID": {
+        "name": "courseID",
+        "in": "path",
+        "required": true,
+        "description": "Identifiant UUID du cours.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "ModuleID": {
+        "name": "moduleID",
+        "in": "path",
+        "required": true,
+        "description": "Identifiant UUID du module.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "LessonID": {
+        "name": "lessonID",
+        "in": "path",
+        "required": true,
+        "description": "Identifiant UUID de la leçon.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "RequestID": {
+        "name": "requestID",
+        "in": "path",
+        "required": true,
+        "description": "Identifiant UUID de la demande de génération.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "JobID": {
+        "name": "jobID",
+        "in": "path",
+        "required": true,
+        "description": "Identifiant UUID du job de génération.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "responses": {
+      "GenerationAccepted": {
+        "description": "Job durable accepté et enfilé.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GenerationStartedResponse"
+            },
+            "example": {
+              "jobId": "953d5c51-337f-4e13-bf20-c5299f06ec14",
+              "requestId": "d8c1571f-380e-44da-be06-9de1f8ba2aff",
+              "status": "queued",
+              "jobStatus": "queued",
+              "statusUrl": "/api/generations/d8c1571f-380e-44da-be06-9de1f8ba2aff/status",
+              "jobStatusUrl": "/api/generation-jobs/953d5c51-337f-4e13-bf20-c5299f06ec14",
+              "resultUrl": "/api/generations/d8c1571f-380e-44da-be06-9de1f8ba2aff/result"
+            }
+          }
+        }
+      },
+      "BadRequest": {
+        "description": "Corps, paramètre ou règle de validation invalide.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "validation_error",
+              "message": "invalid level"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Session Clerk absente ou invalide.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "unauthenticated",
+              "message": "authentication is required"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Ressource absente.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "course_not_found",
+              "message": "course not found"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "L'état courant de la ressource interdit l'opération ou la clé d'idempotence est en conflit.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "generation_not_completed",
+              "message": "generation is not completed"
+            }
+          }
+        }
+      },
+      "UnprocessableEntity": {
+        "description": "La demande de formation est hors du périmètre accepté.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "generation_out_of_scope",
+              "message": "generation request is out of scope"
+            }
+          }
+        }
+      },
+      "ServiceUnavailable": {
+        "description": "Une dépendance applicative nécessaire est indisponible.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "service_unavailable",
+              "message": "generation service is unavailable"
+            }
+          }
+        }
+      },
+      "PayloadTooLarge": {
+        "description": "Le body JSON dépasse la limite configurée.",
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+            "example": {"code": "payload_too_large", "message": "request body is too large"}
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "La limite de commandes de génération est atteinte.",
+        "headers": {
+          "Retry-After": {"schema": {"type": "integer"}, "description": "Délai conseillé en secondes."}
+        },
+        "content": {
+          "application/json": {
+            "schema": {"$ref": "#/components/schemas/ErrorResponse"},
+            "example": {"code": "rate_limit_exceeded", "message": "too many generation commands"}
+          }
+        }
+      },
+      "InternalError": {
+        "description": "Erreur interne masquée au client et journalisée avec sa stack trace.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "internal_error",
+              "message": "internal server error"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "HealthResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          }
+        }
+      },
+      "ReadinessResponse": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "not_ready"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "worker_disabled",
+              "database_unavailable"
+            ]
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Code stable exploitable par le client."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message public sans détail interne."
+          }
+        }
+      },
+      "StartGenerationRequest": {
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        }
+      },
+      "AnalyzeGenerationRequest": {
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "GenerateStructureRequest": {
+        "type": "object",
+        "required": [
+          "title",
+          "synopsis",
+          "currentLevel",
+          "targetLevel",
+          "goals",
+          "language"
+        ],
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "synopsis": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "currentLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "targetLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "goals": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          }
+        }
+      },
+      "SubmitClarificationsRequest": {
+        "type": "object",
+        "required": [
+          "answers",
+          "title",
+          "synopsis",
+          "language"
+        ],
+        "properties": {
+          "answers": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/ClarificationAnswerRequest"
+            }
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "synopsis": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          }
+        }
+      },
+      "ClarificationAnswerRequest": {
+        "type": "object",
+        "required": [
+          "questionId",
+          "selectedValues"
+        ],
+        "properties": {
+          "questionId": {
+            "type": "string",
+            "enum": [
+              "goals",
+              "currentLevel",
+              "targetLevel"
+            ]
+          },
+          "selectedValues": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      },
+      "GenerationStartedResponse": {
+        "type": "object",
+        "required": [
+          "jobId",
+          "requestId",
+          "status",
+          "jobStatus",
+          "statusUrl",
+          "jobStatusUrl",
+          "resultUrl"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PipelineStatus"
+          },
+          "jobStatus": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "statusUrl": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "jobStatusUrl": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "resultUrl": {
+            "type": "string",
+            "format": "uri-reference"
+          }
+        }
+      },
+      "GenerationJobResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "requestId",
+          "parentJobId",
+          "kind",
+          "status",
+          "targetId",
+          "priority",
+          "attemptCount",
+          "maxAttempts",
+          "availableAt",
+          "lockedUntil",
+          "startedAt",
+          "completedAt",
+          "lastErrorCode",
+          "lastErrorMessage",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentJobId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "attemptCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "availableAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lockedUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "lastErrorCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastErrorMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "GenerationStatusResponse": {
+        "type": "object",
+        "required": [
+          "requestId",
+          "courseId",
+          "pipelineStatus",
+          "courseStatus",
+          "currentStep",
+          "progressPercent",
+          "failureMessage",
+          "isOutOfScope",
+          "errorMessage",
+          "warningMessage",
+          "suggestedTitle",
+          "shortSynopsis",
+          "detectedCurrentLevel",
+          "detectedTargetLevel",
+          "detectedGoal",
+          "detectedLanguage",
+          "clarificationQuestions",
+          "actionRequired"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "pipelineStatus": {
+            "$ref": "#/components/schemas/PipelineStatus"
+          },
+          "courseStatus": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CourseStatus"
+              }
+            ],
+            "nullable": true
+          },
+          "currentStep": {
+            "type": "string",
+            "nullable": true
+          },
+          "progressPercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "failureMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "isOutOfScope": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "warningMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "suggestedTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "shortSynopsis": {
+            "type": "string",
+            "nullable": true
+          },
+          "detectedCurrentLevel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Level"
+              }
+            ],
+            "nullable": true
+          },
+          "detectedTargetLevel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Level"
+              }
+            ],
+            "nullable": true
+          },
+          "detectedGoal": {
+            "type": "string",
+            "nullable": true
+          },
+          "detectedLanguage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Language"
+              }
+            ],
+            "nullable": true
+          },
+          "clarificationQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarificationQuestionResponse"
+            }
+          },
+          "actionRequired": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GenerationActionRequiredResponse"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "GenerationActionRequiredResponse": {
+        "type": "object",
+        "required": [
+          "type",
+          "url"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "submit_clarifications"
+            ]
+          },
+          "url": {
+            "type": "string",
+            "format": "uri-reference"
+          }
+        }
+      },
+      "GenerationAnalysisResponse": {
+        "type": "object",
+        "required": [
+          "request"
+        ],
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/GenerationRequestResponse"
+          }
+        }
+      },
+      "GenerationResultResponse": {
+        "type": "object",
+        "required": [
+          "request",
+          "course"
+        ],
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/GenerationRequestResponse"
+          },
+          "course": {
+            "$ref": "#/components/schemas/CourseResponse"
+          }
+        }
+      },
+      "GenerationRequestResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "initialUserPrompt",
+          "pipelineStatus",
+          "currentStep",
+          "progressPercent",
+          "failureMessage",
+          "startedAt",
+          "completedAt",
+          "isOutOfScope",
+          "errorMessage",
+          "warningMessage",
+          "suggestedTitle",
+          "shortSynopsis",
+          "detectedCurrentLevel",
+          "detectedTargetLevel",
+          "detectedGoal",
+          "detectedLanguage",
+          "clarificationQuestions",
+          "clarificationAnswers",
+          "confirmedBrief",
+          "analysisCompletedAt",
+          "briefConfirmedAt",
+          "clarificationsSubmittedAt",
+          "clarificationVersion",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "initialUserPrompt": {
+            "type": "string"
+          },
+          "pipelineStatus": {
+            "$ref": "#/components/schemas/PipelineStatus"
+          },
+          "currentStep": {
+            "type": "string",
+            "nullable": true
+          },
+          "progressPercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "failureMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "isOutOfScope": {
+            "type": "boolean"
+          },
+          "errorMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "warningMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "suggestedTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "shortSynopsis": {
+            "type": "string",
+            "nullable": true
+          },
+          "detectedCurrentLevel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Level"
+              }
+            ],
+            "nullable": true
+          },
+          "detectedTargetLevel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Level"
+              }
+            ],
+            "nullable": true
+          },
+          "detectedGoal": {
+            "type": "string",
+            "nullable": true
+          },
+          "detectedLanguage": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Language"
+              }
+            ],
+            "nullable": true
+          },
+          "clarificationQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarificationQuestionResponse"
+            }
+          },
+          "clarificationAnswers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarificationAnswerResponse"
+            }
+          },
+          "confirmedBrief": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GenerationBriefResponse"
+              }
+            ],
+            "nullable": true
+          },
+          "analysisCompletedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "briefConfirmedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "clarificationsSubmittedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "clarificationVersion": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ClarificationQuestionResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "question",
+          "options",
+          "allowMultiple"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "goals",
+              "currentLevel",
+              "targetLevel"
+            ]
+          },
+          "question": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarificationOptionResponse"
+            }
+          },
+          "allowMultiple": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ClarificationOptionResponse": {
+        "type": "object",
+        "required": [
+          "value",
+          "label"
+        ],
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          }
+        }
+      },
+      "ClarificationAnswerResponse": {
+        "type": "object",
+        "required": [
+          "questionId",
+          "selectedValues"
+        ],
+        "properties": {
+          "questionId": {
+            "type": "string"
+          },
+          "selectedValues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "GenerationBriefResponse": {
+        "type": "object",
+        "required": [
+          "title",
+          "synopsis",
+          "currentLevel",
+          "targetLevel",
+          "goals",
+          "language"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "synopsis": {
+            "type": "string"
+          },
+          "currentLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "targetLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          }
+        }
+      },
+      "CoursePageResponse": {
+        "type": "object",
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages",
+          "hasNext",
+          "hasPrevious"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CourseSummaryResponse"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalItems": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasNext": {
+            "type": "boolean"
+          },
+          "hasPrevious": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CourseSummaryResponse": {
+        "type": "object",
+        "required": ["id", "requestId", "language", "status", "title", "synopsis", "currentLevel", "targetLevel", "createdAt", "updatedAt"],
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "requestId": {"type": "string", "format": "uuid"},
+          "language": {"$ref": "#/components/schemas/Language"},
+          "status": {"$ref": "#/components/schemas/CourseStatus"},
+          "title": {"type": "string"},
+          "synopsis": {"type": "string"},
+          "currentLevel": {"$ref": "#/components/schemas/Level"},
+          "targetLevel": {"$ref": "#/components/schemas/Level"},
+          "createdAt": {"type": "string", "format": "date-time"},
+          "updatedAt": {"type": "string", "format": "date-time"}
+        }
+      },
+      "CourseResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "requestId",
+          "language",
+          "status",
+          "initialUserPrompt",
+          "title",
+          "synopsis",
+          "targetAudience",
+          "currentLevel",
+          "targetLevel",
+          "prerequisites",
+          "goals",
+          "acquiredSkills",
+          "finalProjectTitle",
+          "finalProjectDescription",
+          "finalProjectConstraints",
+          "totalDurationMinutes",
+          "modules",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CourseStatus"
+          },
+          "initialUserPrompt": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "synopsis": {
+            "type": "string"
+          },
+          "targetAudience": {
+            "type": "string",
+            "nullable": true
+          },
+          "currentLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "targetLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "goals": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "acquiredSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "finalProjectTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "finalProjectDescription": {
+            "type": "string",
+            "nullable": true
+          },
+          "finalProjectConstraints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalDurationMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Somme calculée des durées estimées des leçons."
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ModuleResponse"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ModuleResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "courseId",
+          "order",
+          "title",
+          "description",
+          "keyLearningPoints",
+          "totalDurationMinutes",
+          "lessons",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "keyLearningPoints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalDurationMinutes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Somme calculée des durées estimées des leçons du module."
+          },
+          "lessons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LessonResponse"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "LessonResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "moduleId",
+          "order",
+          "title",
+          "type",
+          "estimatedDurationMinutes",
+          "learningGoal",
+          "requiresDiagram",
+          "technicalKeywords",
+          "contentMarkdown",
+          "exercises",
+          "quizzes",
+          "hasContent",
+          "hasStructuredActivities",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "moduleId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/LessonType"
+          },
+          "estimatedDurationMinutes": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "learningGoal": {
+            "type": "string"
+          },
+          "requiresDiagram": {
+            "type": "boolean"
+          },
+          "technicalKeywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "contentMarkdown": {
+            "type": "string",
+            "nullable": true
+          },
+          "exercises": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExerciseResponse"
+            }
+          },
+          "quizzes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuizResponse"
+            }
+          },
+          "hasContent": {
+            "type": "boolean"
+          },
+          "hasStructuredActivities": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ExerciseResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "lessonId",
+          "type",
+          "difficulty",
+          "title",
+          "objective",
+          "instructionsMarkdown",
+          "contentMarkdown",
+          "payload",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ExerciseType"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/Difficulty"
+          },
+          "title": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "instructionsMarkdown": {
+            "type": "string"
+          },
+          "contentMarkdown": {
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "QuizResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "lessonId",
+          "type",
+          "difficulty",
+          "title",
+          "objective",
+          "questions",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "$ref": "#/components/schemas/QuizType"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/Difficulty"
+          },
+          "title": {
+            "type": "string"
+          },
+          "objective": {
+            "type": "string"
+          },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestionResponse"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "QuizQuestionResponse": {
+        "type": "object",
+        "required": [
+          "order",
+          "type",
+          "question",
+          "options"
+        ],
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "type": {
+            "$ref": "#/components/schemas/QuizQuestionType"
+          },
+          "question": {
+            "type": "string"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuizOptionResponse"
+            }
+          }
+        }
+      },
+      "QuizOptionResponse": {
+        "type": "object",
+        "required": [
+          "order",
+          "text"
+        ],
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "QuizAnswerResponse": {
+        "type": "object",
+        "required": [
+          "answer",
+          "answers"
+        ],
+        "properties": {
+          "answer": {
+            "type": "string",
+            "nullable": true
+          },
+          "answers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "LessonSolutionsResponse": {
+        "type": "object",
+        "required": ["lessonId", "exercises", "quizzes"],
+        "properties": {
+          "lessonId": {"type": "string", "format": "uuid"},
+          "exercises": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/ExerciseSolutionResponse"}
+          },
+          "quizzes": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/QuizSolutionResponse"}
+          }
+        }
+      },
+      "ExerciseSolutionResponse": {
+        "type": "object",
+        "required": ["exerciseId", "correctionMarkdown"],
+        "properties": {
+          "exerciseId": {"type": "string", "format": "uuid"},
+          "correctionMarkdown": {"type": "string"}
+        }
+      },
+      "QuizSolutionResponse": {
+        "type": "object",
+        "required": ["quizId", "questions"],
+        "properties": {
+          "quizId": {"type": "string", "format": "uuid"},
+          "questions": {
+            "type": "array",
+            "items": {"$ref": "#/components/schemas/QuizQuestionSolutionResponse"}
+          }
+        }
+      },
+      "QuizQuestionSolutionResponse": {
+        "type": "object",
+        "required": ["order", "answer", "correction"],
+        "properties": {
+          "order": {"type": "integer", "minimum": 1},
+          "answer": {"$ref": "#/components/schemas/QuizAnswerResponse"},
+          "correction": {"type": "string"}
+        }
+      },
+      "Language": {
+        "type": "string",
+        "enum": [
+          "fr",
+          "en"
+        ]
+      },
+      "Level": {
+        "type": "string",
+        "enum": [
+          "beginner",
+          "intermediate",
+          "advanced",
+          "expert",
+          "unknown"
+        ]
+      },
+      "LessonType": {
+        "type": "string",
+        "enum": [
+          "theory",
+          "practice",
+          "mixed",
+          "quiz"
+        ]
+      },
+      "Difficulty": {
+        "type": "string",
+        "enum": [
+          "beginner",
+          "intermediate",
+          "advanced"
+        ]
+      },
+      "ExerciseType": {
+        "type": "string",
+        "enum": [
+          "guided_lab",
+          "coding",
+          "debugging",
+          "configuration",
+          "scenario",
+          "written_answer",
+          "command_line",
+          "mixed"
+        ]
+      },
+      "QuizType": {
+        "type": "string",
+        "enum": [
+          "single_choice",
+          "multiple_choice",
+          "true_false",
+          "short_answer",
+          "mixed"
+        ]
+      },
+      "QuizQuestionType": {
+        "type": "string",
+        "enum": [
+          "single_choice",
+          "multiple_choice",
+          "true_false",
+          "short_answer"
+        ]
+      },
+      "PipelineStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "awaiting_clarification",
+          "completed",
+          "failed"
+        ]
+      },
+      "CourseStatus": {
+        "type": "string",
+        "enum": [
+          "analysis_pending",
+          "analysis_completed",
+          "architecture_generating",
+          "structure_generated",
+          "lessons_generating",
+          "lessons_generated",
+          "content_generating",
+          "completed",
+          "failed"
+        ]
+      },
+      "JobStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "retry_scheduled",
+          "completed",
+          "failed",
+          "cancelled"
+        ]
+      },
+      "JobKind": {
+        "type": "string",
+        "enum": [
+          "analysis",
+          "architecture",
+          "lesson_plan",
+          "lesson_content",
+          "module_content",
+          "finalize_course"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "ClerkBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Clerk session JWT",
+        "description": "Session token Clerk transmis dans Authorization: Bearer <token>."
+      }
+    }
+  },
+  "security": [
+    {
+      "ClerkBearer": []
+    }
+  ]
+}
