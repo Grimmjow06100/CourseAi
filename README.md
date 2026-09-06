@@ -21,7 +21,7 @@ Le backend Go contient aujourd'hui :
 - une authentification Clerk avec ownership des demandes, jobs et formations ;
 - une base PostgreSQL locale via Docker Compose.
 
-La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/openai` et les prompts Markdown de `backend-go/prompts`.
+La generation IA est cablee dans `cmd/api/app.go` via `internal/infrastructure/openai` et les prompts Markdown de `backend-go/prompts`.
 
 ## Stack
 
@@ -29,7 +29,7 @@ La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/
 - Base de donnees : PostgreSQL 16
 - Auth : Clerk et session token bearer
 - IA : OpenAI SDK Responses API avec Structured Outputs
-- Frontend : React + Vite dans `frontend/`
+- Frontend : React, Vite, TanStack Router/Query, Clerk et Tailwind dans `frontend/`
 - Infra locale : Docker Compose pour PostgreSQL
 
 ## Structure du repo
@@ -50,7 +50,8 @@ La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/
 │   │   │   ├── postgres/ # repositories pgx et unit of work
 │   │   │   └── prompts/  # implementation PromptStore
 │   │   ├── config/       # chargement des variables d'environnement
-│   │   └── database/     # ouverture du pool PostgreSQL
+│   │   └── db/           # ouverture du pool PostgreSQL et code sqlc genere
+│   ├── docs/             # architecture et onboarding backend
 │   ├── migrations/       # migrations Goose
 │   ├── prompts/          # prompts IA .prompt.md
 │   ├── .env.example      # variables attendues par le backend Go
@@ -68,6 +69,7 @@ La generation IA est cablee dans `cmd/api/main.go` via `internal/infrastructure/
 - Docker Desktop
 - Goose CLI pour les migrations
 - Une cle OpenAI valide
+- Node.js 22+ et une publishable key Clerk pour le frontend
 
 Installer Goose si besoin :
 
@@ -99,6 +101,18 @@ L'API demarre par defaut sur :
 ```txt
 http://localhost:8080
 ```
+
+Puis cote frontend :
+
+```powershell
+cd frontend
+Copy-Item .env.example .env.local
+npm ci
+npm run api:generate
+npm run dev
+```
+
+Configurer `VITE_CLERK_PUBLISHABLE_KEY` dans `frontend/.env.local`. Le client est disponible par defaut sur `http://localhost:5173`. Sa documentation d'architecture et de deploiement se trouve dans `frontend/README.md` et `frontend/docs/architecture.md`.
 
 Healthcheck :
 
@@ -184,6 +198,7 @@ GET    /api/lessons/:lessonID/solutions
 Generation IA :
 
 ```http
+GET  /api/generations
 POST /api/generations
 POST /api/generations/:requestID/clarifications
 POST /api/generations/:requestID/structure
@@ -203,7 +218,7 @@ GET  /api/generation-jobs/:jobID
 `POST /api/generations/:requestID/structure/retry` relance uniquement l'etape structure sur une request `failed` dont l'echec vient de `architecture_generation` ou `lesson_plan_generation`; le body est le meme que `/structure` et les donnees partielles sont supprimees avant relance.
 `POST /api/generations/lessons/:lessonID/content` et `POST /api/generations/modules/:moduleID/contents` retournent aussi `202`; suivre leur etat avec `GET /api/generation-jobs/:jobID`.
 
-Le header `Idempotency-Key` est recommande sur `POST /api/generations` et est scope par Clerk User ID. Les migrations `00001` a `00008` doivent etre appliquees avant le demarrage. `00008` ajoute la reconciliation durable des echecs de jobs et les index operationnels.
+Le header `Idempotency-Key` est recommande sur `POST /api/generations` et est scope par Clerk User ID. Les migrations `00001` a `00009` doivent etre appliquees avant le demarrage. `00008` ajoute la reconciliation durable des echecs de jobs et les index operationnels ; `00009` indexe l'historique chronologique par proprietaire.
 
 ## Exemples rapides
 

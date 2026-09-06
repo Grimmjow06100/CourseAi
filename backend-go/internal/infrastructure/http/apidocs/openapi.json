@@ -96,6 +96,40 @@
       }
     },
     "/api/generations": {
+      "get": {
+        "tags": ["Generations"],
+        "operationId": "listGenerationRequests",
+        "summary": "Lister les demandes de génération",
+        "description": "Retourne l'historique paginé du propriétaire authentifié, y compris les demandes en attente de clarification ou sans cours créé.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {"$ref": "#/components/schemas/PipelineStatus"}
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 1, "default": 1}
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page de demandes de génération.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GenerationPageResponse"}}}
+          },
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "429": {"$ref": "#/components/responses/RateLimited"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"},
+          "500": {"$ref": "#/components/responses/InternalError"}
+        }
+      },
       "post": {
         "tags": [
           "Generations"
@@ -578,6 +612,23 @@
           "401": {
             "$ref": "#/components/responses/Unauthorized"
           }
+        }
+      }
+    },
+    "/api/generations/{requestID}/jobs": {
+      "get": {
+        "tags": ["Generation jobs"],
+        "operationId": "listGenerationJobs",
+        "summary": "Retrouver les jobs d'une generation",
+        "description": "Retourne les etats publics des jobs de la demande appartenant a l'utilisateur connecte, pour reprendre le suivi apres rechargement. Les payloads internes ne sont pas exposes.",
+        "parameters": [{"$ref": "#/components/parameters/RequestID"}],
+        "responses": {
+          "200": {"description": "Jobs de la demande.", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/GenerationJobResponse"}}}}},
+          "400": {"$ref": "#/components/responses/BadRequest"},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "500": {"$ref": "#/components/responses/InternalError"},
+          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
         }
       }
     },
@@ -1249,18 +1300,6 @@
           }
         }
       },
-      "AnalyzeGenerationRequest": {
-        "type": "object",
-        "required": [
-          "prompt"
-        ],
-        "properties": {
-          "prompt": {
-            "type": "string",
-            "minLength": 1
-          }
-        }
-      },
       "GenerateStructureRequest": {
         "type": "object",
         "required": [
@@ -1396,6 +1435,37 @@
             "type": "string",
             "format": "uri-reference"
           }
+        }
+      },
+      "GenerationPageResponse": {
+        "type": "object",
+        "required": ["items", "page", "pageSize", "totalItems", "totalPages", "hasNext", "hasPrevious"],
+        "properties": {
+          "items": {"type": "array", "items": {"$ref": "#/components/schemas/GenerationSummaryResponse"}},
+          "page": {"type": "integer", "minimum": 1},
+          "pageSize": {"type": "integer", "minimum": 1, "maximum": 100},
+          "totalItems": {"type": "integer", "minimum": 0},
+          "totalPages": {"type": "integer", "minimum": 0},
+          "hasNext": {"type": "boolean"},
+          "hasPrevious": {"type": "boolean"}
+        }
+      },
+      "GenerationSummaryResponse": {
+        "type": "object",
+        "required": ["requestId", "courseId", "initialUserPrompt", "title", "pipelineStatus", "courseStatus", "currentStep", "progressPercent", "isOutOfScope", "failureMessage", "createdAt", "updatedAt"],
+        "properties": {
+          "requestId": {"type": "string", "format": "uuid"},
+          "courseId": {"type": "string", "format": "uuid", "nullable": true},
+          "initialUserPrompt": {"type": "string"},
+          "title": {"type": "string"},
+          "pipelineStatus": {"$ref": "#/components/schemas/PipelineStatus"},
+          "courseStatus": {"allOf": [{"$ref": "#/components/schemas/CourseStatus"}], "nullable": true},
+          "currentStep": {"type": "string", "nullable": true},
+          "progressPercent": {"type": "integer", "minimum": 0, "maximum": 100},
+          "isOutOfScope": {"type": "boolean"},
+          "failureMessage": {"type": "string", "nullable": true},
+          "createdAt": {"type": "string", "format": "date-time"},
+          "updatedAt": {"type": "string", "format": "date-time"}
         }
       },
       "GenerationJobResponse": {
@@ -1627,17 +1697,6 @@
           "url": {
             "type": "string",
             "format": "uri-reference"
-          }
-        }
-      },
-      "GenerationAnalysisResponse": {
-        "type": "object",
-        "required": [
-          "request"
-        ],
-        "properties": {
-          "request": {
-            "$ref": "#/components/schemas/GenerationRequestResponse"
           }
         }
       },
@@ -2274,8 +2333,7 @@
             "type": "string"
           },
           "payload": {
-            "type": "object",
-            "additionalProperties": true
+            "$ref": "#/components/schemas/ExercisePayloadResponse"
           },
           "createdAt": {
             "type": "string",
@@ -2285,6 +2343,18 @@
             "type": "string",
             "format": "date-time"
           }
+        }
+      },
+      "ExercisePayloadResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tasks", "resources", "starterCode", "expectedOutput", "hints"],
+        "properties": {
+          "tasks": {"type": "array", "items": {"type": "string"}},
+          "resources": {"type": "array", "items": {"type": "string"}},
+          "starterCode": {"type": "string", "nullable": true},
+          "expectedOutput": {"type": "string", "nullable": true},
+          "hints": {"type": "array", "items": {"type": "string"}}
         }
       },
       "QuizResponse": {

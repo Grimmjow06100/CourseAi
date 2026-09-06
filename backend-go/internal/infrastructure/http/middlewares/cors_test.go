@@ -30,6 +30,9 @@ func TestCORSAllowsConfiguredOrigin(t *testing.T) {
 	if got := response.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
 		t.Fatalf("expected credentials header, got %q", got)
 	}
+	if got := response.Header().Get("Access-Control-Expose-Headers"); got != "X-Request-ID, Retry-After" {
+		t.Fatalf("unexpected exposed headers: %q", got)
+	}
 }
 
 func TestCORSRejectsUnknownOrigin(t *testing.T) {

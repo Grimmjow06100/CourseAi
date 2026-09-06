@@ -12,15 +12,40 @@ import (
 )
 
 type GenerationHandler struct {
-	service contract.CourseGenerationService
+	commands contract.GenerationCommandService
+	queries  contract.GenerationQueryService
 }
 
-func NewGenerationHandler(service contract.CourseGenerationService) *GenerationHandler {
-	return &GenerationHandler{service: service}
+type structureOperation uint8
+
+const (
+	createStructure structureOperation = iota
+	retryStructure
+)
+
+func NewGenerationHandler(commands contract.GenerationCommandService, queries contract.GenerationQueryService) *GenerationHandler {
+	return &GenerationHandler{commands: commands, queries: queries}
+}
+
+func (h *GenerationHandler) List(c *gin.Context) {
+	if h.queries == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+	filters, ok := parseGenerationHistoryFilters(c)
+	if !ok {
+		return
+	}
+	page, err := h.queries.ListGenerationRequests(c.Request.Context(), filters)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto.GenerationPageFromContract(page))
 }
 
 func (h *GenerationHandler) Start(c *gin.Context) {
-	if h.service == nil {
+	if h.commands == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -30,7 +55,7 @@ func (h *GenerationHandler) Start(c *gin.Context) {
 		return
 	}
 
-	started, err := h.service.StartFullCourseGeneration(c.Request.Context(), contract.StartGenerationParams{
+	started, err := h.commands.StartFullCourseGeneration(c.Request.Context(), contract.StartGenerationParams{
 		Prompt:         request.Prompt,
 		IdempotencyKey: c.GetHeader("Idempotency-Key"),
 	})
@@ -42,28 +67,8 @@ func (h *GenerationHandler) Start(c *gin.Context) {
 	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
 
-func (h *GenerationHandler) Analyze(c *gin.Context) {
-	if h.service == nil {
-		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
-		return
-	}
-
-	var request dto.AnalyzeGenerationRequest
-	if !bindJSON(c, &request) {
-		return
-	}
-
-	result, err := h.service.AnalyzePrompt(c.Request.Context(), contract.AnalyzePromptParams{Prompt: request.Prompt})
-	if err != nil {
-		middlewares.AbortWithError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusCreated, dto.GenerationAnalysisFromContract(result))
-}
-
 func (h *GenerationHandler) SubmitClarifications(c *gin.Context) {
-	if h.service == nil {
+	if h.commands == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -87,7 +92,7 @@ func (h *GenerationHandler) SubmitClarifications(c *gin.Context) {
 			SelectedValues: answer.SelectedValues,
 		})
 	}
-	started, err := h.service.SubmitClarifications(c.Request.Context(), contract.SubmitClarificationsParams{
+	started, err := h.commands.SubmitClarifications(c.Request.Context(), contract.SubmitClarificationsParams{
 		RequestID: requestID,
 		Answers:   answers,
 		Title:     request.Title,
@@ -102,38 +107,15 @@ func (h *GenerationHandler) SubmitClarifications(c *gin.Context) {
 }
 
 func (h *GenerationHandler) Structure(c *gin.Context) {
-	if h.service == nil {
-		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
-		return
-	}
-
-	requestID, ok := parseUUIDParam(c, "requestID")
-	if !ok {
-		return
-	}
-
-	var request dto.GenerateStructureRequest
-	if !bindJSON(c, &request) {
-		return
-	}
-
-	params, err := generateStructureParamsFromRequest(requestID, request)
-	if err != nil {
-		middlewares.AbortWithError(c, err)
-		return
-	}
-
-	started, err := h.service.EnqueueCourseStructure(c.Request.Context(), params)
-	if err != nil {
-		middlewares.AbortWithError(c, err)
-		return
-	}
-
-	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
+	h.handleStructure(c, createStructure)
 }
 
 func (h *GenerationHandler) RetryStructure(c *gin.Context) {
-	if h.service == nil {
+	h.handleStructure(c, retryStructure)
+}
+
+func (h *GenerationHandler) handleStructure(c *gin.Context, operation structureOperation) {
+	if h.commands == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -154,7 +136,12 @@ func (h *GenerationHandler) RetryStructure(c *gin.Context) {
 		return
 	}
 
-	started, err := h.service.EnqueueStructureRetry(c.Request.Context(), params)
+	var started contract.GenerationStarted
+	if operation == retryStructure {
+		started, err = h.commands.EnqueueStructureRetry(c.Request.Context(), params)
+	} else {
+		started, err = h.commands.EnqueueCourseStructure(c.Request.Context(), params)
+	}
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -163,7 +150,7 @@ func (h *GenerationHandler) RetryStructure(c *gin.Context) {
 	c.JSON(http.StatusAccepted, dto.GenerationStartedFromContract(started))
 }
 func (h *GenerationHandler) LessonContent(c *gin.Context) {
-	if h.service == nil {
+	if h.commands == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -173,7 +160,7 @@ func (h *GenerationHandler) LessonContent(c *gin.Context) {
 		return
 	}
 
-	started, err := h.service.EnqueueLessonContentGeneration(c.Request.Context(), lessonID)
+	started, err := h.commands.EnqueueLessonContentGeneration(c.Request.Context(), lessonID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -183,7 +170,7 @@ func (h *GenerationHandler) LessonContent(c *gin.Context) {
 }
 
 func (h *GenerationHandler) ModuleLessonContents(c *gin.Context) {
-	if h.service == nil {
+	if h.commands == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -193,7 +180,7 @@ func (h *GenerationHandler) ModuleLessonContents(c *gin.Context) {
 		return
 	}
 
-	started, err := h.service.EnqueueModuleContentGeneration(c.Request.Context(), moduleID)
+	started, err := h.commands.EnqueueModuleContentGeneration(c.Request.Context(), moduleID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -203,7 +190,7 @@ func (h *GenerationHandler) ModuleLessonContents(c *gin.Context) {
 }
 
 func (h *GenerationHandler) JobStatus(c *gin.Context) {
-	if h.service == nil {
+	if h.queries == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -212,7 +199,7 @@ func (h *GenerationHandler) JobStatus(c *gin.Context) {
 	if !ok {
 		return
 	}
-	job, err := h.service.GetGenerationJob(c.Request.Context(), jobID)
+	job, err := h.queries.GetGenerationJob(c.Request.Context(), jobID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -220,8 +207,29 @@ func (h *GenerationHandler) JobStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.GenerationJobFromDomain(job))
 }
 
+func (h *GenerationHandler) Jobs(c *gin.Context) {
+	if h.queries == nil {
+		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
+		return
+	}
+	requestID, ok := parseUUIDParam(c, "requestID")
+	if !ok {
+		return
+	}
+	jobs, err := h.queries.ListGenerationJobs(c.Request.Context(), requestID)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	response := make([]dto.GenerationJobResponse, 0, len(jobs))
+	for _, job := range jobs {
+		response = append(response, dto.GenerationJobFromDomain(job))
+	}
+	c.JSON(http.StatusOK, response)
+}
+
 func (h *GenerationHandler) Status(c *gin.Context) {
-	if h.service == nil {
+	if h.queries == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -231,7 +239,7 @@ func (h *GenerationHandler) Status(c *gin.Context) {
 		return
 	}
 
-	status, err := h.service.GetGenerationStatus(c.Request.Context(), requestID)
+	status, err := h.queries.GetGenerationStatus(c.Request.Context(), requestID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -241,7 +249,7 @@ func (h *GenerationHandler) Status(c *gin.Context) {
 }
 
 func (h *GenerationHandler) Result(c *gin.Context) {
-	if h.service == nil {
+	if h.queries == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -251,7 +259,7 @@ func (h *GenerationHandler) Result(c *gin.Context) {
 		return
 	}
 
-	result, err := h.service.GetGenerationResult(c.Request.Context(), requestID)
+	result, err := h.queries.GetGenerationResult(c.Request.Context(), requestID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -261,7 +269,7 @@ func (h *GenerationHandler) Result(c *gin.Context) {
 }
 
 func (h *GenerationHandler) Retry(c *gin.Context) {
-	if h.service == nil {
+	if h.commands == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -271,7 +279,7 @@ func (h *GenerationHandler) Retry(c *gin.Context) {
 		return
 	}
 
-	started, err := h.service.RetryFullCourseGeneration(c.Request.Context(), requestID)
+	started, err := h.commands.RetryFullCourseGeneration(c.Request.Context(), requestID)
 	if err != nil {
 		middlewares.AbortWithError(c, err)
 		return
@@ -281,7 +289,7 @@ func (h *GenerationHandler) Retry(c *gin.Context) {
 }
 
 func (h *GenerationHandler) Delete(c *gin.Context) {
-	if h.service == nil {
+	if h.commands == nil {
 		middlewares.AbortWithError(c, middlewares.ServiceUnavailable("generation service is unavailable", nil))
 		return
 	}
@@ -289,7 +297,7 @@ func (h *GenerationHandler) Delete(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.service.DeleteGenerationRequest(c.Request.Context(), requestID); err != nil {
+	if err := h.commands.DeleteGenerationRequest(c.Request.Context(), requestID); err != nil {
 		middlewares.AbortWithError(c, err)
 		return
 	}

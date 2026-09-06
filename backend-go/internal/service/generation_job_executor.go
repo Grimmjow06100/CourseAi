@@ -51,40 +51,32 @@ func (e *GenerationJobExecutor) Execute(ctx context.Context, job domain.Generati
 	if err := validateExecutableJob(job); err != nil {
 		return err
 	}
+	run, err := e.handlerFor(job.Kind)
+	if err != nil {
+		return err
+	}
+	if err := requireEmptyJobPayload(job.Payload); err != nil {
+		return err
+	}
+	return run(ctx, job)
+}
 
-	switch job.Kind {
+func (e *GenerationJobExecutor) handlerFor(kind domain.GenerationJobKind) (func(context.Context, domain.GenerationJob) error, error) {
+	switch kind {
 	case domain.GenerationJobKindAnalysis:
-		if err := requireEmptyJobPayload(job.Payload); err != nil {
-			return err
-		}
-		return e.runner.runAnalysisJob(ctx, job)
+		return e.runner.runAnalysisJob, nil
 	case domain.GenerationJobKindArchitecture:
-		if err := requireEmptyJobPayload(job.Payload); err != nil {
-			return err
-		}
-		return e.runner.runArchitectureJob(ctx, job)
+		return e.runner.runArchitectureJob, nil
 	case domain.GenerationJobKindLessonPlan:
-		if err := requireEmptyJobPayload(job.Payload); err != nil {
-			return err
-		}
-		return e.runner.runLessonPlanJob(ctx, job)
+		return e.runner.runLessonPlanJob, nil
 	case domain.GenerationJobKindLessonContent:
-		if err := requireEmptyJobPayload(job.Payload); err != nil {
-			return err
-		}
-		return e.runner.runLessonContentJob(ctx, job)
+		return e.runner.runLessonContentJob, nil
 	case domain.GenerationJobKindModuleContent:
-		if err := requireEmptyJobPayload(job.Payload); err != nil {
-			return err
-		}
-		return e.runner.runModuleContentJob(ctx, job)
+		return e.runner.runModuleContentJob, nil
 	case domain.GenerationJobKindFinalizeCourse:
-		if err := requireEmptyJobPayload(job.Payload); err != nil {
-			return err
-		}
-		return e.runner.runFinalizeCourseJob(ctx, job)
+		return e.runner.runFinalizeCourseJob, nil
 	default:
-		return fmt.Errorf("%w: %s", domain.ErrInvalidGenerationJobKind, job.Kind)
+		return nil, fmt.Errorf("%w: %s", domain.ErrInvalidGenerationJobKind, kind)
 	}
 }
 

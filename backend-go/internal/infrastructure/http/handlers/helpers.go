@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
@@ -34,6 +35,28 @@ func parseUUIDParam(c *gin.Context, name string) (uuid.UUID, bool) {
 		return uuid.Nil, false
 	}
 	return id, true
+}
+
+func writeUUIDCollection[Entity, Response any](
+	c *gin.Context,
+	parameter string,
+	load func(context.Context, uuid.UUID) ([]Entity, error),
+	mapResponse func(Entity) Response,
+) {
+	id, ok := parseUUIDParam(c, parameter)
+	if !ok {
+		return
+	}
+	entities, err := load(c.Request.Context(), id)
+	if err != nil {
+		middlewares.AbortWithError(c, err)
+		return
+	}
+	responses := make([]Response, 0, len(entities))
+	for _, entity := range entities {
+		responses = append(responses, mapResponse(entity))
+	}
+	c.JSON(http.StatusOK, responses)
 }
 
 func parseCourseFilters(c *gin.Context) (contract.CourseFilters, bool) {
@@ -81,17 +104,43 @@ func parseCourseFilters(c *gin.Context) (contract.CourseFilters, bool) {
 		filters.OrderDirection = direction
 	}
 
-	page, ok := parseOptionalPositiveInt(c, "page", 1)
+	pagination, ok := parsePagination(c)
 	if !ok {
 		return contract.CourseFilters{}, false
+	}
+	filters.Pagination = pagination
+
+	return filters, true
+}
+
+func parseGenerationHistoryFilters(c *gin.Context) (contract.GenerationHistoryFilters, bool) {
+	filters := contract.GenerationHistoryFilters{}
+	if value := strings.TrimSpace(c.Query("status")); value != "" {
+		status, err := domain.ParseGenerationPipelineStatus(value)
+		if err != nil {
+			middlewares.AbortWithError(c, middlewares.BadRequest("invalid status query parameter", err))
+			return contract.GenerationHistoryFilters{}, false
+		}
+		filters.PipelineStatus = &status
+	}
+	pagination, ok := parsePagination(c)
+	if !ok {
+		return contract.GenerationHistoryFilters{}, false
+	}
+	filters.Pagination = pagination
+	return filters, true
+}
+
+func parsePagination(c *gin.Context) (contract.Pagination, bool) {
+	page, ok := parseOptionalPositiveInt(c, "page", 1)
+	if !ok {
+		return contract.Pagination{}, false
 	}
 	pageSize, ok := parseOptionalPositiveInt(c, "pageSize", 20)
 	if !ok {
-		return contract.CourseFilters{}, false
+		return contract.Pagination{}, false
 	}
-	filters.Pagination = contract.Pagination{Page: page, PageSize: pageSize}.Normalize()
-
-	return filters, true
+	return contract.Pagination{Page: page, PageSize: pageSize}.Normalize(), true
 }
 
 func parseOptionalPositiveInt(c *gin.Context, name string, fallback int) (int, bool) {

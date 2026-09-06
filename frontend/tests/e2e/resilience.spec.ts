@@ -1,0 +1,145 @@
+import { expect, test } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { course, courseId, lessonId, mockApi, moduleId, requestId } from './mock-api'
+
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('course-ai-language', 'fr'))
+})
+
+test('restores a running partial job after reload and stops on failure', async ({ page }) => {
+  await mockApi(page)
+  let failed = false
+  let reads = 0
+  await page.route(`**/api/generations/${requestId}/jobs`, async (route) => {
+    reads++
+    await route.fulfill({
+      json: [
+        {
+          id: 'job',
+          targetId: lessonId,
+          kind: 'lesson_content',
+          status: failed ? 'failed' : 'running',
+          createdAt: '2026-09-06',
+          updatedAt: '2026-09-06',
+        },
+      ],
+    })
+  })
+  await page.goto(`/courses/${courseId}/lessons/${lessonId}`)
+  await expect(page.getByRole('button', { name: 'Génération…', exact: true })).toBeDisabled()
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Génération…', exact: true })).toBeDisabled()
+  failed = true
+  await expect(page.getByRole('alert')).toContainText('La génération a rencontré un problème')
+  await expect(page.getByRole('link', { name: 'Construction de votre formation' })).toBeVisible()
+  const terminalReads = reads
+  await page.waitForTimeout(2_500)
+  expect(reads).toBe(terminalReads)
+})
+
+test('waits for module children and refreshes content when they finish', async ({ page }) => {
+  const api = await mockApi(page)
+  let finished = false
+  await page.route(`**/api/generations/${requestId}/jobs`, async (route) => {
+    await route.fulfill({
+      json: [
+        {
+          id: 'module-job',
+          targetId: moduleId,
+          kind: 'module_content',
+          status: 'completed',
+          createdAt: '2026-09-06',
+          updatedAt: '2026-09-06',
+        },
+        {
+          id: 'lesson-job',
+          targetId: lessonId,
+          kind: 'lesson_content',
+          status: finished ? 'completed' : 'running',
+          createdAt: '2026-09-06',
+          updatedAt: '2026-09-06',
+        },
+      ],
+    })
+  })
+  await page.goto(`/courses/${courseId}`)
+  await expect(page.getByRole('button', { name: /génération en cours/i })).toBeDisabled()
+  api.setContentGenerated(true)
+  finished = true
+  await expect(page.getByRole('button', { name: /génération en cours/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: /générer les contenus/i })).toHaveCount(0)
+})
+
+test('shows dashboard failures and allows retry instead of displaying empty data', async ({ page }) => {
+  await mockApi(page)
+  let unavailable = true
+  await page.route('**/api/generations?*', async (route) => {
+    if (!unavailable) return route.fallback()
+    return route.fulfill({ status: 503, json: { code: 'service_unavailable', message: 'Unavailable' } })
+  })
+  await page.goto('/')
+  await expect(page.getByRole('alert')).toContainText('indisponible')
+  await expect(page.getByText('Aucune génération en cours.')).toHaveCount(0)
+  unavailable = false
+  await page.getByRole('button', { name: 'Réessayer' }).click()
+  await expect(page.getByText('Aucune génération en cours.')).toBeVisible()
+})
+
+test('keeps a failed deletion confirmation open', async ({ page }) => {
+  await mockApi(page)
+  await page.route('**/api/courses?*', (route) =>
+    route.fulfill({
+      json: {
+        items: [course(false)],
+        page: 1,
+        pageSize: 12,
+        totalItems: 1,
+        totalPages: 1,
+        hasNext: false,
+        hasPrevious: false,
+      },
+    }),
+  )
+  await page.route(`**/api/courses/${courseId}`, async (route) => {
+    if (route.request().method() !== 'DELETE') return route.fallback()
+    return route.fulfill({ status: 503, json: { code: 'unavailable', message: 'Unavailable' } })
+  })
+  await page.goto('/courses')
+  await page.getByRole('button', { name: 'Supprimer', exact: true }).click()
+  const dialog = page.getByRole('alertdialog')
+  await dialog.getByRole('button', { name: 'Supprimer', exact: true }).click()
+  await expect(dialog.getByRole('alert')).toBeVisible()
+  await expect(dialog).toBeVisible()
+})
+
+test('respects browser history when a debounced catalog search changes', async ({ page }) => {
+  await mockApi(page)
+  await page.goto('/courses?search=linux')
+  const search = page.getByRole('textbox', { name: 'Rechercher une formation' })
+  await search.fill('react')
+  await expect(page).toHaveURL(/search=react/)
+  await expect(search).toBeFocused()
+  await page.getByRole('combobox', { name: 'Toutes les langues' }).selectOption('en')
+  await expect(page).toHaveURL(/language=en/)
+  await search.fill('go')
+  await expect(page).toHaveURL(/search=go/)
+  await page.goBack()
+  await expect(search).toHaveValue('react')
+  await page.waitForTimeout(500)
+  await expect(page).toHaveURL(/search=react/)
+})
+
+test('mobile navigation has a named dialog and restores focus when closed', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'desktop', 'Desktop uses permanent navigation')
+  await mockApi(page)
+  await page.goto('/')
+  const menu = page.getByRole('button', { name: 'Menu', exact: true })
+  await menu.click()
+  await expect(page.getByRole('dialog', { name: 'Menu' })).toBeVisible()
+  const accessibility = await new AxeBuilder({ page }).analyze()
+  expect(accessibility.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious')).toEqual(
+    [],
+  )
+  await page.keyboard.press('Escape')
+  await expect(menu).toBeFocused()
+})

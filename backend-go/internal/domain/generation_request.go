@@ -112,6 +112,16 @@ func NewGenerationRequestAt(prompt string, clerkUserID string, now time.Time) (G
 }
 
 func (r GenerationRequest) Validate() error {
+	if err := r.validateIdentity(); err != nil {
+		return err
+	}
+	if err := r.validateLifecycle(); err != nil {
+		return err
+	}
+	return r.validateClarificationState()
+}
+
+func (r GenerationRequest) validateIdentity() error {
 	if r.ID == uuid.Nil {
 		return fmt.Errorf("%w: generation request id", ErrBlankField)
 	}
@@ -124,9 +134,10 @@ func (r GenerationRequest) Validate() error {
 	if err := r.PipelineStatus.Validate(); err != nil {
 		return err
 	}
-	if err := validateProgressPercent(r.ProgressPercent); err != nil {
-		return err
-	}
+	return validateProgressPercent(r.ProgressPercent)
+}
+
+func (r GenerationRequest) validateLifecycle() error {
 	if r.PipelineStatus == PipelineStatusFailed && r.FailureMessage == nil {
 		return fmt.Errorf("%w: failure message", ErrBlankField)
 	}
@@ -136,10 +147,24 @@ func (r GenerationRequest) Validate() error {
 	if !r.PipelineStatus.IsTerminal() && r.CompletedAt != nil {
 		return ErrGenerationRequestNotReady
 	}
+	return nil
+}
+
+func (r GenerationRequest) validateClarificationState() error {
 	if err := validateClarificationQuestions(r.ClarificationQuestions); err != nil {
 		return err
 	}
-	if r.AnalysisCompletedAt == nil && (len(r.ClarificationQuestions) > 0 || r.ConfirmedBrief != nil || r.PipelineStatus == PipelineStatusAwaitingClarification) {
+	if err := r.validateAnalysisState(); err != nil {
+		return err
+	}
+	if r.ConfirmedBrief == nil {
+		return r.validateUnconfirmedBriefState()
+	}
+	return r.validateConfirmedBriefState()
+}
+
+func (r GenerationRequest) validateAnalysisState() error {
+	if r.AnalysisCompletedAt == nil && r.hasPostAnalysisState() {
 		return fmt.Errorf("%w: analysis completed at", ErrBlankField)
 	}
 	if r.PipelineStatus == PipelineStatusAwaitingClarification {
@@ -147,12 +172,23 @@ func (r GenerationRequest) Validate() error {
 			return ErrGenerationRequestNotReady
 		}
 	}
-	if r.ConfirmedBrief == nil {
-		if r.BriefConfirmedAt != nil || r.ClarificationsSubmittedAt != nil || r.ClarificationVersion != 0 || len(r.ClarificationAnswers) > 0 {
-			return ErrGenerationBriefIncomplete
-		}
-		return nil
+	return nil
+}
+
+func (r GenerationRequest) hasPostAnalysisState() bool {
+	return len(r.ClarificationQuestions) > 0 ||
+		r.ConfirmedBrief != nil ||
+		r.PipelineStatus == PipelineStatusAwaitingClarification
+}
+
+func (r GenerationRequest) validateUnconfirmedBriefState() error {
+	if r.BriefConfirmedAt != nil || r.ClarificationsSubmittedAt != nil || r.ClarificationVersion != 0 || len(r.ClarificationAnswers) > 0 {
+		return ErrGenerationBriefIncomplete
 	}
+	return nil
+}
+
+func (r GenerationRequest) validateConfirmedBriefState() error {
 	if err := r.ConfirmedBrief.Validate(); err != nil {
 		return err
 	}
@@ -398,6 +434,13 @@ func (r *GenerationRequest) MarkFailed(message string, now time.Time) error {
 }
 
 func (q ClarificationQuestion) Validate() error {
+	if err := q.validateMetadata(); err != nil {
+		return err
+	}
+	return q.validateOptions()
+}
+
+func (q ClarificationQuestion) validateMetadata() error {
 	if err := requireNotBlank("clarification question id", q.ID); err != nil {
 		return err
 	}
@@ -413,7 +456,10 @@ func (q ClarificationQuestion) Validate() error {
 	if q.AllowMultiple != (q.ID == ClarificationIDGoals) {
 		return fmt.Errorf("%w: allow multiple", ErrInvalidClarification)
 	}
+	return nil
+}
 
+func (q ClarificationQuestion) validateOptions() error {
 	seen := make(map[string]struct{}, len(q.Options))
 	for _, option := range q.Options {
 		value := normalizeText(option.Value)
@@ -424,12 +470,20 @@ func (q ClarificationQuestion) Validate() error {
 			return fmt.Errorf("%w: duplicate option %s", ErrInvalidClarification, value)
 		}
 		seen[value] = struct{}{}
-		if q.ID == ClarificationIDCurrentLevel || q.ID == ClarificationIDTargetLevel {
-			level, err := ParseLevel(value)
-			if err != nil || level == LevelUnknown || (q.ID == ClarificationIDCurrentLevel && level == LevelExpert) {
-				return fmt.Errorf("%w: level option %s", ErrInvalidClarification, value)
-			}
+		if err := q.validateLevelOption(value); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+func (q ClarificationQuestion) validateLevelOption(value string) error {
+	if q.ID != ClarificationIDCurrentLevel && q.ID != ClarificationIDTargetLevel {
+		return nil
+	}
+	level, err := ParseLevel(value)
+	if err != nil || level == LevelUnknown || (q.ID == ClarificationIDCurrentLevel && level == LevelExpert) {
+		return fmt.Errorf("%w: level option %s", ErrInvalidClarification, value)
 	}
 	return nil
 }

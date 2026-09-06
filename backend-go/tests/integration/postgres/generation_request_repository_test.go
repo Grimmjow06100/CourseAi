@@ -6,10 +6,39 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/postgres"
 	"github.com/Grimmjow06100/course-ai/backend-go/tests/testkit"
 )
+
+func TestGenerationHistoryIsScopedAndPaginated(t *testing.T) {
+	ctx, pool := testkit.OpenPostgres(t, 30*time.Second)
+	tx := testkit.BeginRollback(t, ctx, pool)
+	repository := postgres.NewGenerationRequestRepository(tx)
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	for index, owner := range []string{"user_history", "user_other_history", "user_history"} {
+		request, err := domain.NewGenerationRequestAt("Build course", owner, now.Add(time.Duration(index)*time.Minute))
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		if _, err := repository.SaveGenerationRequest(ctx, request); err != nil {
+			t.Fatalf("save request: %v", err)
+		}
+	}
+
+	page, err := repository.ListGenerationRequests(ctx, contract.GenerationHistoryFilters{
+		ClerkUserID: "user_history",
+		Pagination:  contract.Pagination{Page: 1, PageSize: 1},
+	})
+	if err != nil {
+		t.Fatalf("list generation history: %v", err)
+	}
+	if len(page.Items) != 1 || page.TotalItems != 2 || page.TotalPages != 2 || !page.HasNext {
+		t.Fatalf("unexpected page: %+v", page)
+	}
+}
 
 func TestGenerationRequestClarificationRoundTrip(t *testing.T) {
 	ctx, pool := testkit.OpenPostgres(t, 30*time.Second)

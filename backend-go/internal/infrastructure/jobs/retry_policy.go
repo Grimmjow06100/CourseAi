@@ -113,7 +113,7 @@ func classifyRetryableError(cause error) (bool, string) {
 	}
 
 	var networkError net.Error
-	if errors.As(cause, &networkError) && (networkError.Timeout() || networkError.Temporary()) {
+	if errors.As(cause, &networkError) && networkError.Timeout() {
 		return true, "network_transient_error"
 	}
 	if errors.Is(cause, context.DeadlineExceeded) {

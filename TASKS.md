@@ -2,6 +2,7 @@
 
 ## Done
 
+- [x] Commit the current repository snapshot to git.
 - [x] Fix Prisma PostgreSQL connection by moving the Docker host port from `5432` to `5433` to avoid the local PostgreSQL conflict.
 - [x] Apply the initial Prisma migration against the Docker PostgreSQL database.
 - [x] Fix backend TypeScript build errors around users controller DTOs/service calls and harden auth password verification.
@@ -95,3 +96,8 @@
 - [x] Remove Clerk profile synchronization and webhooks, drop the local users and webhook event tables through migration 00007, persist validated Clerk user IDs on generation requests and courses, simplify authentication configuration, regenerate sqlc, update API/project documentation, and pass unit, race, build, vet, migration, and PostgreSQL integration checks.
 - [x] Audit the Go backend for first-MVP readiness across authentication, jobs, PostgreSQL, OpenAI, API contracts, Railway, security, tests, migrations and Docker; document the public-release blockers and prioritized remediation plan in the vault.
 - [x] Harden the Go backend for MVP staging with durable admission quotas, job failure reconciliation, readiness checks, production config validation, stack-aware error logging, public DTO confidentiality, coherent deletion, retention, queue/OpenAI telemetry, optimized catalog reads, CI, backup tooling, Docker verification, and a complete vault implementation report.
+- [x] Audit and refactor the Go backend for clean architecture and readability: remove the legacy synchronous pipeline, segregate command/query ports, centralize errors, simplify domain validations, split bootstrap/retry/normalization/worker maintenance, remove meaningful duplication, add architecture onboarding documentation, and pass lint, unit, race, sqlc, build, and PostgreSQL integration checks.
+- [x] Build the Course AI React MVP with Clerk authentication, bilingual generation and clarification flows, history, catalog, course reader, typed OpenAPI access, responsive design, unit and browser tests, Vercel configuration, and the backend generation-history endpoint.
+- [x] Audit frontend deployment readiness for Vercel, verify build/lint/unit tests and targeted browser failures, and identify authentication cache isolation, job tracking, environment validation, accessibility, test coverage, and release configuration work.
+- [x] Harden frontend session isolation, cancellable API calls, durable partial-job tracking, mutation errors, prompt idempotence, cache invalidation, URL search, solution visibility, Markdown, accessibility, and build-time environment validation; document the application changes and remaining deployment checks.
+- [x] Verify frontend hardening with 26 unit tests, 23 applicable browser tests across three viewports, strict accessibility checks, typecheck, lint and production build; pass Go unit/race/static/sqlc checks and document the PostgreSQL integration blocker (local Docker/database unavailable).

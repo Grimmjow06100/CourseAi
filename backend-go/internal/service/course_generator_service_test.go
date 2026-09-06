@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -46,26 +47,6 @@ func TestNormalizeStructureParamsNormalizesGoals(t *testing.T) {
 	}
 	if len(params.Goals) != 2 || params.Goals[0] != "Shell" || params.Goals[1] != "Administration" {
 		t.Fatalf("unexpected goals: %#v", params.Goals)
-	}
-}
-
-func TestGenerateCourseStructureRequiresAnalyzedRequest(t *testing.T) {
-	clock := fixedClock{now: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)}
-	request, err := domain.NewGenerationRequestAt("je veux une formation sur linux", "user_test", clock.Now())
-	if err != nil {
-		t.Fatalf("create request: %v", err)
-	}
-
-	service := NewCourseGeneratorService(
-		fakeCourseAI{},
-		&fakeUnitOfWork{requests: map[uuid.UUID]domain.GenerationRequest{request.ID: request}},
-		clock,
-		CourseGeneratorConfig{},
-	)
-
-	_, err = service.GenerateCourseStructure(authenticatedTestContext(), validStructureParams(request.ID))
-	if !errors.Is(err, ErrGenerationAnalysisRequired) {
-		t.Fatalf("expected analysis required error, got %v", err)
 	}
 }
 
@@ -124,45 +105,6 @@ func TestNormalizeGeneratedCourseAllowsGeneratedModulesWithoutIDs(t *testing.T) 
 	course.Modules = modules
 	if err := course.ValidateWithRelations(); err != nil {
 		t.Fatalf("expected course with normalized modules to pass relation validation: %v", err)
-	}
-}
-
-func TestRetryCourseStructureRequiresFailedRequest(t *testing.T) {
-	clock := fixedClock{now: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)}
-	request := analyzedGenerationRequest(t, clock.Now())
-
-	service := NewCourseGeneratorService(
-		fakeCourseAI{},
-		&fakeUnitOfWork{requests: map[uuid.UUID]domain.GenerationRequest{request.ID: request}},
-		clock,
-		CourseGeneratorConfig{},
-	)
-
-	_, err := service.RetryCourseStructure(authenticatedTestContext(), validStructureParams(request.ID))
-	if !errors.Is(err, ErrGenerationStructureRetryNotAllowed) {
-		t.Fatalf("expected structure retry not allowed error, got %v", err)
-	}
-}
-
-func TestRetryCourseStructureRequiresStructureFailureStep(t *testing.T) {
-	clock := fixedClock{now: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)}
-	request := analyzedGenerationRequest(t, clock.Now())
-	if err := request.MarkFailed("analysis failed", clock.Now()); err != nil {
-		t.Fatalf("mark failed: %v", err)
-	}
-	step := stepAnalysis
-	request.CurrentStep = &step
-
-	service := NewCourseGeneratorService(
-		fakeCourseAI{},
-		&fakeUnitOfWork{requests: map[uuid.UUID]domain.GenerationRequest{request.ID: request}},
-		clock,
-		CourseGeneratorConfig{},
-	)
-
-	_, err := service.RetryCourseStructure(authenticatedTestContext(), validStructureParams(request.ID))
-	if !errors.Is(err, ErrGenerationStructureRetryStepMismatch) {
-		t.Fatalf("expected structure retry step mismatch error, got %v", err)
 	}
 }
 
@@ -613,6 +555,42 @@ func (r fakeGenerationRequestRepository) SaveGenerationRequest(_ context.Context
 func (r fakeGenerationRequestRepository) UpdateGenerationRequest(_ context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error) {
 	r.requests[request.ID] = request
 	return request, nil
+}
+
+func (r fakeGenerationRequestRepository) ListGenerationRequests(_ context.Context, filters contract.GenerationHistoryFilters) (contract.Page[contract.GenerationSummary], error) {
+	items := make([]contract.GenerationSummary, 0, len(r.requests))
+	for _, request := range r.requests {
+		if request.ClerkUserID != filters.ClerkUserID {
+			continue
+		}
+		if filters.PipelineStatus != nil && request.PipelineStatus != *filters.PipelineStatus {
+			continue
+		}
+		title := request.InitialUserPrompt
+		if request.SuggestedTitle != nil {
+			title = *request.SuggestedTitle
+		}
+		items = append(items, contract.GenerationSummary{
+			RequestID: request.ID, InitialUserPrompt: request.InitialUserPrompt, Title: title,
+			PipelineStatus: request.PipelineStatus, CurrentStep: request.CurrentStep,
+			ProgressPercent: request.ProgressPercent, IsOutOfScope: request.IsOutOfScope,
+			FailureMessage: request.FailureMessage, CreatedAt: request.CreatedAt, UpdatedAt: request.UpdatedAt,
+		})
+	}
+	sort.Slice(items, func(left, right int) bool { return items[left].CreatedAt.After(items[right].CreatedAt) })
+	pagination := filters.Pagination.Normalize()
+	totalItems := len(items)
+	start := min((pagination.Page-1)*pagination.PageSize, totalItems)
+	end := min(start+pagination.PageSize, totalItems)
+	totalPages := 0
+	if totalItems > 0 {
+		totalPages = (totalItems + pagination.PageSize - 1) / pagination.PageSize
+	}
+	return contract.Page[contract.GenerationSummary]{
+		Items: items[start:end], Page: pagination.Page, PageSize: pagination.PageSize,
+		TotalItems: totalItems, TotalPages: totalPages, HasNext: pagination.Page < totalPages,
+		HasPrevious: pagination.Page > 1,
+	}, nil
 }
 
 func (r fakeGenerationRequestRepository) FindGenerationRequestByID(_ context.Context, id uuid.UUID) (domain.GenerationRequest, error) {

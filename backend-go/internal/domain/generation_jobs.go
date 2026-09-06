@@ -236,6 +236,19 @@ func (j GenerationJob) CanRetry() bool {
 }
 
 func (j GenerationJob) Validate() error {
+	if err := j.validateIdentityAndPayload(); err != nil {
+		return err
+	}
+	if err := j.validateScheduling(); err != nil {
+		return err
+	}
+	if err := j.validateExecutionState(); err != nil {
+		return err
+	}
+	return j.validateOutcomeState()
+}
+
+func (j GenerationJob) validateIdentityAndPayload() error {
 	if j.ID == uuid.Nil {
 		return fmt.Errorf("%w: generation job id", ErrBlankField)
 	}
@@ -268,6 +281,10 @@ func (j GenerationJob) Validate() error {
 	if _, err := normalizeGenerationJobPayload(j.Payload); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (j GenerationJob) validateScheduling() error {
 	if j.AttemptCount < 0 || j.MaxAttempts <= 0 || j.AttemptCount > j.MaxAttempts {
 		return ErrInvalidGenerationJobAttempts
 	}
@@ -280,6 +297,10 @@ func (j GenerationJob) Validate() error {
 	if j.UpdatedAt.IsZero() {
 		return fmt.Errorf("%w: updated at", ErrBlankField)
 	}
+	return nil
+}
+
+func (j GenerationJob) validateExecutionState() error {
 	if j.AttemptCount == 0 {
 		if j.StartedAt != nil || (j.Status != GenerationJobStatusQueued && j.Status != GenerationJobStatusCancelled) {
 			return ErrInvalidGenerationJobState
@@ -298,7 +319,10 @@ func (j GenerationJob) Validate() error {
 	} else if j.LockedBy != nil || j.LockedUntil != nil {
 		return ErrInvalidGenerationJobState
 	}
+	return nil
+}
 
+func (j GenerationJob) validateOutcomeState() error {
 	if j.Status.IsTerminal() {
 		if j.CompletedAt == nil {
 			return fmt.Errorf("%w: completed at", ErrBlankField)

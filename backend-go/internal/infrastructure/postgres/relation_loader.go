@@ -17,10 +17,7 @@ func (l relationLoader) hydrateCourses(ctx context.Context, courses []domain.Cou
 		return courses, nil
 	}
 
-	courseIDs := make([]uuid.UUID, 0, len(courses))
-	for _, course := range courses {
-		courseIDs = append(courseIDs, course.ID)
-	}
+	courseIDs := collectUUIDs(courses, func(course domain.Course) uuid.UUID { return course.ID })
 	rows, err := l.queries.ListModulesByCourseIDs(ctx, courseIDs)
 	if err != nil {
 		return nil, err
@@ -34,10 +31,7 @@ func (l relationLoader) hydrateCourses(ctx context.Context, courses []domain.Cou
 		return nil, err
 	}
 
-	modulesByCourseID := make(map[uuid.UUID][]domain.Module, len(courses))
-	for _, module := range modules {
-		modulesByCourseID[module.CourseID] = append(modulesByCourseID[module.CourseID], module)
-	}
+	modulesByCourseID := groupByUUID(modules, func(module domain.Module) uuid.UUID { return module.CourseID })
 	for index := range courses {
 		courses[index].Modules = modulesByCourseID[courses[index].ID]
 		if err := courses[index].Validate(); err != nil {
@@ -52,10 +46,7 @@ func (l relationLoader) hydrateModules(ctx context.Context, modules []domain.Mod
 		return modules, nil
 	}
 
-	moduleIDs := make([]uuid.UUID, 0, len(modules))
-	for _, module := range modules {
-		moduleIDs = append(moduleIDs, module.ID)
-	}
+	moduleIDs := collectUUIDs(modules, func(module domain.Module) uuid.UUID { return module.ID })
 	rows, err := l.queries.ListLessonsByModuleIDs(ctx, moduleIDs)
 	if err != nil {
 		return nil, err
@@ -69,10 +60,7 @@ func (l relationLoader) hydrateModules(ctx context.Context, modules []domain.Mod
 		return nil, err
 	}
 
-	lessonsByModuleID := make(map[uuid.UUID][]domain.Lesson, len(modules))
-	for _, lesson := range lessons {
-		lessonsByModuleID[lesson.ModuleID] = append(lessonsByModuleID[lesson.ModuleID], lesson)
-	}
+	lessonsByModuleID := groupByUUID(lessons, func(lesson domain.Lesson) uuid.UUID { return lesson.ModuleID })
 	for index := range modules {
 		modules[index].Lessons = lessonsByModuleID[modules[index].ID]
 		if err := modules[index].Validate(); err != nil {
@@ -87,10 +75,7 @@ func (l relationLoader) hydrateLessons(ctx context.Context, lessons []domain.Les
 		return lessons, nil
 	}
 
-	lessonIDs := make([]uuid.UUID, 0, len(lessons))
-	for _, lesson := range lessons {
-		lessonIDs = append(lessonIDs, lesson.ID)
-	}
+	lessonIDs := collectUUIDs(lessons, func(lesson domain.Lesson) uuid.UUID { return lesson.ID })
 	exerciseRows, err := l.queries.ListLessonExercisesByLessonIDs(ctx, lessonIDs)
 	if err != nil {
 		return nil, err
@@ -108,14 +93,8 @@ func (l relationLoader) hydrateLessons(ctx context.Context, lessons []domain.Les
 		return nil, err
 	}
 
-	exercisesByLessonID := make(map[uuid.UUID][]domain.Exercise, len(lessons))
-	for _, exercise := range exercises {
-		exercisesByLessonID[exercise.LessonID] = append(exercisesByLessonID[exercise.LessonID], exercise)
-	}
-	quizzesByLessonID := make(map[uuid.UUID][]domain.Quiz, len(lessons))
-	for _, quiz := range quizzes {
-		quizzesByLessonID[quiz.LessonID] = append(quizzesByLessonID[quiz.LessonID], quiz)
-	}
+	exercisesByLessonID := groupByUUID(exercises, func(exercise domain.Exercise) uuid.UUID { return exercise.LessonID })
+	quizzesByLessonID := groupByUUID(quizzes, func(quiz domain.Quiz) uuid.UUID { return quiz.LessonID })
 	for index := range lessons {
 		lessons[index].Exercises = exercisesByLessonID[lessons[index].ID]
 		lessons[index].Quizzes = quizzesByLessonID[lessons[index].ID]
@@ -124,4 +103,21 @@ func (l relationLoader) hydrateLessons(ctx context.Context, lessons []domain.Les
 		}
 	}
 	return lessons, nil
+}
+
+func collectUUIDs[Entity any](entities []Entity, id func(Entity) uuid.UUID) []uuid.UUID {
+	ids := make([]uuid.UUID, 0, len(entities))
+	for _, entity := range entities {
+		ids = append(ids, id(entity))
+	}
+	return ids
+}
+
+func groupByUUID[Entity any](entities []Entity, parentID func(Entity) uuid.UUID) map[uuid.UUID][]Entity {
+	grouped := make(map[uuid.UUID][]Entity)
+	for _, entity := range entities {
+		key := parentID(entity)
+		grouped[key] = append(grouped[key], entity)
+	}
+	return grouped
 }

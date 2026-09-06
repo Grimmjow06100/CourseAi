@@ -8,7 +8,6 @@ import (
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
-	"github.com/Grimmjow06100/course-ai/backend-go/internal/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -29,9 +28,9 @@ func TestClassifyError(t *testing.T) {
 		{name: "module missing", err: contract.ErrModuleNotFound, status: http.StatusNotFound, code: "module_not_found"},
 		{name: "lesson missing", err: contract.ErrLessonNotFound, status: http.StatusNotFound, code: "lesson_not_found"},
 		{name: "authentication", err: contract.ErrUnauthenticated, status: http.StatusUnauthorized, code: "unauthenticated"},
-		{name: "out of scope", err: service.ErrGenerationOutOfScope, status: http.StatusUnprocessableEntity, code: "generation_out_of_scope"},
+		{name: "out of scope", err: contract.ErrGenerationOutOfScope, status: http.StatusUnprocessableEntity, code: "generation_out_of_scope"},
 		{name: "validation", err: domain.ErrInvalidLevel, status: http.StatusBadRequest, code: "validation_error"},
-		{name: "dependency", err: service.ErrCourseCatalogDependency, status: http.StatusServiceUnavailable, code: "service_unavailable"},
+		{name: "dependency", err: contract.ErrServiceDependency, status: http.StatusServiceUnavailable, code: "service_unavailable"},
 		{name: "unknown", err: errors.New("secret database failure"), status: http.StatusInternalServerError, code: "internal_error"},
 	}
 

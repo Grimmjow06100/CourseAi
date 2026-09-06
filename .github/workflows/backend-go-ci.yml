@@ -1,0 +1,83 @@
+name: Backend Go CI
+
+on:
+  pull_request:
+    paths:
+      - "backend-go/**"
+      - ".github/workflows/backend-go-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "backend-go/**"
+      - ".github/workflows/backend-go-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend-go
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: course_ai
+          POSTGRES_USER: course_ai
+          POSTGRES_PASSWORD: course_ai_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U course_ai -d course_ai"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://course_ai:course_ai_password@localhost:5432/course_ai?sslmode=disable
+      GOOSE_DRIVER: postgres
+      GOOSE_DBSTRING: postgresql://course_ai:course_ai_password@localhost:5432/course_ai?sslmode=disable
+      GOOSE_MIGRATION_DIR: migrations
+      COURSE_AI_INTEGRATION_TEST: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend-go/go.mod
+          cache-dependency-path: backend-go/go.sum
+      - name: Install verification tools
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+          go install -tags="no_clickhouse no_mssql no_mysql no_sqlite3 no_libsql no_vertica no_ydb" github.com/pressly/goose/v3/cmd/goose@v3.27.1
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: Verify generated database code
+        run: |
+          sqlc vet
+          sqlc generate
+          git diff --exit-code -- internal/db/sqlc
+      - name: Apply migrations from an empty database
+        run: goose up
+      - name: Static checks and tests
+        run: |
+          go vet ./...
+          go test -count=1 ./...
+          go test -count=1 -tags=integration ./tests/integration/...
+          go test -race ./internal/... ./cmd/...
+      - name: Vulnerability scan
+        run: govulncheck ./...
+      - name: Build Linux binary
+        run: CGO_ENABLED=0 GOOS=linux go build -trimpath ./cmd/api
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend-go
+          file: backend-go/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

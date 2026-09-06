@@ -2,14 +2,14 @@ package service
 
 import (
 	"context"
-	"errors"
+	"fmt"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/google/uuid"
 )
 
-var ErrCourseCatalogDependency = errors.New("course catalog service dependency is missing")
+var ErrCourseCatalogDependency = fmt.Errorf("course catalog service: %w", contract.ErrServiceDependency)
 
 type CourseCatalogService struct {
 	uow contract.UnitOfWork
@@ -20,34 +20,17 @@ func NewCourseCatalogService(uow contract.UnitOfWork) *CourseCatalogService {
 }
 
 func (s *CourseCatalogService) GetCourse(ctx context.Context, id uuid.UUID) (domain.Course, error) {
-	if err := s.validateDependencies(); err != nil {
-		return domain.Course{}, err
-	}
-	owner, err := authenticatedOwner(ctx)
+	owner, err := s.requestOwner(ctx)
 	if err != nil {
 		return domain.Course{}, err
 	}
-
-	var course domain.Course
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedCourse, id, owner); err != nil {
-			return err
-		}
-		foundCourse, err := repositories.Courses().FindCourseByID(ctx, id)
-		if err != nil {
-			return err
-		}
-		course = foundCourse
-		return nil
+	return queryOwnedResource(ctx, s.uow, owner, ownedCourse, id, func(ctx context.Context, repositories contract.TransactionalRepositories) (domain.Course, error) {
+		return repositories.Courses().FindCourseByID(ctx, id)
 	})
-	return course, err
 }
 
 func (s *CourseCatalogService) ListCourses(ctx context.Context, filters contract.CourseFilters) (contract.Page[domain.Course], error) {
-	if err := s.validateDependencies(); err != nil {
-		return contract.Page[domain.Course]{}, err
-	}
-	owner, err := authenticatedOwner(ctx)
+	owner, err := s.requestOwner(ctx)
 	if err != nil {
 		return contract.Page[domain.Course]{}, err
 	}
@@ -66,10 +49,7 @@ func (s *CourseCatalogService) ListCourses(ctx context.Context, filters contract
 }
 
 func (s *CourseCatalogService) DeleteCourse(ctx context.Context, id uuid.UUID) error {
-	if err := s.validateDependencies(); err != nil {
-		return err
-	}
-	owner, err := authenticatedOwner(ctx)
+	owner, err := s.requestOwner(ctx)
 	if err != nil {
 		return err
 	}
@@ -83,99 +63,70 @@ func (s *CourseCatalogService) DeleteCourse(ctx context.Context, id uuid.UUID) e
 }
 
 func (s *CourseCatalogService) GetModule(ctx context.Context, id uuid.UUID) (domain.Module, error) {
-	if err := s.validateDependencies(); err != nil {
-		return domain.Module{}, err
-	}
-	owner, err := authenticatedOwner(ctx)
+	owner, err := s.requestOwner(ctx)
 	if err != nil {
 		return domain.Module{}, err
 	}
-
-	var module domain.Module
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedModule, id, owner); err != nil {
-			return err
-		}
-		foundModule, err := repositories.Modules().FindModuleByID(ctx, id)
-		if err != nil {
-			return err
-		}
-		module = foundModule
-		return nil
+	return queryOwnedResource(ctx, s.uow, owner, ownedModule, id, func(ctx context.Context, repositories contract.TransactionalRepositories) (domain.Module, error) {
+		return repositories.Modules().FindModuleByID(ctx, id)
 	})
-	return module, err
 }
 
 func (s *CourseCatalogService) ListModulesByCourseID(ctx context.Context, courseID uuid.UUID) ([]domain.Module, error) {
-	if err := s.validateDependencies(); err != nil {
-		return nil, err
-	}
-	owner, err := authenticatedOwner(ctx)
+	owner, err := s.requestOwner(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	var modules []domain.Module
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedCourse, courseID, owner); err != nil {
-			return err
-		}
-		foundModules, err := repositories.Modules().ListModulesByCourseID(ctx, courseID)
-		if err != nil {
-			return err
-		}
-		modules = foundModules
-		return nil
+	return queryOwnedResource(ctx, s.uow, owner, ownedCourse, courseID, func(ctx context.Context, repositories contract.TransactionalRepositories) ([]domain.Module, error) {
+		return repositories.Modules().ListModulesByCourseID(ctx, courseID)
 	})
-	return modules, err
 }
 
 func (s *CourseCatalogService) GetLesson(ctx context.Context, id uuid.UUID) (domain.Lesson, error) {
-	if err := s.validateDependencies(); err != nil {
-		return domain.Lesson{}, err
-	}
-	owner, err := authenticatedOwner(ctx)
+	owner, err := s.requestOwner(ctx)
 	if err != nil {
 		return domain.Lesson{}, err
 	}
-
-	var lesson domain.Lesson
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedLesson, id, owner); err != nil {
-			return err
-		}
-		foundLesson, err := repositories.Lessons().FindLessonByID(ctx, id)
-		if err != nil {
-			return err
-		}
-		lesson = foundLesson
-		return nil
+	return queryOwnedResource(ctx, s.uow, owner, ownedLesson, id, func(ctx context.Context, repositories contract.TransactionalRepositories) (domain.Lesson, error) {
+		return repositories.Lessons().FindLessonByID(ctx, id)
 	})
-	return lesson, err
 }
 
 func (s *CourseCatalogService) ListLessonsByModuleID(ctx context.Context, moduleID uuid.UUID) ([]domain.Lesson, error) {
-	if err := s.validateDependencies(); err != nil {
-		return nil, err
-	}
-	owner, err := authenticatedOwner(ctx)
+	owner, err := s.requestOwner(ctx)
 	if err != nil {
 		return nil, err
 	}
-
-	var lessons []domain.Lesson
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedModule, moduleID, owner); err != nil {
-			return err
-		}
-		foundLessons, err := repositories.Lessons().ListLessonsByModuleID(ctx, moduleID)
-		if err != nil {
-			return err
-		}
-		lessons = foundLessons
-		return nil
+	return queryOwnedResource(ctx, s.uow, owner, ownedModule, moduleID, func(ctx context.Context, repositories contract.TransactionalRepositories) ([]domain.Lesson, error) {
+		return repositories.Lessons().ListLessonsByModuleID(ctx, moduleID)
 	})
-	return lessons, err
+}
+
+func (s *CourseCatalogService) requestOwner(ctx context.Context) (string, error) {
+	if err := s.validateDependencies(); err != nil {
+		return "", err
+	}
+	return authenticatedOwner(ctx)
+}
+
+func queryOwnedResource[T any](
+	ctx context.Context,
+	uow contract.UnitOfWork,
+	owner string,
+	kind ownedResource,
+	id uuid.UUID,
+	query func(context.Context, contract.TransactionalRepositories) (T, error),
+) (T, error) {
+	var result T
+	err := uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if err := authorizeOwnedResource(ctx, repositories.Ownership(), kind, id, owner); err != nil {
+			return err
+		}
+		var err error
+		result, err = query(ctx, repositories)
+		return err
+	})
+	return result, err
 }
 
 func (s *CourseCatalogService) validateDependencies() error {

@@ -384,20 +384,6 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 	return s.generationStarted(request, job), nil
 }
 
-func (s *CourseGeneratorService) enqueueJob(ctx context.Context, params domain.NewGenerationJobParams) (domain.GenerationJob, error) {
-	job, err := domain.NewGenerationJobAt(params, s.now())
-	if err != nil {
-		return domain.GenerationJob{}, err
-	}
-	var saved domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		var err error
-		saved, err = s.enqueueWithCapacity(ctx, repositories, job)
-		return err
-	})
-	return saved, err
-}
-
 func (s *CourseGeneratorService) enqueueWithCapacity(ctx context.Context, repositories contract.TransactionalRepositories, job domain.GenerationJob) (domain.GenerationJob, error) {
 	if s.config.MaxPendingJobs > 0 {
 		pending, err := repositories.GenerationJobs().CountPendingWithAdmissionLock(ctx)

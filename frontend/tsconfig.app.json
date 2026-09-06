@@ -6,7 +6,7 @@
     "target": "esnext",
     "lib": ["ESNext", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    "types": ["vite/client", "vitest/globals"],
     "skipLibCheck": true,
 
     /* Bundler mode */
@@ -20,8 +20,15 @@
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

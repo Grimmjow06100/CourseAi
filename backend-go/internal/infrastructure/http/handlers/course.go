@@ -82,22 +82,7 @@ func (h *CourseHandler) ListCourseModules(c *gin.Context) {
 		return
 	}
 
-	courseID, ok := parseUUIDParam(c, "courseID")
-	if !ok {
-		return
-	}
-
-	modules, err := h.service.ListModulesByCourseID(c.Request.Context(), courseID)
-	if err != nil {
-		middlewares.AbortWithError(c, err)
-		return
-	}
-
-	responses := make([]dto.ModuleResponse, 0, len(modules))
-	for _, module := range modules {
-		responses = append(responses, dto.ModuleFromDomain(module))
-	}
-	c.JSON(http.StatusOK, responses)
+	writeUUIDCollection(c, "courseID", h.service.ListModulesByCourseID, dto.ModuleFromDomain)
 }
 
 func (h *CourseHandler) GetModule(c *gin.Context) {
@@ -126,22 +111,7 @@ func (h *CourseHandler) ListModuleLessons(c *gin.Context) {
 		return
 	}
 
-	moduleID, ok := parseUUIDParam(c, "moduleID")
-	if !ok {
-		return
-	}
-
-	lessons, err := h.service.ListLessonsByModuleID(c.Request.Context(), moduleID)
-	if err != nil {
-		middlewares.AbortWithError(c, err)
-		return
-	}
-
-	responses := make([]dto.LessonResponse, 0, len(lessons))
-	for _, lesson := range lessons {
-		responses = append(responses, dto.LessonFromDomain(lesson))
-	}
-	c.JSON(http.StatusOK, responses)
+	writeUUIDCollection(c, "moduleID", h.service.ListLessonsByModuleID, dto.LessonFromDomain)
 }
 
 func (h *CourseHandler) GetLesson(c *gin.Context) {

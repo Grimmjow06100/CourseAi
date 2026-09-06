@@ -14,16 +14,17 @@ import (
 )
 
 type RouterConfig struct {
-	CourseCatalogService    contract.CourseCatalogService
-	CourseGenerationService contract.CourseGenerationService
-	Authentication          gin.HandlerFunc
-	AllowedOrigins          []string
-	AppEnv                  string
-	MaxBodyBytes            int64
-	GenerationRateRequests  int
-	GenerationRateWindow    time.Duration
-	ReadyCheck              func(ctx context.Context) error
-	WorkerEnabled           bool
+	CourseCatalogService     contract.CourseCatalogService
+	GenerationCommandService contract.GenerationCommandService
+	GenerationQueryService   contract.GenerationQueryService
+	Authentication           gin.HandlerFunc
+	AllowedOrigins           []string
+	AppEnv                   string
+	MaxBodyBytes             int64
+	GenerationRateRequests   int
+	GenerationRateWindow     time.Duration
+	ReadyCheck               func(ctx context.Context) error
+	WorkerEnabled            bool
 }
 
 func NewRouter(cfg RouterConfig) *gin.Engine {
@@ -54,7 +55,7 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 	}
 
 	healthHandler := handlers.NewHealthHandler(cfg.ReadyCheck, cfg.WorkerEnabled)
-	generationHandler := handlers.NewGenerationHandler(cfg.CourseGenerationService)
+	generationHandler := handlers.NewGenerationHandler(cfg.GenerationCommandService, cfg.GenerationQueryService)
 	courseHandler := handlers.NewCourseHandler(cfg.CourseCatalogService)
 
 	router.GET("/health", healthHandler.Ready)
@@ -75,6 +76,7 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHandler, rateLimit gin.HandlerFunc) {
 	generations := router.Group("/generations")
 	generations.Use(rateLimit)
+	generations.GET("", handler.List)
 	generations.POST("", handler.Start)
 	generations.POST("/:requestID/clarifications", handler.SubmitClarifications)
 	generations.POST("/:requestID/structure", handler.Structure)
@@ -82,6 +84,7 @@ func registerGenerationRoutes(router gin.IRouter, handler *handlers.GenerationHa
 	generations.POST("/lessons/:lessonID/content", handler.LessonContent)
 	generations.POST("/modules/:moduleID/contents", handler.ModuleLessonContents)
 	generations.GET("/:requestID/status", handler.Status)
+	generations.GET("/:requestID/jobs", handler.Jobs)
 	generations.GET("/:requestID/result", handler.Result)
 	generations.POST("/:requestID/retry", handler.Retry)
 	generations.DELETE("/:requestID", handler.Delete)

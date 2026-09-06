@@ -142,6 +142,40 @@ FROM generation_requests gr
 LEFT JOIN courses c ON c.request_id = gr.id
 WHERE gr.id = @id;
 
+-- name: CountGenerationRequestsByOwner :one
+SELECT count(*)::bigint
+FROM generation_requests AS request
+WHERE request.clerk_user_id = @clerk_user_id
+  AND (
+    sqlc.narg('pipeline_status')::generation_pipeline_status IS NULL
+    OR request.pipeline_status = sqlc.narg('pipeline_status')::generation_pipeline_status
+  );
+
+-- name: ListGenerationRequestsByOwner :many
+SELECT
+  request.id AS request_id,
+  course.id AS course_id,
+  request.initial_user_prompt,
+  COALESCE(course.title, request.confirmed_title, request.suggested_title, request.initial_user_prompt) AS title,
+  request.pipeline_status,
+  course.status AS course_status,
+  request.current_step,
+  request.progress_percent,
+  request.is_out_of_scope,
+  request.failure_message,
+  request.created_at,
+  request.updated_at
+FROM generation_requests AS request
+LEFT JOIN courses AS course ON course.request_id = request.id
+WHERE request.clerk_user_id = @clerk_user_id
+  AND (
+    sqlc.narg('pipeline_status')::generation_pipeline_status IS NULL
+    OR request.pipeline_status = sqlc.narg('pipeline_status')::generation_pipeline_status
+  )
+ORDER BY request.created_at DESC, request.id DESC
+LIMIT @limit_rows
+OFFSET @offset_rows;
+
 -- name: GetGenerationRequestByCourseID :one
 SELECT gr.*
 FROM generation_requests gr

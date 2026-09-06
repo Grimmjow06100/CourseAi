@@ -44,6 +44,7 @@ type OwnershipRepository interface {
 type GenerationRequestRepository interface {
 	SaveGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error)
 	UpdateGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error)
+	ListGenerationRequests(ctx context.Context, filters GenerationHistoryFilters) (Page[GenerationSummary], error)
 	FindGenerationRequestByID(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error)
 	FindGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error)
 	FindGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (domain.GenerationRequest, error)

@@ -76,17 +76,25 @@ type LessonResponse struct {
 }
 
 type ExerciseResponse struct {
-	ID                   string         `json:"id"`
-	LessonID             string         `json:"lessonId"`
-	Type                 string         `json:"type"`
-	Difficulty           string         `json:"difficulty"`
-	Title                string         `json:"title"`
-	Objective            string         `json:"objective"`
-	InstructionsMarkdown string         `json:"instructionsMarkdown"`
-	ContentMarkdown      string         `json:"contentMarkdown"`
-	Payload              map[string]any `json:"payload"`
-	CreatedAt            time.Time      `json:"createdAt"`
-	UpdatedAt            time.Time      `json:"updatedAt"`
+	ID                   string                  `json:"id"`
+	LessonID             string                  `json:"lessonId"`
+	Type                 string                  `json:"type"`
+	Difficulty           string                  `json:"difficulty"`
+	Title                string                  `json:"title"`
+	Objective            string                  `json:"objective"`
+	InstructionsMarkdown string                  `json:"instructionsMarkdown"`
+	ContentMarkdown      string                  `json:"contentMarkdown"`
+	Payload              ExercisePayloadResponse `json:"payload"`
+	CreatedAt            time.Time               `json:"createdAt"`
+	UpdatedAt            time.Time               `json:"updatedAt"`
+}
+
+type ExercisePayloadResponse struct {
+	Tasks          []string `json:"tasks"`
+	Resources      []string `json:"resources"`
+	StarterCode    *string  `json:"starterCode"`
+	ExpectedOutput *string  `json:"expectedOutput"`
+	Hints          []string `json:"hints"`
 }
 
 type QuizResponse struct {
@@ -299,15 +307,45 @@ func LessonSolutionsFromDomain(lesson domain.Lesson) LessonSolutionsResponse {
 	return LessonSolutionsResponse{LessonID: lesson.ID.String(), Exercises: exercises, Quizzes: quizzes}
 }
 
-func exercisePayloadFromDomain(payload domain.ExercisePayload) map[string]any {
-	if payload == nil {
-		return map[string]any{}
+func exercisePayloadFromDomain(payload domain.ExercisePayload) ExercisePayloadResponse {
+	return ExercisePayloadResponse{
+		Tasks:          exercisePayloadStrings(payload, "tasks"),
+		Resources:      exercisePayloadStrings(payload, "resources"),
+		StarterCode:    exercisePayloadOptionalString(payload, "starterCode"),
+		ExpectedOutput: exercisePayloadOptionalString(payload, "expectedOutput"),
+		Hints:          exercisePayloadStrings(payload, "hints"),
 	}
-	values := make(map[string]any, len(payload))
-	for key, value := range payload {
-		values[key] = value
+}
+
+func exercisePayloadStrings(payload domain.ExercisePayload, key string) []string {
+	values := make([]string, 0)
+	switch typed := payload[key].(type) {
+	case []string:
+		values = append(values, typed...)
+	case []any:
+		for _, value := range typed {
+			if text, ok := value.(string); ok {
+				values = append(values, text)
+			}
+		}
 	}
 	return values
+}
+
+func exercisePayloadOptionalString(payload domain.ExercisePayload, key string) *string {
+	switch typed := payload[key].(type) {
+	case string:
+		value := typed
+		return &value
+	case *string:
+		if typed == nil {
+			return nil
+		}
+		value := *typed
+		return &value
+	default:
+		return nil
+	}
 }
 
 func CoursePageFromDomain(page contract.Page[domain.Course]) PageResponse[CourseSummaryResponse] {

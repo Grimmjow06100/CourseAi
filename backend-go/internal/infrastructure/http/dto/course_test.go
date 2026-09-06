@@ -20,7 +20,11 @@ func TestCourseFromDomainMapsNestedAggregate(t *testing.T) {
 	lessonID := uuid.New()
 	answer := "ls"
 	content := "# Linux"
-	payload := domain.ExercisePayload{"command": "ls"}
+	starterCode := "ls --"
+	payload := domain.ExercisePayload{
+		"tasks": []string{"List files"}, "resources": []string{"terminal"},
+		"starterCode": &starterCode, "expectedOutput": "README.md", "hints": []string{"Use ls"},
+	}
 	lesson := domain.Lesson{
 		ID: lessonID, ModuleID: moduleID, Order: 1, Title: "Commands", Type: domain.LessonTypeMixed,
 		EstimatedDurationMinutes: 30, LearningGoal: "Use commands", ContentMarkdown: &content,
@@ -68,9 +72,9 @@ func TestCourseFromDomainMapsNestedAggregate(t *testing.T) {
 	if len(solutions.Quizzes) != 1 || solutions.Quizzes[0].Questions[0].Answer.Answer == nil || *solutions.Quizzes[0].Questions[0].Answer.Answer != "ls" {
 		t.Fatal("quiz answer was not mapped to the explicit solution response")
 	}
-	gotLesson.Exercises[0].Payload["new"] = true
-	if _, exists := payload["new"]; exists {
-		t.Fatal("exercise payload should be copied at the HTTP boundary")
+	gotLesson.Exercises[0].Payload.Tasks[0] = "Changed"
+	if payload["tasks"].([]string)[0] != "List files" {
+		t.Fatal("exercise payload slices should be copied at the HTTP boundary")
 	}
 }
 

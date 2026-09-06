@@ -103,7 +103,7 @@ Statut :
 make migrate-status
 ```
 
-La migration `00005_migrate_users_to_clerk.sql` a prepare la transition depuis l'ancienne authentification locale. La migration `00006_add_clerk_ownership_and_webhooks.sql` a introduit l'ownership initial. La migration `00007_remove_clerk_user_sync.sql` retire ensuite la projection `users` et les evenements webhook. La migration `00008_generation_operational_safety.sql` ajoute le suivi de reconciliation des echecs workers et les index d'admission/retention.
+La migration `00005_migrate_users_to_clerk.sql` a prepare la transition depuis l'ancienne authentification locale. La migration `00006_add_clerk_ownership_and_webhooks.sql` a introduit l'ownership initial. La migration `00007_remove_clerk_user_sync.sql` retire ensuite la projection `users` et les evenements webhook. La migration `00008_generation_operational_safety.sql` ajoute le suivi de reconciliation des echecs workers et les index d'admission/retention. La migration `00009_generation_history.sql` indexe l'historique chronologique par proprietaire Clerk.
 
 ## Routes
 
@@ -133,6 +133,7 @@ GET    /api/lessons/:lessonID/solutions
 Generation IA :
 
 ```http
+GET  /api/generations
 POST /api/generations
 POST /api/generations/:requestID/clarifications
 POST /api/generations/:requestID/structure
@@ -140,6 +141,7 @@ POST /api/generations/:requestID/structure/retry
 POST /api/generations/lessons/:lessonID/content
 POST /api/generations/modules/:moduleID/contents
 GET  /api/generations/:requestID/status
+GET  /api/generations/:requestID/jobs
 GET  /api/generations/:requestID/result
 POST /api/generations/:requestID/retry
 DELETE /api/generations/:requestID
@@ -152,6 +154,7 @@ GET  /api/generation-jobs/:jobID
 `POST /api/generations/:requestID/structure/retry` nettoie atomiquement les donnees partielles et enfile une nouvelle tentative de structure.
 `POST /api/generations/lessons/:lessonID/content` enfile la generation et la persistance du contenu d'une lesson.
 `POST /api/generations/modules/:moduleID/contents` enfile le contenu manquant des lessons du module.
+`GET /api/generations/:requestID/jobs` retourne les etats publics des jobs apres controle du proprietaire Clerk de la request. Le frontend peut ainsi reprendre le suivi apres rechargement et suivre les jobs enfants d'un module, sans exposer leurs payloads prives.
 `DELETE /api/generations/:requestID` supprime la request, ses jobs et tout son graphe de cours par cascade. Supprimer un cours applique la meme politique. Un worker deja dans un appel OpenAI peut terminer cet appel, mais ses ecritures sont ensuite refusees car son claim a disparu.
 
 `GET /api/courses` retourne uniquement des resumes et ne charge pas modules, lessons, contenus et activites. Le graphe complet reste reserve a `GET /api/courses/:courseID`. Les payloads ordinaires de cours/lecon ne contiennent ni corrections d'exercices, ni bonnes reponses de quiz ; la revelation explicite passe par `/api/lessons/:lessonID/solutions`.
@@ -200,8 +203,11 @@ Le frontend affiche `label` et renvoie `value` dans `selectedValues`. Exemple :
 
 ## Organisation
 
+La carte detaillee des dependances, des flux HTTP/jobs et les regles indiquant ou placer chaque type de code se trouvent dans [`docs/architecture.md`](docs/architecture.md).
+
 ```txt
-cmd/api                         point d'entree HTTP
+cmd/api                         configuration, composition des dependances et cycle de vie
+docs/architecture.md            guide d'architecture et parcours d'onboarding
 internal/config                 chargement .env et variables d'environnement
 internal/db                     ouverture du pool PostgreSQL et code sqlc genere
 internal/domain                 entites et regles metier pures
@@ -229,6 +235,7 @@ make test
 make test-race
 make test-integration
 make test-all
+make lint
 sqlc vet
 govulncheck ./...
 go run ./cmd/api
@@ -338,6 +345,8 @@ GENERATION_RETENTION_INTERVAL=6h
 GENERATION_RETENTION_BATCH=100
 GENERATION_METRICS_INTERVAL=1m
 ```
+
+`GET /api/generations?status=&page=&pageSize=` retourne l'historique pagine de l'utilisateur authentifie, y compris les demandes sans cours ou en attente de clarification.
 
 Railway fournit `PORT`; le backend ecoute automatiquement sur `:$PORT` lorsque `HTTP_ADDR` n'est pas defini. Garder une seule replica et une concurrence de `1` pour le premier deploiement, puis augmenter apres mesure des limites OpenAI et PostgreSQL.
 

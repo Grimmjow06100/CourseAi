@@ -172,7 +172,7 @@ func TestRetryResumesPersistedClarificationWithoutCallingAIAgain(t *testing.T) {
 	}
 }
 
-func TestAnalyzePromptPersistsFailureAndOutOfScopeCompletion(t *testing.T) {
+func TestAnalysisJobHandlesProviderFailureAndOutOfScopeCompletion(t *testing.T) {
 	t.Parallel()
 
 	now := time.Now()
@@ -180,28 +180,34 @@ func TestAnalyzePromptPersistsFailureAndOutOfScopeCompletion(t *testing.T) {
 		store := newPipelineMemoryStore()
 		ai := &pipelineAIStub{analysisErr: errors.New("provider unavailable")}
 		service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
-		if _, err := service.AnalyzePrompt(authenticatedTestContext(), contract.AnalyzePromptParams{Prompt: "Linux"}); err == nil {
+		started, err := service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{Prompt: "Linux"})
+		if err != nil {
+			t.Fatalf("start generation: %v", err)
+		}
+		job := pipelineJobByKind(t, store, started.RequestID, domain.GenerationJobKindAnalysis)
+		if err := service.runAnalysisJob(authenticatedTestContext(), job); err == nil {
 			t.Fatal("expected analysis failure")
 		}
-		for _, request := range store.requests {
-			if request.PipelineStatus != domain.PipelineStatusFailed || request.FailureMessage == nil {
-				t.Fatalf("failure was not persisted: %+v", request)
-			}
-			return
+		if ai.analysisCalls != 1 {
+			t.Fatalf("analysis calls = %d, want 1", ai.analysisCalls)
 		}
-		t.Fatal("generation request was not persisted")
 	})
 
 	t.Run("out of scope", func(t *testing.T) {
 		store := newPipelineMemoryStore()
 		ai := &pipelineAIStub{outOfScope: true}
 		service := NewCourseGeneratorService(ai, pipelineMemoryUnitOfWork{store: store}, fixedClock{now: now}, CourseGeneratorConfig{})
-		result, err := service.AnalyzePrompt(authenticatedTestContext(), contract.AnalyzePromptParams{Prompt: "Write a poem"})
+		started, err := service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{Prompt: "Write a poem"})
 		if err != nil {
-			t.Fatalf("AnalyzePrompt() error = %v", err)
+			t.Fatalf("start generation: %v", err)
 		}
-		if !result.Request.IsOutOfScope || result.Request.PipelineStatus != domain.PipelineStatusCompleted {
-			t.Fatalf("unexpected out-of-scope result: %+v", result.Request)
+		job := pipelineJobByKind(t, store, started.RequestID, domain.GenerationJobKindAnalysis)
+		if err := service.runAnalysisJob(authenticatedTestContext(), job); err != nil {
+			t.Fatalf("runAnalysisJob() error = %v", err)
+		}
+		request := store.requests[started.RequestID]
+		if !request.IsOutOfScope || request.PipelineStatus != domain.PipelineStatusCompleted {
+			t.Fatalf("unexpected out-of-scope result: %+v", request)
 		}
 	})
 }

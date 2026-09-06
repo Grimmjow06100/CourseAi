@@ -10,7 +10,6 @@ import (
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/infrastructure/http/dto"
-	"github.com/Grimmjow06100/course-ai/backend-go/internal/service"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/errtrace"
 	"github.com/gin-gonic/gin"
 )
@@ -106,79 +105,79 @@ func writeError(c *gin.Context, err error) {
 
 	c.JSON(status, dto.ErrorResponse{Code: code, Message: message})
 }
+
+type errorMapping struct {
+	target  error
+	status  int
+	code    string
+	message string
+}
+
+var applicationErrorMappings = []errorMapping{
+	{contract.ErrUnauthenticated, http.StatusUnauthorized, "unauthenticated", "authentication is required"},
+	{contract.ErrCourseNotFound, http.StatusNotFound, "course_not_found", "course not found"},
+	{contract.ErrGenerationRequestNotFound, http.StatusNotFound, "generation_request_not_found", "generation request not found"},
+	{contract.ErrGenerationJobNotFound, http.StatusNotFound, "generation_job_not_found", "generation job not found"},
+	{contract.ErrGenerationJobIdempotencyConflict, http.StatusConflict, "idempotency_conflict", "idempotency key is already used by another generation"},
+	{contract.ErrGenerationActiveLimitExceeded, http.StatusTooManyRequests, "active_generation_limit_exceeded", "too many active generations"},
+	{contract.ErrGenerationDailyLimitExceeded, http.StatusTooManyRequests, "daily_generation_limit_exceeded", "daily generation limit exceeded"},
+	{contract.ErrGenerationQueueSaturated, http.StatusServiceUnavailable, "generation_queue_saturated", "generation capacity is temporarily exhausted"},
+	{contract.ErrModuleNotFound, http.StatusNotFound, "module_not_found", "module not found"},
+	{contract.ErrLessonNotFound, http.StatusNotFound, "lesson_not_found", "lesson not found"},
+	{contract.ErrPromptRequired, http.StatusBadRequest, "prompt_required", ""},
+	{contract.ErrPromptTooLong, http.StatusBadRequest, "prompt_too_long", ""},
+	{contract.ErrGenerationOutOfScope, http.StatusUnprocessableEntity, "generation_out_of_scope", ""},
+	{contract.ErrGenerationNotCompleted, http.StatusConflict, "generation_not_completed", ""},
+	{contract.ErrGenerationAnalysisRequired, http.StatusConflict, "generation_analysis_required", ""},
+	{contract.ErrGenerationBriefRequired, http.StatusConflict, "generation_brief_required", ""},
+	{contract.ErrGenerationAwaitingClarification, http.StatusConflict, "generation_awaiting_clarification", ""},
+	{contract.ErrGenerationNotAwaitingClarification, http.StatusConflict, "generation_not_awaiting_clarification", ""},
+	{contract.ErrClarificationAlreadySubmitted, http.StatusConflict, "clarification_already_submitted", ""},
+	{contract.ErrGenerationNotRetryable, http.StatusConflict, "generation_not_retryable", ""},
+	{contract.ErrGenerationStructureRetryNotAllowed, http.StatusConflict, "structure_retry_not_allowed", ""},
+	{contract.ErrGenerationStructureRetryStepMismatch, http.StatusConflict, "structure_retry_step_mismatch", ""},
+	{contract.ErrServiceDependency, http.StatusServiceUnavailable, "service_unavailable", "service is unavailable"},
+}
+
+var validationErrors = []error{
+	domain.ErrBlankField,
+	domain.ErrInvalidCollection,
+	domain.ErrInvalidCourseLanguage,
+	domain.ErrInvalidCourseStatus,
+	domain.ErrInvalidGenerationStatus,
+	domain.ErrInvalidLessonType,
+	domain.ErrInvalidLevel,
+	domain.ErrInvalidOrder,
+	domain.ErrInvalidProgress,
+	domain.ErrInvalidDuration,
+	domain.ErrInvalidClerkUserID,
+	domain.ErrInvalidClarification,
+	domain.ErrInvalidClarificationAnswer,
+	domain.ErrClarificationAnswerMissing,
+	domain.ErrClarificationAnswerUnknown,
+	domain.ErrClarificationValueNotAllowed,
+	domain.ErrGenerationBriefIncomplete,
+	domain.ErrGenerationRequestNotReady,
+}
+
 func classifyError(err error) (int, string, string) {
 	var httpErr HTTPError
 	if errors.As(err, &httpErr) {
 		return httpErr.Status, httpErr.Code, httpErr.Message
 	}
-
-	switch {
-	case errors.Is(err, contract.ErrUnauthenticated):
-		return http.StatusUnauthorized, "unauthenticated", "authentication is required"
-	case errors.Is(err, contract.ErrCourseNotFound):
-		return http.StatusNotFound, "course_not_found", "course not found"
-	case errors.Is(err, contract.ErrGenerationRequestNotFound):
-		return http.StatusNotFound, "generation_request_not_found", "generation request not found"
-	case errors.Is(err, contract.ErrGenerationJobNotFound):
-		return http.StatusNotFound, "generation_job_not_found", "generation job not found"
-	case errors.Is(err, contract.ErrGenerationJobIdempotencyConflict):
-		return http.StatusConflict, "idempotency_conflict", "idempotency key is already used by another generation"
-	case errors.Is(err, contract.ErrGenerationActiveLimitExceeded):
-		return http.StatusTooManyRequests, "active_generation_limit_exceeded", "too many active generations"
-	case errors.Is(err, contract.ErrGenerationDailyLimitExceeded):
-		return http.StatusTooManyRequests, "daily_generation_limit_exceeded", "daily generation limit exceeded"
-	case errors.Is(err, contract.ErrGenerationQueueSaturated):
-		return http.StatusServiceUnavailable, "generation_queue_saturated", "generation capacity is temporarily exhausted"
-	case errors.Is(err, contract.ErrModuleNotFound):
-		return http.StatusNotFound, "module_not_found", "module not found"
-	case errors.Is(err, contract.ErrLessonNotFound):
-		return http.StatusNotFound, "lesson_not_found", "lesson not found"
-	case errors.Is(err, service.ErrPromptRequired):
-		return http.StatusBadRequest, "prompt_required", err.Error()
-	case errors.Is(err, service.ErrPromptTooLong):
-		return http.StatusBadRequest, "prompt_too_long", err.Error()
-	case errors.Is(err, service.ErrGenerationOutOfScope):
-		return http.StatusUnprocessableEntity, "generation_out_of_scope", err.Error()
-	case errors.Is(err, service.ErrGenerationNotCompleted):
-		return http.StatusConflict, "generation_not_completed", err.Error()
-	case errors.Is(err, service.ErrGenerationAnalysisRequired):
-		return http.StatusConflict, "generation_analysis_required", err.Error()
-	case errors.Is(err, service.ErrGenerationBriefRequired):
-		return http.StatusConflict, "generation_brief_required", err.Error()
-	case errors.Is(err, service.ErrGenerationAwaitingClarification):
-		return http.StatusConflict, "generation_awaiting_clarification", err.Error()
-	case errors.Is(err, service.ErrGenerationNotAwaitingClarification):
-		return http.StatusConflict, "generation_not_awaiting_clarification", err.Error()
-	case errors.Is(err, service.ErrClarificationAlreadySubmitted):
-		return http.StatusConflict, "clarification_already_submitted", err.Error()
-	case errors.Is(err, service.ErrGenerationNotRetryable):
-		return http.StatusConflict, "generation_not_retryable", err.Error()
-	case errors.Is(err, service.ErrGenerationStructureRetryNotAllowed):
-		return http.StatusConflict, "structure_retry_not_allowed", err.Error()
-	case errors.Is(err, service.ErrGenerationStructureRetryStepMismatch):
-		return http.StatusConflict, "structure_retry_step_mismatch", err.Error()
-	case errors.Is(err, service.ErrCourseCatalogDependency), errors.Is(err, service.ErrCourseGeneratorDependency):
-		return http.StatusServiceUnavailable, "service_unavailable", err.Error()
-	case errors.Is(err, domain.ErrBlankField),
-		errors.Is(err, domain.ErrInvalidCollection),
-		errors.Is(err, domain.ErrInvalidCourseLanguage),
-		errors.Is(err, domain.ErrInvalidCourseStatus),
-		errors.Is(err, domain.ErrInvalidGenerationStatus),
-		errors.Is(err, domain.ErrInvalidLessonType),
-		errors.Is(err, domain.ErrInvalidLevel),
-		errors.Is(err, domain.ErrInvalidOrder),
-		errors.Is(err, domain.ErrInvalidProgress),
-		errors.Is(err, domain.ErrInvalidDuration),
-		errors.Is(err, domain.ErrInvalidClerkUserID),
-		errors.Is(err, domain.ErrInvalidClarification),
-		errors.Is(err, domain.ErrInvalidClarificationAnswer),
-		errors.Is(err, domain.ErrClarificationAnswerMissing),
-		errors.Is(err, domain.ErrClarificationAnswerUnknown),
-		errors.Is(err, domain.ErrClarificationValueNotAllowed),
-		errors.Is(err, domain.ErrGenerationBriefIncomplete),
-		errors.Is(err, domain.ErrGenerationRequestNotReady):
-		return http.StatusBadRequest, "validation_error", err.Error()
-	default:
-		return http.StatusInternalServerError, "internal_error", "internal server error"
+	for _, mapping := range applicationErrorMappings {
+		if errors.Is(err, mapping.target) {
+			message := mapping.message
+			if message == "" {
+				message = err.Error()
+			}
+			return mapping.status, mapping.code, message
+		}
 	}
+	for _, target := range validationErrors {
+		if errors.Is(err, target) {
+			return http.StatusBadRequest, "validation_error", err.Error()
+		}
+	}
+	return http.StatusInternalServerError, "internal_error", "internal server error"
 }

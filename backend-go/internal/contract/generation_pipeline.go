@@ -12,10 +12,6 @@ type StartGenerationParams struct {
 	IdempotencyKey string
 }
 
-type AnalyzePromptParams struct {
-	Prompt string
-}
-
 type GenerateStructureParams struct {
 	RequestID    uuid.UUID
 	Title        string
@@ -75,25 +71,26 @@ type GenerationResult struct {
 	Course  domain.Course
 }
 
-type GenerationAnalysisResult struct {
-	Request domain.GenerationRequest
-}
-
-type CourseGenerationService interface {
-	AnalyzePrompt(ctx context.Context, params AnalyzePromptParams) (GenerationAnalysisResult, error)
+type GenerationCommandService interface {
 	StartFullCourseGeneration(ctx context.Context, params StartGenerationParams) (GenerationStarted, error)
 	SubmitClarifications(ctx context.Context, params SubmitClarificationsParams) (GenerationStarted, error)
 	EnqueueCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationStarted, error)
 	EnqueueStructureRetry(ctx context.Context, params GenerateStructureParams) (GenerationStarted, error)
 	EnqueueLessonContentGeneration(ctx context.Context, lessonID uuid.UUID) (GenerationStarted, error)
 	EnqueueModuleContentGeneration(ctx context.Context, moduleID uuid.UUID) (GenerationStarted, error)
-	GetGenerationJob(ctx context.Context, jobID uuid.UUID) (domain.GenerationJob, error)
-	GenerateCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationResult, error)
-	RetryCourseStructure(ctx context.Context, params GenerateStructureParams) (GenerationResult, error)
-	GenerateLessonContent(ctx context.Context, lessonID uuid.UUID) (domain.Lesson, error)
-	GenerateModuleLessonContents(ctx context.Context, moduleID uuid.UUID) (domain.Module, error)
-	GetGenerationStatus(ctx context.Context, requestID uuid.UUID) (GenerationStatus, error)
-	GetGenerationResult(ctx context.Context, requestID uuid.UUID) (GenerationResult, error)
 	RetryFullCourseGeneration(ctx context.Context, requestID uuid.UUID) (GenerationStarted, error)
 	DeleteGenerationRequest(ctx context.Context, requestID uuid.UUID) error
+}
+
+type GenerationQueryService interface {
+	ListGenerationJobs(ctx context.Context, requestID uuid.UUID) ([]domain.GenerationJob, error)
+	ListGenerationRequests(ctx context.Context, filters GenerationHistoryFilters) (Page[GenerationSummary], error)
+	GetGenerationJob(ctx context.Context, jobID uuid.UUID) (domain.GenerationJob, error)
+	GetGenerationStatus(ctx context.Context, requestID uuid.UUID) (GenerationStatus, error)
+	GetGenerationResult(ctx context.Context, requestID uuid.UUID) (GenerationResult, error)
+}
+
+type CourseGenerationService interface {
+	GenerationCommandService
+	GenerationQueryService
 }

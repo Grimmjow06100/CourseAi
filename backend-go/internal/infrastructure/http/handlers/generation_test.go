@@ -48,6 +48,33 @@ func TestGenerationHandlerStartReturnsAcceptedJobAndForwardsIdempotencyKey(t *te
 	}
 }
 
+func TestGenerationHandlerListsPaginatedHistory(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	requestID := uuid.New()
+	service := &generationServiceStub{}
+	service.list = func(_ context.Context, filters contract.GenerationHistoryFilters) (contract.Page[contract.GenerationSummary], error) {
+		if filters.PipelineStatus == nil || *filters.PipelineStatus != domain.PipelineStatusRunning || filters.Pagination.Page != 2 || filters.Pagination.PageSize != 5 {
+			t.Fatalf("unexpected history filters: %+v", filters)
+		}
+		return contract.Page[contract.GenerationSummary]{
+			Items: []contract.GenerationSummary{{RequestID: requestID, Title: "Linux", PipelineStatus: domain.PipelineStatusRunning}},
+			Page:  2, PageSize: 5, TotalItems: 6, TotalPages: 2, HasPrevious: true,
+		}, nil
+	}
+	response := httptest.NewRecorder()
+	generationTestRouter(service).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/generations?status=running&page=2&pageSize=5", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", response.Code, response.Body.String())
+	}
+	var page dto.PageResponse[dto.GenerationSummaryResponse]
+	if err := json.Unmarshal(response.Body.Bytes(), &page); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(page.Items) != 1 || page.Items[0].RequestID != requestID.String() || !page.HasPrevious {
+		t.Fatalf("unexpected page: %+v", page)
+	}
+}
+
 func TestGenerationHandlerStructureEnqueuesAndReturnsAccepted(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -119,12 +146,6 @@ func TestGenerationHandlerRemainingRoutes(t *testing.T) {
 	lessonID := uuid.New()
 	moduleID := uuid.New()
 	service := &generationServiceStub{}
-	service.analyze = func(_ context.Context, params contract.AnalyzePromptParams) (contract.GenerationAnalysisResult, error) {
-		if params.Prompt != "Learn Linux" {
-			t.Fatalf("unexpected analysis params: %+v", params)
-		}
-		return contract.GenerationAnalysisResult{Request: domain.GenerationRequest{ID: requestID}}, nil
-	}
 	service.retryStructure = func(_ context.Context, params contract.GenerateStructureParams) (contract.GenerationStarted, error) {
 		if params.RequestID != requestID {
 			t.Fatalf("unexpected retry request id: %s", params.RequestID)
@@ -170,7 +191,6 @@ func TestGenerationHandlerRemainingRoutes(t *testing.T) {
 		body       string
 		wantStatus int
 	}{
-		{name: "analyze", method: http.MethodPost, path: "/api/generations/analyze", body: `{"prompt":"Learn Linux"}`, wantStatus: http.StatusCreated},
 		{name: "retry structure", method: http.MethodPost, path: "/api/generations/" + requestID.String() + "/structure/retry", body: structureBody, wantStatus: http.StatusAccepted},
 		{name: "lesson content", method: http.MethodPost, path: "/api/generations/lessons/" + lessonID.String() + "/content", wantStatus: http.StatusAccepted},
 		{name: "module content", method: http.MethodPost, path: "/api/generations/modules/" + moduleID.String() + "/contents", wantStatus: http.StatusAccepted},
@@ -216,9 +236,9 @@ func TestGenerationHandlerRejectsInvalidStructureEnumsAndUnavailableService(t *t
 func generationTestRouter(service contract.CourseGenerationService) *gin.Engine {
 	router := gin.New()
 	router.Use(middlewares.ErrorHandler())
-	handler := NewGenerationHandler(service)
+	handler := NewGenerationHandler(service, service)
+	router.GET("/api/generations", handler.List)
 	router.POST("/api/generations", handler.Start)
-	router.POST("/api/generations/analyze", handler.Analyze)
 	router.POST("/api/generations/:requestID/clarifications", handler.SubmitClarifications)
 	router.POST("/api/generations/:requestID/structure", handler.Structure)
 	router.POST("/api/generations/:requestID/structure/retry", handler.RetryStructure)
@@ -226,6 +246,7 @@ func generationTestRouter(service contract.CourseGenerationService) *gin.Engine 
 	router.POST("/api/generations/modules/:moduleID/contents", handler.ModuleLessonContents)
 	router.GET("/api/generation-jobs/:jobID", handler.JobStatus)
 	router.GET("/api/generations/:requestID/status", handler.Status)
+	router.GET("/api/generations/:requestID/jobs", handler.Jobs)
 	router.GET("/api/generations/:requestID/result", handler.Result)
 	router.POST("/api/generations/:requestID/retry", handler.Retry)
 	router.DELETE("/api/generations/:requestID", handler.Delete)
@@ -245,9 +266,10 @@ func acceptedGeneration(jobID, requestID uuid.UUID) contract.GenerationStarted {
 }
 
 type generationServiceStub struct {
+	jobs                 func(context.Context, uuid.UUID) ([]domain.GenerationJob, error)
+	list                 func(context.Context, contract.GenerationHistoryFilters) (contract.Page[contract.GenerationSummary], error)
 	start                func(context.Context, contract.StartGenerationParams) (contract.GenerationStarted, error)
 	enqueueStructure     func(context.Context, contract.GenerateStructureParams) (contract.GenerationStarted, error)
-	analyze              func(context.Context, contract.AnalyzePromptParams) (contract.GenerationAnalysisResult, error)
 	submitClarifications func(context.Context, contract.SubmitClarificationsParams) (contract.GenerationStarted, error)
 	retryStructure       func(context.Context, contract.GenerateStructureParams) (contract.GenerationStarted, error)
 	lessonContent        func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
@@ -257,6 +279,20 @@ type generationServiceStub struct {
 	result               func(context.Context, uuid.UUID) (contract.GenerationResult, error)
 	retry                func(context.Context, uuid.UUID) (contract.GenerationStarted, error)
 	deleteRequest        func(context.Context, uuid.UUID) error
+}
+
+func (s *generationServiceStub) ListGenerationJobs(ctx context.Context, id uuid.UUID) ([]domain.GenerationJob, error) {
+	if s.jobs == nil {
+		return nil, nil
+	}
+	return s.jobs(ctx, id)
+}
+
+func (s *generationServiceStub) ListGenerationRequests(ctx context.Context, filters contract.GenerationHistoryFilters) (contract.Page[contract.GenerationSummary], error) {
+	if s.list == nil {
+		return contract.Page[contract.GenerationSummary]{}, nil
+	}
+	return s.list(ctx, filters)
 }
 
 func (s *generationServiceStub) StartFullCourseGeneration(ctx context.Context, params contract.StartGenerationParams) (contract.GenerationStarted, error) {
@@ -271,13 +307,6 @@ func (s *generationServiceStub) EnqueueCourseStructure(ctx context.Context, para
 		return contract.GenerationStarted{}, nil
 	}
 	return s.enqueueStructure(ctx, params)
-}
-
-func (s *generationServiceStub) AnalyzePrompt(ctx context.Context, params contract.AnalyzePromptParams) (contract.GenerationAnalysisResult, error) {
-	if s.analyze == nil {
-		return contract.GenerationAnalysisResult{}, nil
-	}
-	return s.analyze(ctx, params)
 }
 
 func (s *generationServiceStub) SubmitClarifications(ctx context.Context, params contract.SubmitClarificationsParams) (contract.GenerationStarted, error) {
@@ -315,22 +344,6 @@ func (s *generationServiceStub) GetGenerationJob(ctx context.Context, id uuid.UU
 	return s.job(ctx, id)
 }
 
-func (*generationServiceStub) GenerateCourseStructure(context.Context, contract.GenerateStructureParams) (contract.GenerationResult, error) {
-	return contract.GenerationResult{}, nil
-}
-
-func (*generationServiceStub) RetryCourseStructure(context.Context, contract.GenerateStructureParams) (contract.GenerationResult, error) {
-	return contract.GenerationResult{}, nil
-}
-
-func (*generationServiceStub) GenerateLessonContent(context.Context, uuid.UUID) (domain.Lesson, error) {
-	return domain.Lesson{}, nil
-}
-
-func (*generationServiceStub) GenerateModuleLessonContents(context.Context, uuid.UUID) (domain.Module, error) {
-	return domain.Module{}, nil
-}
-
 func (s *generationServiceStub) GetGenerationStatus(ctx context.Context, id uuid.UUID) (contract.GenerationStatus, error) {
 	if s.status == nil {
 		return contract.GenerationStatus{}, nil
@@ -360,3 +373,30 @@ func (s *generationServiceStub) DeleteGenerationRequest(ctx context.Context, id 
 }
 
 var _ contract.CourseGenerationService = (*generationServiceStub)(nil)
+
+func TestGenerationHandlerJobsReturnsPublicArray(t *testing.T) {
+	requestID := uuid.New()
+	for _, empty := range []bool{false, true} {
+		service := &generationServiceStub{}
+		service.jobs = func(_ context.Context, id uuid.UUID) ([]domain.GenerationJob, error) {
+			if id != requestID {
+				t.Fatalf("request id = %v", id)
+			}
+			if empty {
+				return nil, nil
+			}
+			return []domain.GenerationJob{{ID: uuid.New(), RequestID: id, Payload: []byte("{\"private\":true}"), Status: domain.GenerationJobStatusRunning}}, nil
+		}
+		response := httptest.NewRecorder()
+		generationTestRouter(service).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/generations/"+requestID.String()+"/jobs", nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", response.Code, response.Body.String())
+		}
+		if bytes.Contains(response.Body.Bytes(), []byte("private")) || bytes.Contains(response.Body.Bytes(), []byte("payload")) {
+			t.Fatal("private payload exposed")
+		}
+		if empty && response.Body.String() != "[]" {
+			t.Fatalf("expected array, got %s", response.Body.String())
+		}
+	}
+}

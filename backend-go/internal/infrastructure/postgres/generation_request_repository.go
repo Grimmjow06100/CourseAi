@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strings"
 	"time"
 
@@ -50,6 +51,72 @@ func (r *GenerationRequestRepository) UpdateGenerationRequest(ctx context.Contex
 		return domain.GenerationRequest{}, mapNoRows(err, ErrGenerationRequestNotFound)
 	}
 	return generationRequestFromSQLC(row)
+}
+
+func (r *GenerationRequestRepository) ListGenerationRequests(ctx context.Context, filters contract.GenerationHistoryFilters) (contract.Page[contract.GenerationSummary], error) {
+	pagination := filters.Pagination.Normalize()
+	var status *dbsqlc.GenerationPipelineStatus
+	if filters.PipelineStatus != nil {
+		value := dbsqlc.GenerationPipelineStatus(*filters.PipelineStatus)
+		status = &value
+	}
+
+	totalItems, err := r.queries.CountGenerationRequestsByOwner(ctx, dbsqlc.CountGenerationRequestsByOwnerParams{
+		ClerkUserID:    strings.TrimSpace(filters.ClerkUserID),
+		PipelineStatus: status,
+	})
+	if err != nil {
+		return contract.Page[contract.GenerationSummary]{}, err
+	}
+
+	rows, err := r.queries.ListGenerationRequestsByOwner(ctx, dbsqlc.ListGenerationRequestsByOwnerParams{
+		ClerkUserID:    strings.TrimSpace(filters.ClerkUserID),
+		PipelineStatus: status,
+		OffsetRows:     int32((pagination.Page - 1) * pagination.PageSize),
+		LimitRows:      int32(pagination.PageSize),
+	})
+	if err != nil {
+		return contract.Page[contract.GenerationSummary]{}, err
+	}
+
+	items := make([]contract.GenerationSummary, 0, len(rows))
+	for _, row := range rows {
+		summary := contract.GenerationSummary{
+			RequestID:         row.RequestID,
+			InitialUserPrompt: row.InitialUserPrompt,
+			Title:             row.Title,
+			PipelineStatus:    domain.GenerationPipelineStatus(row.PipelineStatus),
+			CurrentStep:       row.CurrentStep,
+			ProgressPercent:   int(row.ProgressPercent),
+			IsOutOfScope:      row.IsOutOfScope,
+			FailureMessage:    row.FailureMessage,
+			CreatedAt:         row.CreatedAt,
+			UpdatedAt:         row.UpdatedAt,
+		}
+		if row.CourseID.Valid {
+			courseID := uuid.UUID(row.CourseID.Bytes)
+			summary.CourseID = &courseID
+		}
+		if row.CourseStatus != nil {
+			courseStatus := domain.CourseGenerationStatus(*row.CourseStatus)
+			summary.CourseStatus = &courseStatus
+		}
+		items = append(items, summary)
+	}
+
+	totalPages := 0
+	if totalItems > 0 {
+		totalPages = int(math.Ceil(float64(totalItems) / float64(pagination.PageSize)))
+	}
+	return contract.Page[contract.GenerationSummary]{
+		Items:       items,
+		Page:        pagination.Page,
+		PageSize:    pagination.PageSize,
+		TotalItems:  int(totalItems),
+		TotalPages:  totalPages,
+		HasNext:     pagination.Page < totalPages,
+		HasPrevious: pagination.Page > 1,
+	}, nil
 }
 
 func (r *GenerationRequestRepository) FindGenerationRequestByID(ctx context.Context, id uuid.UUID) (domain.GenerationRequest, error) {

@@ -13,10 +13,6 @@ type StartGenerationRequest struct {
 	Prompt string `json:"prompt" binding:"required,max=4000"`
 }
 
-type AnalyzeGenerationRequest struct {
-	Prompt string `json:"prompt" binding:"required,max=4000"`
-}
-
 type GenerateStructureRequest struct {
 	Title        string   `json:"title" binding:"required,max=200"`
 	Synopsis     string   `json:"synopsis" binding:"required,max=2000"`
@@ -38,6 +34,21 @@ type ClarificationAnswerRequest struct {
 	SelectedValues []string `json:"selectedValues" binding:"required,min=1,max=4,dive,required,max=200"`
 }
 
+type GenerationSummaryResponse struct {
+	RequestID         string    `json:"requestId"`
+	CourseID          *string   `json:"courseId"`
+	InitialUserPrompt string    `json:"initialUserPrompt"`
+	Title             string    `json:"title"`
+	PipelineStatus    string    `json:"pipelineStatus"`
+	CourseStatus      *string   `json:"courseStatus"`
+	CurrentStep       *string   `json:"currentStep"`
+	ProgressPercent   int       `json:"progressPercent"`
+	IsOutOfScope      bool      `json:"isOutOfScope"`
+	FailureMessage    *string   `json:"failureMessage"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
 type GenerationStartedResponse struct {
 	JobID        string `json:"jobId"`
 	RequestID    string `json:"requestId"`
@@ -46,6 +57,30 @@ type GenerationStartedResponse struct {
 	StatusURL    string `json:"statusUrl"`
 	JobStatusURL string `json:"jobStatusUrl"`
 	ResultURL    string `json:"resultUrl"`
+}
+
+func GenerationPageFromContract(page contract.Page[contract.GenerationSummary]) PageResponse[GenerationSummaryResponse] {
+	items := make([]GenerationSummaryResponse, 0, len(page.Items))
+	for _, summary := range page.Items {
+		items = append(items, GenerationSummaryResponse{
+			RequestID:         summary.RequestID.String(),
+			CourseID:          pointer.Map(summary.CourseID, func(value uuid.UUID) string { return value.String() }),
+			InitialUserPrompt: summary.InitialUserPrompt,
+			Title:             summary.Title,
+			PipelineStatus:    string(summary.PipelineStatus),
+			CourseStatus:      pointer.Map(summary.CourseStatus, func(value domain.CourseGenerationStatus) string { return string(value) }),
+			CurrentStep:       summary.CurrentStep,
+			ProgressPercent:   summary.ProgressPercent,
+			IsOutOfScope:      summary.IsOutOfScope,
+			FailureMessage:    summary.FailureMessage,
+			CreatedAt:         summary.CreatedAt,
+			UpdatedAt:         summary.UpdatedAt,
+		})
+	}
+	return PageResponse[GenerationSummaryResponse]{
+		Items: items, Page: page.Page, PageSize: page.PageSize, TotalItems: page.TotalItems,
+		TotalPages: page.TotalPages, HasNext: page.HasNext, HasPrevious: page.HasPrevious,
+	}
 }
 
 type GenerationJobResponse struct {
@@ -92,10 +127,6 @@ type GenerationStatusResponse struct {
 type GenerationActionRequiredResponse struct {
 	Type string `json:"type"`
 	URL  string `json:"url"`
-}
-
-type GenerationAnalysisResponse struct {
-	Request GenerationRequestResponse `json:"request"`
 }
 
 type GenerationResultResponse struct {
@@ -216,10 +247,6 @@ func GenerationStatusFromContract(status contract.GenerationStatus) GenerationSt
 		response.ActionRequired = &GenerationActionRequiredResponse{Type: status.ActionRequired.Type, URL: status.ActionRequired.URL}
 	}
 	return response
-}
-
-func GenerationAnalysisFromContract(result contract.GenerationAnalysisResult) GenerationAnalysisResponse {
-	return GenerationAnalysisResponse{Request: GenerationRequestFromDomain(result.Request)}
 }
 
 func GenerationResultFromContract(result contract.GenerationResult) GenerationResultResponse {

@@ -14,6 +14,28 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countGenerationRequestsByOwner = `-- name: CountGenerationRequestsByOwner :one
+SELECT count(*)::bigint
+FROM generation_requests AS request
+WHERE request.clerk_user_id = $1
+  AND (
+    $2::generation_pipeline_status IS NULL
+    OR request.pipeline_status = $2::generation_pipeline_status
+  )
+`
+
+type CountGenerationRequestsByOwnerParams struct {
+	ClerkUserID    string                    `db:"clerk_user_id" json:"clerk_user_id"`
+	PipelineStatus *GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
+}
+
+func (q *Queries) CountGenerationRequestsByOwner(ctx context.Context, arg CountGenerationRequestsByOwnerParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countGenerationRequestsByOwner, arg.ClerkUserID, arg.PipelineStatus)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const createGenerationRequest = `-- name: CreateGenerationRequest :one
 INSERT INTO generation_requests (
   id,
@@ -465,6 +487,92 @@ func (q *Queries) GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (Ge
 		&i.CourseStatus,
 	)
 	return i, err
+}
+
+const listGenerationRequestsByOwner = `-- name: ListGenerationRequestsByOwner :many
+SELECT
+  request.id AS request_id,
+  course.id AS course_id,
+  request.initial_user_prompt,
+  COALESCE(course.title, request.confirmed_title, request.suggested_title, request.initial_user_prompt) AS title,
+  request.pipeline_status,
+  course.status AS course_status,
+  request.current_step,
+  request.progress_percent,
+  request.is_out_of_scope,
+  request.failure_message,
+  request.created_at,
+  request.updated_at
+FROM generation_requests AS request
+LEFT JOIN courses AS course ON course.request_id = request.id
+WHERE request.clerk_user_id = $1
+  AND (
+    $2::generation_pipeline_status IS NULL
+    OR request.pipeline_status = $2::generation_pipeline_status
+  )
+ORDER BY request.created_at DESC, request.id DESC
+LIMIT $4
+OFFSET $3
+`
+
+type ListGenerationRequestsByOwnerParams struct {
+	ClerkUserID    string                    `db:"clerk_user_id" json:"clerk_user_id"`
+	PipelineStatus *GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
+	OffsetRows     int32                     `db:"offset_rows" json:"offset_rows"`
+	LimitRows      int32                     `db:"limit_rows" json:"limit_rows"`
+}
+
+type ListGenerationRequestsByOwnerRow struct {
+	RequestID         uuid.UUID                `db:"request_id" json:"request_id"`
+	CourseID          pgtype.UUID              `db:"course_id" json:"course_id"`
+	InitialUserPrompt string                   `db:"initial_user_prompt" json:"initial_user_prompt"`
+	Title             string                   `db:"title" json:"title"`
+	PipelineStatus    GenerationPipelineStatus `db:"pipeline_status" json:"pipeline_status"`
+	CourseStatus      *CourseGenerationStatus  `db:"course_status" json:"course_status"`
+	CurrentStep       *string                  `db:"current_step" json:"current_step"`
+	ProgressPercent   int32                    `db:"progress_percent" json:"progress_percent"`
+	IsOutOfScope      bool                     `db:"is_out_of_scope" json:"is_out_of_scope"`
+	FailureMessage    *string                  `db:"failure_message" json:"failure_message"`
+	CreatedAt         time.Time                `db:"created_at" json:"created_at"`
+	UpdatedAt         time.Time                `db:"updated_at" json:"updated_at"`
+}
+
+func (q *Queries) ListGenerationRequestsByOwner(ctx context.Context, arg ListGenerationRequestsByOwnerParams) ([]ListGenerationRequestsByOwnerRow, error) {
+	rows, err := q.db.Query(ctx, listGenerationRequestsByOwner,
+		arg.ClerkUserID,
+		arg.PipelineStatus,
+		arg.OffsetRows,
+		arg.LimitRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListGenerationRequestsByOwnerRow{}
+	for rows.Next() {
+		var i ListGenerationRequestsByOwnerRow
+		if err := rows.Scan(
+			&i.RequestID,
+			&i.CourseID,
+			&i.InitialUserPrompt,
+			&i.Title,
+			&i.PipelineStatus,
+			&i.CourseStatus,
+			&i.CurrentStep,
+			&i.ProgressPercent,
+			&i.IsOutOfScope,
+			&i.FailureMessage,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const purgeRawGenerationOutputsBefore = `-- name: PurgeRawGenerationOutputsBefore :one

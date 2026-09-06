@@ -67,15 +67,14 @@ func TestGenerationDTOConversions(t *testing.T) {
 	}
 }
 
-func TestGenerationResultWrappers(t *testing.T) {
+func TestGenerationResultWrapper(t *testing.T) {
 	t.Parallel()
 
 	requestID := uuid.New()
 	request := domain.GenerationRequest{ID: requestID}
 	course := domain.Course{ID: uuid.New(), RequestID: requestID}
-	analysis := GenerationAnalysisFromContract(contract.GenerationAnalysisResult{Request: request})
 	result := GenerationResultFromContract(contract.GenerationResult{Request: request, Course: course})
-	if analysis.Request.ID != requestID.String() || result.Request.ID != requestID.String() || result.Course.ID != course.ID.String() {
-		t.Fatalf("unexpected wrapper responses: analysis=%+v result=%+v", analysis, result)
+	if result.Request.ID != requestID.String() || result.Course.ID != course.ID.String() {
+		t.Fatalf("unexpected wrapper response: %+v", result)
 	}
 }
