@@ -1,11 +1,34 @@
 import { z } from 'zod'
 
+// Check the SDK's encoded frontend-API format. This does not verify a Clerk instance exists.
+function isClerkPublishableKey(value: string) {
+  const encoded = /^pk_(?:test|live)_([A-Za-z0-9+/]+={0,2})$/.exec(value)?.[1]
+  if (!encoded) return false
+  try {
+    const decoded = atob(encoded)
+    return /^[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9]+(?:[a-z0-9-]*[a-z0-9])?)+\$$/i.test(decoded)
+  } catch {
+    return false
+  }
+}
+
 const environmentSchema = z.object({
-  VITE_API_BASE_URL: z.url().refine((value) => /^https?:\/\//.test(value)),
+  VITE_API_BASE_URL: z.url().refine((value) => {
+    if (!URL.canParse(value)) return false
+    const url = new URL(value)
+    return (
+      ['http:', 'https:'].includes(url.protocol) &&
+      !url.username &&
+      !url.password &&
+      url.pathname === '/' &&
+      !url.search &&
+      !url.hash
+    )
+  }, 'Expected an HTTP(S) API origin without a path, credentials, query or fragment'),
   VITE_CLERK_PUBLISHABLE_KEY: z
     .string()
     .trim()
-    .regex(/^pk_(test|live)_[A-Za-z0-9_-]+$/),
+    .refine(isClerkPublishableKey, 'Expected a Clerk publishable key copied from the dashboard'),
   VITE_E2E_MODE: z
     .enum(['true', 'false'])
     .default('false')

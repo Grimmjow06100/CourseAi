@@ -15,7 +15,7 @@ Client React/Vite de Course AI. L'application permet de lancer une génération 
 
 ## Prérequis
 
-- Node.js 22+
+- Node.js 24.x (version alignée entre `.nvmrc`, `package.json` et la CI)
 - le backend Course AI sur `http://localhost:8080`
 - une application Clerk avec une publishable key
 
@@ -68,18 +68,13 @@ npm run api:check
 
 ## Déploiement Vercel
 
-Le fichier `vercel.json` redirige toutes les routes vers `index.html` pour TanStack Router. Définir dans Vercel :
-
-- `VITE_API_BASE_URL=https://<api-railway>`
-- `VITE_CLERK_PUBLISHABLE_KEY=pk_live_xxx`
-
-Ajouter le domaine Vercel aux origines Clerk, à `CLERK_AUTHORIZED_PARTIES` et à `CORS_ALLOWED_ORIGINS` sur Railway. La documentation détaillée se trouve dans [`docs/architecture.md`](docs/architecture.md).
+Suivre le [guide de mise en production](docs/vercel-deployment.md) : import du dépôt avec **Root Directory = `frontend`**, configuration Vercel, instance Clerk de production, API HTTPS, CORS et vérification des parcours réels. Le fichier `vercel.json` fixe Vite, `npm ci`, `npm run build`, `dist` et le routage SPA. Le modèle `.env.production.example` contient les trois variables publiques à renseigner.
 
 ### Contrôles avant publication
 
 - Choisir `frontend` comme **Root Directory**, `npm run build` comme commande et `dist` comme dossier de sortie.
 - Les variables sont publiques et intégrées au bundle : toute modification nécessite un nouveau déploiement. Ne jamais ajouter une clé secrète Clerk ou OpenAI dans une variable `VITE_*`.
-- Le build valide la configuration avec Zod et refuse une API non HTTPS ou `VITE_E2E_MODE=true`. Sur `VERCEL_ENV=production`, une clé `pk_live_*` est obligatoire. Les previews peuvent utiliser une instance Clerk de test avec les origines correspondantes.
+- Le build valide la configuration avec Zod et refuse une API non HTTPS, une URL contenant `/api`, une clé Clerk factice ou `VITE_E2E_MODE=true`. Sur `VERCEL_ENV=production`, une clé `pk_live_*` est obligatoire. Les previews peuvent utiliser une instance Clerk de test avec les origines correspondantes. La validation de syntaxe ne vérifie pas l'existence de l'instance Clerk.
 - `vercel.json` fournit le rewrite SPA, `nosniff`, une politique de référent et une CSP minimale interdisant l'intégration du frontend dans une iframe. Une CSP restrictive complète nécessite d'inventorier les domaines de l'instance Clerk réelle.
 - Déployer la version backend qui expose `GET /api/generations/:requestID/jobs`. Aucune nouvelle migration n'est nécessaire pour ce correctif ; la migration d'historique `00009` du MVP reste requise.
 - Les tests Playwright utilisent un serveur dédié sur `4180`, deux workers et une API simulée. Ils ne valident pas les paramètres de votre instance Clerk, Railway ou Vercel.

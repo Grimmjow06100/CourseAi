@@ -1,11 +1,23 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import { UserButton } from '@clerk/react'
 import { Link, Outlet, useRouterState } from '@tanstack/react-router'
-import { BookOpenCheck, FolderClock, GraduationCap, LayoutDashboard, Menu, Plus, X } from 'lucide-react'
+import {
+  ArrowUpRight,
+  BookOpenCheck,
+  ChevronRight,
+  FolderClock,
+  GraduationCap,
+  LayoutDashboard,
+  Menu,
+  Plus,
+  Sparkles,
+  X,
+} from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/shared/lib/cn'
 import { Button } from '@/shared/ui/button'
+import { ThemeControl } from '@/shared/ui/theme-control'
 
 const navItems = [
   { to: '/', label: 'nav.dashboard', icon: LayoutDashboard },
@@ -27,12 +39,14 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
             to={to}
             onClick={onNavigate}
             className={cn(
-              'flex h-10 items-center gap-3 rounded-md px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-              active && 'bg-surface text-primary shadow-sm',
+              'flex min-h-12 items-center gap-3 rounded-xl px-3 text-sm font-semibold text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
+              active && 'bg-success-soft text-primary',
             )}
+            aria-current={active ? 'page' : undefined}
           >
             <Icon className="size-4" aria-hidden="true" />
             {t(label)}
+            {active ? <span className="ml-auto size-1.5 rounded-full bg-primary" aria-hidden="true" /> : null}
           </Link>
         )
       })}
@@ -44,15 +58,19 @@ function LanguageControl() {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage?.startsWith('en') ? 'en' : 'fr'
   return (
-    <div className="flex rounded-md border border-border bg-surface p-0.5" aria-label={t('common.language')}>
+    <div
+      role="group"
+      className="flex rounded-xl border border-border bg-surface p-1"
+      aria-label={t('common.language')}
+    >
       {(['fr', 'en'] as const).map((value) => (
         <button
           key={value}
           type="button"
           onClick={() => void i18n.changeLanguage(value)}
           className={cn(
-            'h-7 rounded px-2 text-xs font-bold uppercase text-muted-foreground',
-            value === language && 'bg-primary text-primary-foreground',
+            'min-h-8 min-w-8 rounded-lg px-2 text-xs font-bold uppercase text-muted-foreground',
+            value === language && 'bg-success-soft text-primary',
           )}
           aria-pressed={value === language}
         >
@@ -66,17 +84,42 @@ function LanguageControl() {
 export function AppShell() {
   const { t } = useTranslation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const currentPage = navItems.find(({ to }) => to !== '/' && pathname.startsWith(to)) ?? navItems[0]
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[248px_minmax(0,1fr)]">
-      <aside className="fixed inset-y-0 left-0 hidden w-[248px] border-r border-border bg-sidebar p-4 lg:flex lg:flex-col">
-        <Link to="/" className="mb-8 flex items-center gap-3 px-2 py-2 font-extrabold">
-          <span className="grid size-9 place-items-center rounded-md bg-primary text-primary-foreground">
+      <a
+        href="#main-content"
+        className="fixed left-4 top-3 z-[60] -translate-y-24 rounded-xl bg-primary px-4 py-3 font-bold text-primary-foreground focus:translate-y-0"
+      >
+        {t('design.skip')}
+      </a>
+      <aside className="fixed inset-y-0 left-0 hidden w-[248px] overflow-y-auto border-r border-border bg-sidebar px-5 py-7 lg:flex lg:flex-col">
+        <Link to="/" className="mb-10 flex items-center gap-3 px-2 text-xl font-extrabold tracking-tight">
+          <span className="grid size-10 place-items-center rounded-xl bg-primary text-primary-foreground">
             <BookOpenCheck className="size-5" />
           </span>
           <span>{t('brand.name')}</span>
         </Link>
+        <p className="mb-3 px-3 text-[10px] font-extrabold tracking-[.16em] text-muted-foreground">
+          {t('design.navigation')}
+        </p>
         <Navigation />
-        <p className="mt-auto px-3 pb-2 text-xs leading-5 text-muted-foreground">{t('brand.tagline')}</p>
+        <div className="mt-auto pt-12">
+          <div className="rounded-2xl border border-border bg-background p-4">
+            <Sparkles className="mb-3 size-5 text-primary" aria-hidden="true" />
+            <p className="text-sm font-extrabold leading-6">{t('design.sidebarTitle')}</p>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">{t('design.sidebarText')}</p>
+            <Link
+              to="/generate"
+              className="mt-4 flex min-h-9 items-center justify-between text-xs font-bold text-primary"
+            >
+              {t('nav.generate')}
+              <ArrowUpRight className="size-4" />
+            </Link>
+          </div>
+          <p className="mt-5 px-1 text-[11px] leading-5 text-muted-foreground">{t('brand.tagline')}</p>
+        </div>
       </aside>
       <div className="min-w-0 lg:col-start-2">
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/95 px-4 backdrop-blur lg:px-8">
@@ -91,7 +134,7 @@ export function AppShell() {
                 <Dialog.Overlay className="fixed inset-0 z-40 bg-black/40" />
                 <Dialog.Content
                   aria-describedby={undefined}
-                  className="fixed inset-y-0 left-0 z-50 w-[min(84vw,300px)] border-r border-border bg-sidebar p-4"
+                  className="fixed inset-y-0 left-0 z-50 w-[min(84vw,300px)] overflow-y-auto border-r border-border bg-sidebar p-4"
                 >
                   <Dialog.Title className="sr-only">{t('common.menu')}</Dialog.Title>
                   <div className="mb-8 flex items-center justify-between">
@@ -110,10 +153,13 @@ export function AppShell() {
               </Dialog.Portal>
             </Dialog.Root>
           </div>
-          <div className="hidden text-sm font-semibold text-muted-foreground lg:block">
-            {t('brand.tagline')}
+          <div className="hidden items-center gap-3 text-xs font-semibold text-muted-foreground lg:flex">
+            {t('design.workspace')}
+            <ChevronRight className="size-3" aria-hidden="true" />
+            <span className="text-foreground">{t(currentPage.label)}</span>
           </div>
           <div className="ml-auto flex items-center gap-3">
+            <ThemeControl />
             <LanguageControl />
             {import.meta.env.DEV && import.meta.env.VITE_E2E_MODE === 'true' ? (
               <span
@@ -127,7 +173,11 @@ export function AppShell() {
             )}
           </div>
         </header>
-        <main className="mx-auto w-full max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-[1440px] px-4 py-6 outline-none sm:px-6 lg:px-8 lg:py-8"
+        >
           <Outlet />
         </main>
       </div>

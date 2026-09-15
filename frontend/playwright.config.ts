@@ -8,7 +8,7 @@ export default defineConfig({
   workers: 2,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  reporter: process.env.CI ? 'github' : 'list',
+  reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: {
     baseURL: 'http://127.0.0.1:4180',
     trace: 'on-first-retry',
@@ -28,7 +28,8 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       VITE_API_BASE_URL: 'http://api.course-ai.test',
-      VITE_CLERK_PUBLISHABLE_KEY: 'pk_test_e2e_placeholder',
+      // Syntactically valid fixture; Clerk is bypassed only by the development E2E runtime.
+      VITE_CLERK_PUBLISHABLE_KEY: `pk_test_${btoa('clerk.course-ai.test$')}`,
       VITE_E2E_MODE: 'true',
     },
   },

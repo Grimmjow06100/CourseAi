@@ -1,5 +1,7 @@
 import {
   forwardRef,
+  createContext,
+  useContext,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
@@ -8,24 +10,55 @@ import {
 import { cn } from '@/shared/lib/cn'
 
 const control =
-  'w-full rounded-md border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60'
+  'w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:cursor-not-allowed disabled:opacity-60'
+
+const FieldContext = createContext<{ describedBy?: string | undefined; invalid?: boolean }>({})
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => <input ref={ref} className={cn(control, 'h-10', className)} {...props} />,
+  ({ className, ...props }, ref) => {
+    const field = useContext(FieldContext)
+    return (
+      <input
+        ref={ref}
+        aria-describedby={field.describedBy}
+        aria-invalid={field.invalid ? true : undefined}
+        className={cn(control, 'h-11', className)}
+        {...props}
+      />
+    )
+  },
 )
 Input.displayName = 'Input'
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  ({ className, ...props }, ref) => (
-    <textarea ref={ref} className={cn(control, 'min-h-32 resize-y py-3 leading-6', className)} {...props} />
-  ),
+  ({ className, ...props }, ref) => {
+    const field = useContext(FieldContext)
+    return (
+      <textarea
+        ref={ref}
+        aria-describedby={field.describedBy}
+        aria-invalid={field.invalid ? true : undefined}
+        className={cn(control, 'min-h-32 resize-y py-3 leading-6', className)}
+        {...props}
+      />
+    )
+  },
 )
 Textarea.displayName = 'Textarea'
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(
-  ({ className, ...props }, ref) => (
-    <select ref={ref} className={cn(control, 'h-10', className)} {...props} />
-  ),
+  ({ className, ...props }, ref) => {
+    const field = useContext(FieldContext)
+    return (
+      <select
+        ref={ref}
+        aria-describedby={field.describedBy}
+        aria-invalid={field.invalid ? true : undefined}
+        className={cn(control, 'h-11', className)}
+        {...props}
+      />
+    )
+  },
 )
 Select.displayName = 'Select'
 
@@ -43,13 +76,21 @@ export function Field({ label, htmlFor, error, hint, children }: FieldProps) {
       <label className="block text-sm font-semibold text-foreground" htmlFor={htmlFor}>
         {label}
       </label>
-      {children}
+      <FieldContext.Provider
+        value={{ describedBy: error || hint ? `${htmlFor}-description` : undefined, invalid: Boolean(error) }}
+      >
+        {children}
+      </FieldContext.Provider>
       {error ? (
-        <p className="text-sm text-danger-strong" role="alert">
+        <p id={`${htmlFor}-description`} className="text-sm text-danger-strong" role="alert">
           {error}
         </p>
       ) : null}
-      {!error && hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
+      {!error && hint ? (
+        <p id={`${htmlFor}-description`} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
     </div>
   )
 }

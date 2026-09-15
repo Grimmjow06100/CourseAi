@@ -3,7 +3,8 @@ import { ApiError } from './errors'
 
 export function getErrorMessage(error: unknown, t: TFunction) {
   if (!(error instanceof ApiError)) return t('errors.generic')
-  if (error.status === 401) return t('errors.unauthorized')
+  if (error.status === 401)
+    return t(error.code === 'session_expired' ? 'errors.unauthorized' : 'errors.authenticationRejected')
   if (error.status === 404) return t('errors.notFound')
   if (error.status === 429) return t('errors.rateLimited')
   if (error.status === 503) return t('errors.unavailable')

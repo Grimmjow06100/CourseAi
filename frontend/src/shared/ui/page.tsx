@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from './button'
+import { useTranslation } from 'react-i18next'
 
 export function PageHeader({
   title,
@@ -14,10 +15,10 @@ export function PageHeader({
   actions?: ReactNode
 }) {
   return (
-    <header className="mb-8 flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
+    <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
         {eyebrow ? <p className="mb-2 text-xs font-extrabold uppercase text-primary">{eyebrow}</p> : null}
-        <h1 className="text-2xl font-bold leading-tight sm:text-3xl">{title}</h1>
+        <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">{title}</h1>
         {description ? (
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">{description}</p>
         ) : null}
@@ -51,17 +52,28 @@ export function Pagination({
   onPageChange: (page: number) => void
   label: string
 }) {
+  const { t } = useTranslation()
   if (totalPages <= 1) return null
   return (
     <nav
       className="mt-8 flex items-center justify-between border-t border-border pt-5"
       aria-label="Pagination"
     >
-      <Button variant="secondary" size="sm" disabled={!hasPrevious} onClick={() => onPageChange(page - 1)}>
+      <Button
+        variant="secondary"
+        aria-label={t('common.previous')}
+        disabled={!hasPrevious}
+        onClick={() => onPageChange(page - 1)}
+      >
         <ChevronLeft className="size-4" />{' '}
       </Button>
       <span className="text-sm text-muted-foreground">{label}</span>
-      <Button variant="secondary" size="sm" disabled={!hasNext} onClick={() => onPageChange(page + 1)}>
+      <Button
+        variant="secondary"
+        aria-label={t('common.next')}
+        disabled={!hasNext}
+        onClick={() => onPageChange(page + 1)}
+      >
         <ChevronRight className="size-4" />{' '}
       </Button>
     </nav>

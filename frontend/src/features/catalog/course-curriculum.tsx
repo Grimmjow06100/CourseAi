@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import { BookOpen, Clock3, LoaderCircle, WandSparkles } from 'lucide-react'
+import { BookOpen, Clock3, FileText, LoaderCircle, WandSparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { Course, Module } from '@/shared/api/types'
 import { formatDuration } from '@/shared/lib/format'
@@ -18,10 +18,12 @@ function ModuleBlock({ course, module }: { course: Course; module: Module }) {
   const missing = module.lessons.some((lesson) => !lesson.hasContent)
   const pending = mutation.isPending || state.active
   return (
-    <section className="border-t border-border py-5 first:border-t-0">
+    <section className="studio-panel p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="font-mono text-xs text-primary">{String(module.order).padStart(2, '0')}</p>
+          <p className="font-mono text-xs font-bold text-primary">
+            MODULE {String(module.order).padStart(2, '0')}
+          </p>
           <h3 className="mt-1 text-lg font-bold">{module.title}</h3>
           <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">{module.description}</p>
         </div>
@@ -39,25 +41,26 @@ function ModuleBlock({ course, module }: { course: Course; module: Module }) {
       </div>
       <ApiErrorNotice error={mutation.error ?? jobs.error} onRetry={() => void jobs.refetch()} />
       {missing && state.failed ? <PartialGenerationNotice requestId={course.requestId} /> : null}
-      <ol className="mt-4 divide-y divide-border border-y border-border">
+      <ol className="mt-4 divide-y divide-border border-t border-border">
         {module.lessons.map((lesson) => (
           <li key={lesson.id}>
             <Link
               to="/courses/$courseId/lessons/$lessonId"
               params={{ courseId: course.id, lessonId: lesson.id }}
-              className="flex items-center gap-3 px-2 py-3 text-sm hover:bg-muted"
+              className="flex items-center gap-3 rounded-lg px-2 py-4 text-sm transition-colors hover:bg-muted"
             >
               <span
                 className={`grid size-8 shrink-0 place-items-center rounded-md ${lesson.hasContent ? 'bg-success-soft text-primary' : 'bg-muted text-muted-foreground'}`}
               >
-                <BookOpen className="size-4" />
+                {lesson.hasContent ? <BookOpen className="size-4" /> : <FileText className="size-4" />}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate font-semibold">
+                <span className="block font-semibold leading-6">
                   {lesson.order}. {lesson.title}
                 </span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {t(`lesson.type.${lesson.type}`)}
+                  {t(`lesson.type.${lesson.type}`)} ·{' '}
+                  {lesson.hasContent ? t('design.ready') : t('design.planned')}
                 </span>
               </span>
               <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
@@ -74,7 +77,7 @@ function ModuleBlock({ course, module }: { course: Course; module: Module }) {
 
 export function CourseCurriculum({ course }: { course: Course }) {
   return (
-    <div>
+    <div className="space-y-4">
       {course.modules.map((module) => (
         <ModuleBlock key={module.id} course={course} module={module} />
       ))}

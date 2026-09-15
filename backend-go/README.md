@@ -107,6 +107,12 @@ La migration `00005_migrate_users_to_clerk.sql` a prepare la transition depuis l
 
 ## Routes
 
+### Horloge et authentification
+
+La verification des jetons Clerk accepte une tolerance horaire bornee a 15 secondes pour `iat`, `nbf` et `exp`. La signature, l'origine autorisee et le sujet utilisateur restent obligatoires. Un jeton expire ou emis dans le futur au-dela de cette tolerance est refuse.
+
+Garder l'horloge de l'hote synchronisee (NTP). Un serveur en retard peut rejeter un jeton neuf comme pas encore valide. Sous Windows, `w32tm /query /status` permet de verifier le service de synchronisation ; corriger l'heure via les parametres Windows si le service est arrete. Une modification du middleware necessite le redemarrage de l'API Go.
+
 Sante :
 
 ```http

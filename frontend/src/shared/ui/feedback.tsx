@@ -5,7 +5,10 @@ import { Button } from './button'
 
 export function LoadingState({ label }: { label: string }) {
   return (
-    <div className="flex min-h-48 items-center justify-center gap-3 text-sm text-muted-foreground">
+    <div
+      role="status"
+      className="studio-panel flex min-h-48 items-center justify-center gap-3 text-sm text-muted-foreground"
+    >
       <LoaderCircle className="size-5 animate-spin" aria-hidden="true" />
       {label}
     </div>
@@ -20,8 +23,10 @@ interface EmptyStateProps {
 
 export function EmptyState({ title, description, action }: EmptyStateProps) {
   return (
-    <div className="flex min-h-52 flex-col items-center justify-center border-y border-dashed border-border px-6 py-10 text-center">
-      <Inbox className="mb-4 size-8 text-muted-foreground" aria-hidden="true" />
+    <div className="studio-panel flex min-h-60 flex-col items-center justify-center px-6 py-10 text-center">
+      <span className="mb-4 grid size-14 place-items-center rounded-2xl bg-success-soft text-primary">
+        <Inbox className="size-6" aria-hidden="true" />
+      </span>
       <h2 className="text-base font-semibold text-foreground">{title}</h2>
       {description ? <p className="mt-2 max-w-md text-sm text-muted-foreground">{description}</p> : null}
       {action ? <div className="mt-5">{action}</div> : null}
@@ -40,7 +45,10 @@ export function ErrorState({
 }) {
   const { t } = useTranslation()
   return (
-    <div className="flex min-h-52 flex-col items-center justify-center border-y border-danger/20 bg-danger-soft/40 px-6 py-10 text-center">
+    <div
+      role="alert"
+      className="flex min-h-52 flex-col items-center justify-center rounded-2xl border border-danger/20 bg-danger-soft/40 px-6 py-10 text-center"
+    >
       <AlertTriangle className="mb-4 size-8 text-danger" aria-hidden="true" />
       <h2 className="text-base font-semibold text-foreground">{title}</h2>
       <p className="mt-2 max-w-lg text-sm text-muted-foreground">{description}</p>

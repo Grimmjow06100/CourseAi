@@ -11,6 +11,7 @@ function NotFoundPage() {
       <div>
         <p className="font-mono text-sm text-primary">404</p>
         <h1 className="mt-3 text-2xl font-bold">{t('notFound.title')}</h1>
+        <p className="mt-3 text-sm text-muted-foreground">{t('notFound.description')}</p>
         <Link to="/" className="mt-6 inline-block font-semibold text-primary underline">
           {t('notFound.action')}
         </Link>

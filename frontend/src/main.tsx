@@ -2,9 +2,11 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ApplicationError, ApplicationErrorBoundary } from '@/shared/ui/application-error'
 import { Application } from '@/app/application'
+import { applyTheme, getTheme } from '@/shared/lib/theme'
 import '@/shared/i18n'
 import './index.css'
 
+applyTheme(getTheme())
 const rootElement = document.getElementById('root')
 if (!rootElement) throw new Error('Application root element not found')
 

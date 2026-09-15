@@ -40,7 +40,10 @@ export function CourseOverview({ course }: { course: Course }) {
   const firstLesson = lessons[0]
   return (
     <div>
-      <div className="border-b border-border pb-8">
+      <div className="studio-panel p-5 sm:p-8">
+        <p className="mb-5 text-[10px] font-extrabold tracking-[.16em] text-primary">
+          {t('design.courseLabel')}
+        </p>
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
           <span>{t('course.modules', { count: course.modules.length })}</span>
           <span>{t('course.lessons', { count: lessons.length })}</span>
@@ -49,7 +52,9 @@ export function CourseOverview({ course }: { course: Course }) {
             {formatDuration(course.totalDurationMinutes, i18n.language)}
           </span>
         </div>
-        <h1 className="mt-4 max-w-4xl text-3xl font-bold leading-tight sm:text-4xl">{course.title}</h1>
+        <h1 className="mt-4 max-w-4xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">
+          {course.title}
+        </h1>
         <p className="mt-4 max-w-4xl text-base leading-7 text-muted-foreground">{course.synopsis}</p>
         {firstLesson ? (
           <Button asChild className="mt-6">
@@ -67,7 +72,13 @@ export function CourseOverview({ course }: { course: Course }) {
           <h2 className="mb-4 text-xl font-bold">{t('course.curriculum')}</h2>
           <CourseCurriculum course={course} />
         </div>
-        <aside className="space-y-8 border-t border-border pt-8 lg:border-l lg:border-t-0 lg:pl-8 lg:pt-0">
+        <aside className="studio-panel h-fit space-y-7 p-6">
+          <section>
+            <h2 className="text-sm font-bold">{t('design.level')}</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {t(`design.${course.currentLevel}`)} → {t(`design.${course.targetLevel}`)}
+            </p>
+          </section>
           {course.targetAudience ? (
             <section>
               <h2 className="flex items-center gap-2 text-base font-bold">
@@ -88,6 +99,13 @@ export function CourseOverview({ course }: { course: Course }) {
               </h2>
               <h3 className="mt-3 text-sm font-bold">{course.finalProjectTitle}</h3>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{course.finalProjectDescription}</p>
+              {course.finalProjectConstraints.length ? (
+                <ul className="mt-3 list-disc space-y-2 pl-4 text-xs leading-5 text-muted-foreground">
+                  {course.finalProjectConstraints.map((constraint) => (
+                    <li key={constraint}>{constraint}</li>
+                  ))}
+                </ul>
+              ) : null}
             </section>
           ) : null}
         </aside>

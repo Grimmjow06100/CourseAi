@@ -39,6 +39,7 @@ function CurriculumNav({
                 to="/courses/$courseId/lessons/$lessonId"
                 params={{ courseId: course.id, lessonId: lesson.id }}
                 onClick={onNavigate}
+                aria-current={lesson.id === lessonId ? 'page' : undefined}
                 className={cn(
                   'flex items-start gap-2 rounded-md px-2 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground',
                   lesson.id === lessonId && 'bg-success-soft font-semibold text-primary',
@@ -75,7 +76,7 @@ export function LessonReader({ course, initialLesson }: { course: Course; initia
 
   return (
     <div className="-mx-4 -my-6 min-h-[calc(100vh-4rem)] sm:-mx-6 lg:-mx-8 lg:-my-8 lg:grid lg:grid-cols-[280px_minmax(0,1fr)]">
-      <aside className="hidden border-r border-border bg-sidebar p-5 lg:block">
+      <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] overflow-y-auto border-r border-border bg-sidebar p-5 lg:block">
         <Link
           to="/courses/$courseId"
           params={{ courseId: course.id }}
@@ -86,7 +87,7 @@ export function LessonReader({ course, initialLesson }: { course: Course; initia
         </Link>
         <CurriculumNav course={course} lessonId={lesson.id} />
       </aside>
-      <article className="min-w-0 px-4 py-6 sm:px-8 lg:px-12 lg:py-10 xl:px-16">
+      <article className="min-w-0 bg-surface px-4 py-6 sm:px-8 lg:px-10 lg:py-10 xl:px-12">
         <div className="mb-6 flex items-center justify-between lg:hidden">
           <Button asChild variant="ghost" size="sm">
             <Link to="/courses/$courseId" params={{ courseId: course.id }}>
@@ -120,8 +121,11 @@ export function LessonReader({ course, initialLesson }: { course: Course; initia
             </Dialog.Portal>
           </Dialog.Root>
         </div>
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-[75ch]">
           <div className="border-b border-border pb-6">
+            <p className="mb-5 text-xs font-bold text-primary">
+              {t('design.lessonPosition', { current: index + 1, total: flatLessons.length })}
+            </p>
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
               <span className="font-mono uppercase text-primary">{t(`lesson.type.${lesson.type}`)}</span>
               <span className="flex items-center gap-1">
@@ -130,7 +134,7 @@ export function LessonReader({ course, initialLesson }: { course: Course; initia
               </span>
             </div>
             <h1 className="mt-3 text-2xl font-bold leading-tight sm:text-3xl">{lesson.title}</h1>
-            <p className="mt-3 text-sm leading-6 text-muted-foreground">
+            <p className="mt-5 rounded-xl border border-primary/15 bg-success-soft px-4 py-3 text-sm leading-6 text-muted-foreground">
               <strong className="text-foreground">{t('lesson.objective')}:</strong> {lesson.learningGoal}
             </p>
           </div>
@@ -149,7 +153,7 @@ export function LessonReader({ course, initialLesson }: { course: Course; initia
               />
             </div>
           ) : (
-            <div className="my-8 border-y border-dashed border-border py-12 text-center">
+            <div className="my-8 rounded-2xl border border-dashed border-border bg-background px-4 py-12 text-center">
               <BookOpen className="mx-auto size-8 text-muted-foreground" />
               <p className="mt-4 text-sm text-muted-foreground">{t('lesson.unavailable')}</p>
               <Button
@@ -173,7 +177,21 @@ export function LessonReader({ course, initialLesson }: { course: Course; initia
           {!lesson.hasContent && jobState.failed ? (
             <PartialGenerationNotice requestId={course.requestId} />
           ) : null}
-          <nav className="mt-10 grid grid-cols-2 gap-3 border-t border-border pt-6">
+          {!next ? (
+            <div className="mt-8 rounded-xl bg-background p-5">
+              <p className="mb-3 text-sm text-muted-foreground">{t('design.endLesson')}</p>
+              <Button asChild variant="secondary">
+                <Link to="/courses/$courseId" params={{ courseId: course.id }}>
+                  {t('design.backCurriculum')}
+                  <ArrowRight className="size-4" />
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+          <nav
+            aria-label={t('course.curriculum')}
+            className="mt-10 grid grid-cols-1 gap-3 border-t border-border pt-6 sm:grid-cols-2"
+          >
             {previous ? (
               <Button asChild variant="secondary" className="justify-start">
                 <Link

@@ -26,7 +26,7 @@ export function GenerationTracker({ status }: { status: GenerationStatus }) {
 
   if (status.pipelineStatus === 'awaiting_clarification')
     return (
-      <section className="rounded-lg border border-warning/30 bg-warning-soft/35 p-5 sm:p-7">
+      <section className="studio-panel border-t-4 border-t-warning p-5 sm:p-8">
         <h2 className="text-xl font-bold">{t('generation.awaiting')}</h2>
         <p className="mt-2 mb-7 text-sm leading-6 text-muted-foreground">{t('generation.awaitingText')}</p>
         <ClarificationForm status={status} />
@@ -34,7 +34,7 @@ export function GenerationTracker({ status }: { status: GenerationStatus }) {
     )
   if (status.isOutOfScope)
     return (
-      <section className="border-y border-warning/30 bg-warning-soft px-5 py-10 text-center">
+      <section className="rounded-2xl border border-warning/30 bg-warning-soft px-5 py-12 text-center">
         <AlertCircle className="mx-auto size-8 text-warning" />
         <h2 className="mt-4 text-xl font-bold">{t('generation.outOfScope')}</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">{status.errorMessage}</p>
@@ -45,7 +45,7 @@ export function GenerationTracker({ status }: { status: GenerationStatus }) {
     )
   if (status.pipelineStatus === 'failed')
     return (
-      <section className="border-y border-danger/20 bg-danger-soft px-5 py-10 text-center">
+      <section className="rounded-2xl border border-danger/20 bg-danger-soft px-5 py-12 text-center">
         <AlertCircle className="mx-auto size-8 text-danger" />
         <h2 className="mt-4 text-xl font-bold">{t('generation.failed')}</h2>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
@@ -60,11 +60,14 @@ export function GenerationTracker({ status }: { status: GenerationStatus }) {
     )
   if (status.pipelineStatus === 'completed' && status.courseId)
     return (
-      <section className="border-y border-success/20 bg-success-soft px-5 py-10 text-center">
-        <span className="mx-auto grid size-10 place-items-center rounded-full bg-success text-white">
+      <section className="rounded-2xl border border-success/20 bg-success-soft px-5 py-14 text-center">
+        <span className="mx-auto grid size-16 place-items-center rounded-2xl bg-primary text-primary-foreground">
           <Check className="size-6" />
         </span>
         <h2 className="mt-4 text-xl font-bold">{t('generation.completed')}</h2>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-muted-foreground">
+          {t('design.completedText')}
+        </p>
         <Button asChild className="mt-6">
           <Link to="/courses/$courseId" params={{ courseId: status.courseId }}>
             {t('generation.openCourse')}
@@ -75,16 +78,17 @@ export function GenerationTracker({ status }: { status: GenerationStatus }) {
     )
 
   return (
-    <section aria-live="polite">
+    <section className="studio-panel p-5 sm:p-8" aria-live="polite">
       <div className="mb-3 flex items-center justify-between text-sm">
         <span className="font-semibold">{t(`generation.${steps[activeIndex]}`)}</span>
         <span className="font-mono text-muted-foreground">{status.progressPercent}%</span>
       </div>
-      <Progress value={status.progressPercent} />
+      <Progress value={status.progressPercent} label={t('generation.trackingTitle')} />
       <ol className="mt-8 grid gap-3 sm:grid-cols-5">
         {steps.map((step, index) => (
           <li
             key={step}
+            aria-current={index === activeIndex ? 'step' : undefined}
             className="flex items-center gap-2 text-xs font-semibold text-muted-foreground sm:flex-col sm:items-start"
           >
             <span

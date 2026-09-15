@@ -24,7 +24,11 @@ src/
 
 ## Authentification
 
-`ClerkProvider` encadre l'application. Une fois Clerk chargé, `useAuth().getToken()` est injecté dans l'adaptateur `openapi-fetch`. Le middleware demande ainsi un jeton actuel à chaque appel et ajoute `Authorization: Bearer`; aucun jeton n'est écrit dans `localStorage`.
+`ClerkProvider` encadre l'application. Une fois Clerk chargé, `useAuth().getToken(options)` est injecté dans l'adaptateur `openapi-fetch`. Le transport demande un jeton actuel à chaque appel et ajoute `Authorization: Bearer`; aucun jeton n'est écrit dans `localStorage`.
+
+Après un premier HTTP 401, le transport demande `getToken({ skipCache: true })` et rejoue la requête une seule fois, avec le même corps et la même clé d'idempotence. Les requêtes simultanées partagent le renouvellement en cours au sein de leur client de session. Les autres erreurs HTTP et les erreurs réseau ne déclenchent pas cette reprise. L'annulation et le délai global de 30 secondes couvrent aussi l'attente de Clerk et la seconde tentative.
+
+Un jeton absent renvoie le code client `session_expired` et invite à se connecter. Un 401 persistant de l'API affiche un refus de validation avec son identifiant de requête et propose aussi de réessayer lorsque l'écran dispose de cette action. Un 401 seul ne prouve pas que la session Clerk a expiré : vérifier également l'origine autorisée, les clés et l'horloge serveur. Le middleware Go tolère un décalage horaire de 15 secondes ; la machine doit rester synchronisée.
 
 Le contexte du routeur reçoit seulement `isSignedIn`. Le layout `_authenticated` applique sa garde dans `beforeLoad` et redirige vers `/sign-in`. Les routes Clerk dédiées gèrent connexion et inscription.
 

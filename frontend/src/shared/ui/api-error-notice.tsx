@@ -16,7 +16,8 @@ export function ApiErrorNotice({ error, onRetry }: { error: unknown; onRetry?: (
         <a className="underline" href="/sign-in">
           {t('errors.signIn')}
         </a>
-      ) : onRetry ? (
+      ) : null}
+      {onRetry && !(error instanceof ApiError && error.code === 'session_expired') ? (
         <Button variant="secondary" size="sm" onClick={onRetry}>
           {t('common.retry')}
         </Button>

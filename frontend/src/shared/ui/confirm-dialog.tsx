@@ -50,13 +50,13 @@ export function ConfirmDialog({
       <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface p-6 shadow-xl">
+        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-xl">
           <AlertDialog.Title className="text-lg font-semibold text-foreground">{title}</AlertDialog.Title>
           <AlertDialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
             {description}
           </AlertDialog.Description>
           <ApiErrorNotice error={error} />
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="mt-6 flex flex-wrap justify-end gap-3">
             <AlertDialog.Cancel asChild>
               <Button variant="secondary" disabled={busy || pending}>
                 {cancelLabel}

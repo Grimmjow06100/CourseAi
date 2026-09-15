@@ -3,12 +3,16 @@ package middlewares
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 	"github.com/gin-gonic/gin"
 )
+
+// Bound clock drift without accepting genuinely stale or far-future session tokens.
+const clerkClockSkewLeeway = 15 * time.Second
 
 func ClerkAuthentication(authorizedParties []string, extraOptions ...clerkhttp.AuthorizationOption) gin.HandlerFunc {
 	allowed := make(map[string]struct{}, len(authorizedParties))
@@ -19,6 +23,7 @@ func ClerkAuthentication(authorizedParties []string, extraOptions ...clerkhttp.A
 	}
 
 	options := []clerkhttp.AuthorizationOption{
+		clerkhttp.Leeway(clerkClockSkewLeeway),
 		clerkhttp.AuthorizedParty(func(party string) bool {
 			_, ok := allowed[party]
 			return party != "" && ok

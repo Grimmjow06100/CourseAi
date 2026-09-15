@@ -4,7 +4,7 @@ import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '@/shared/lib/cn'
 
 const buttonVariants = cva(
-  'inline-flex h-10 items-center justify-center gap-2 rounded-md border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  'inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
@@ -12,10 +12,10 @@ const buttonVariants = cva(
         secondary: 'border-border bg-surface px-4 text-foreground hover:bg-muted',
         ghost:
           'border-transparent bg-transparent px-3 text-muted-foreground hover:bg-muted hover:text-foreground',
-        danger: 'border-danger bg-danger px-4 text-white hover:bg-danger-strong',
-        icon: 'size-10 border-border bg-surface p-0 text-muted-foreground hover:bg-muted hover:text-foreground',
+        danger: 'border-danger-strong bg-danger-strong px-4 text-surface hover:opacity-90',
+        icon: 'size-11 border-border bg-surface p-0 text-muted-foreground hover:bg-muted hover:text-foreground',
       },
-      size: { default: '', sm: 'h-8 px-3 text-xs', lg: 'h-12 px-5 text-base' },
+      size: { default: 'py-2', sm: 'min-h-9 px-3 py-1.5 text-xs', lg: 'min-h-12 px-5 py-3 text-sm' },
     },
     defaultVariants: { variant: 'primary', size: 'default' },
   },

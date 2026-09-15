@@ -2,6 +2,8 @@
 
 ## Done
 
+- [x] Audit and improve the Course AI frontend design across navigation, dashboard, generation and clarification, library, curriculum, reader, activities, authentication and fallback screens; add persistent themes, accessible controls, useful empty states and responsive layouts; document the audit and validate with typecheck, lint, formatting, production compilation using temporary validation environment values, 26 unit tests and 84 distinct applicable browser scenarios.
+
 - [x] Commit the current repository snapshot to git.
 - [x] Fix Prisma PostgreSQL connection by moving the Docker host port from `5432` to `5433` to avoid the local PostgreSQL conflict.
 - [x] Apply the initial Prisma migration against the Docker PostgreSQL database.
@@ -101,3 +103,4 @@
 - [x] Audit frontend deployment readiness for Vercel, verify build/lint/unit tests and targeted browser failures, and identify authentication cache isolation, job tracking, environment validation, accessibility, test coverage, and release configuration work.
 - [x] Harden frontend session isolation, cancellable API calls, durable partial-job tracking, mutation errors, prompt idempotence, cache invalidation, URL search, solution visibility, Markdown, accessibility, and build-time environment validation; document the application changes and remaining deployment checks.
 - [x] Verify frontend hardening with 26 unit tests, 23 applicable browser tests across three viewports, strict accessibility checks, typecheck, lint and production build; pass Go unit/race/static/sqlc checks and document the PostgreSQL integration blocker (local Docker/database unavailable).
+- [x] Prepare the frontend for Vercel production: explicit Vite build configuration, Node 24 alignment, Clerk/API environment validation, public environment template, CI reports, deployment and rollback guide; verify build, negative build guards, 37 unit tests (one worker startup retry), 23 browser tests, static checks and unchanged OpenAPI types. Production domain, real credentials and remote smoke tests remain part of deployment.

@@ -1,7 +1,7 @@
 import * as Checkbox from '@radix-ui/react-checkbox'
 import * as RadioGroup from '@radix-ui/react-radio-group'
 import { Check, ChevronDown, Lightbulb, LockKeyhole } from 'lucide-react'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Exercise, LessonSolutions, Quiz } from '@/shared/api/types'
 import { Button } from '@/shared/ui/button'
@@ -19,14 +19,15 @@ function ExerciseBlock({
 }) {
   const { t } = useTranslation()
   const [hintsOpen, setHintsOpen] = useState(false)
+  const hintsId = useId()
   const [revealed, setRevealed] = useState(false)
   const correction = revealed
     ? solutions?.exercises.find((item) => item.exerciseId === exercise.id)
     : undefined
   return (
-    <article className="rounded-lg border border-border bg-surface p-5">
+    <article className="studio-panel p-5">
       <p className="font-mono text-xs uppercase text-primary">
-        {exercise.type.replaceAll('_', ' ')} · {exercise.difficulty}
+        {t(`lesson.activityType.${exercise.type}`)} · {t(`design.${exercise.difficulty}`)}
       </p>
       <h3 className="mt-2 text-lg font-bold">{exercise.title}</h3>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{exercise.objective}</p>
@@ -71,13 +72,22 @@ function ExerciseBlock({
       ) : null}
       {exercise.payload.hints.length ? (
         <div className="mt-5">
-          <Button variant="ghost" size="sm" onClick={() => setHintsOpen((value) => !value)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={hintsOpen}
+            aria-controls={hintsOpen ? hintsId : undefined}
+            onClick={() => setHintsOpen((value) => !value)}
+          >
             <Lightbulb className="size-4" />
             {t('lesson.showHints')}
             <ChevronDown className={`size-4 transition ${hintsOpen ? 'rotate-180' : ''}`} />
           </Button>
           {hintsOpen ? (
-            <ul className="mt-3 space-y-2 border-l-2 border-accent pl-4 text-sm text-muted-foreground">
+            <ul
+              id={hintsId}
+              className="mt-3 space-y-2 border-l-2 border-accent pl-4 text-sm text-muted-foreground"
+            >
               {exercise.payload.hints.map((hint) => (
                 <li key={hint}>{hint}</li>
               ))}
@@ -122,9 +132,9 @@ function QuizBlock({
   const [revealed, setRevealed] = useState(false)
   const solution = revealed ? solutions?.quizzes.find((item) => item.quizId === quiz.id) : undefined
   return (
-    <article className="rounded-lg border border-border bg-surface p-5">
+    <article className="studio-panel p-5">
       <p className="font-mono text-xs uppercase text-primary">
-        {quiz.type.replaceAll('_', ' ')} · {quiz.difficulty}
+        {t(`lesson.activityType.${quiz.type}`)} · {t(`design.${quiz.difficulty}`)}
       </p>
       <h3 className="mt-2 text-lg font-bold">{quiz.title}</h3>
       <p className="mt-2 text-sm leading-6 text-muted-foreground">{quiz.objective}</p>

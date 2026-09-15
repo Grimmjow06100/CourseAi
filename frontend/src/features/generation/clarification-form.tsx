@@ -31,7 +31,7 @@ export function ClarificationForm({ status }: { status: GenerationStatus }) {
       !parsed.success ||
       status.clarificationQuestions.some((question) => (answers[question.id]?.length ?? 0) === 0)
     ) {
-      setValidationError(t('errors.invalidResponse'))
+      setValidationError(t('generation.clarificationInvalid'))
       return
     }
     setValidationError(null)
@@ -77,7 +77,7 @@ export function ClarificationForm({ status }: { status: GenerationStatus }) {
                 return (
                   <label
                     key={option.value}
-                    className="flex cursor-pointer items-start gap-3 rounded-md border border-border bg-surface p-3 text-sm"
+                    className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-success-soft"
                   >
                     <Checkbox.Root
                       checked={checked}
@@ -111,7 +111,7 @@ export function ClarificationForm({ status }: { status: GenerationStatus }) {
               {question.options.map((option) => (
                 <label
                   key={option.value}
-                  className="flex cursor-pointer items-start gap-3 rounded-md border border-border bg-surface p-3 text-sm"
+                  className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-success-soft"
                 >
                   <RadioGroup.Item
                     value={option.value}

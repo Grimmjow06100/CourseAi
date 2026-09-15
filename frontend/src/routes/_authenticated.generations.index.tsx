@@ -1,5 +1,5 @@
 import { getErrorMessage } from '@/shared/api/error-message'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useTranslation } from 'react-i18next'
 import { useGenerationList } from '@/features/generation/api'
 import { GenerationList } from '@/features/generation/generation-list'
@@ -8,6 +8,7 @@ import type { PipelineStatus } from '@/shared/api/types'
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/feedback'
 import { Select } from '@/shared/ui/form-controls'
 import { PageHeader, Pagination } from '@/shared/ui/page'
+import { Button } from '@/shared/ui/button'
 
 function GenerationHistoryPage() {
   const { t } = useTranslation()
@@ -65,7 +66,21 @@ function GenerationHistoryPage() {
           />
         </>
       ) : (
-        <EmptyState title={t('common.noResult')} description={t('dashboard.emptyGenerations')} />
+        <EmptyState
+          title={search.status ? t('design.historyFiltered') : t('design.historyEmpty')}
+          description={t('design.emptyGenerationsText')}
+          action={
+            search.status ? (
+              <Button variant="secondary" onClick={() => void navigate({ search: { page: 1 } })}>
+                {t('design.reset')}
+              </Button>
+            ) : (
+              <Button asChild>
+                <Link to="/generate">{t('nav.generate')}</Link>
+              </Button>
+            )
+          }
+        />
       )}
     </div>
   )

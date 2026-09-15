@@ -6,6 +6,7 @@ import { RouterProvider } from '@tanstack/react-router'
 import { useCallback, useLayoutEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ApiClientProvider } from '@/shared/api/context'
+import type { TokenProvider } from '@/shared/api/client'
 import { loadEnvironment, type Environment } from '@/shared/config/environment'
 import { LoadingState } from '@/shared/ui/feedback'
 import { createQueryClient } from './query-client'
@@ -17,7 +18,7 @@ function Runtime({
   isSignedIn,
   environment,
 }: {
-  getToken: () => Promise<string | null>
+  getToken: TokenProvider
   isSignedIn: boolean
   environment: Environment
 }) {
@@ -42,7 +43,9 @@ function Runtime({
       >
         <RouterProvider router={resources.router} />
       </ApiClientProvider>
-      {import.meta.env.DEV ? <ReactQueryDevtools initialIsOpen={false} /> : null}
+      {import.meta.env.DEV && import.meta.env.VITE_E2E_MODE !== 'true' ? (
+        <ReactQueryDevtools initialIsOpen={false} />
+      ) : null}
     </QueryClientProvider>
   )
 }
@@ -50,7 +53,7 @@ function Runtime({
 function ClerkRuntime({ environment }: { environment: Environment }) {
   const { isLoaded, isSignedIn, getToken, userId, sessionId } = useAuth()
   const { t } = useTranslation()
-  const tokenProvider = useCallback(() => getToken(), [getToken])
+  const tokenProvider = useCallback<TokenProvider>((options) => getToken(options), [getToken])
   if (!isLoaded) return <LoadingState label={t('common.loading')} />
   return (
     <Runtime
