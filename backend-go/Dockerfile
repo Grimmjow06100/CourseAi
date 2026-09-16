@@ -23,7 +23,8 @@ COPY --chown=courseai:courseai migrations /app/migrations
 COPY --chown=courseai:courseai prompts /app/prompts
 
 ENV GIN_MODE=release \
-    PROMPTS_DIR=/app/prompts
+    PROMPTS_DIR=/app/prompts \
+    PATH="/app:${PATH}"
 USER courseai
 EXPOSE 8080
 
