@@ -27,6 +27,7 @@ La cause temporelle est reproduite par un test signe avant correction (401), pui
 - Lecture des JWKS publics du frontend Clerk et des JWKS du backend Clerk : HTTP 200 dans les deux cas, identifiant de cle de signature identique. Aucune cle secrete ni aucun jeton utilisateur dans ce rapport.
 - Trois mesures rapprochees le 15 septembre vers 16:14 UTC : temps local moins en-tete HTTP `Date` de Clerk, environ **-13 s**. L'estimation prend le milieu de l'aller-retour HTTP (298 a 491 ms) ; `Date` a une precision d'une seconde.
 - `w32tm /query /status` : service non demarre, erreur `0x80070426`.
+- Un nouveau controle vers 21:58 UTC confirme un retard d'environ 13 secondes : le probleme d'horloge persiste apres la validation du correctif.
 - Le SDK installe `clerk-sdk-go/v2 v2.7.0` appelle `claims.ValidateWithLeeway(clock.Now().UTC(), params.Leeway)`. Sans option, `Leeway` vaut zero.
 - Le test `TestClerkAuthenticationClockSkew` echoue avant correction pour le decalage de 13 s (HTTP 401 au lieu de 204) ; les tests Go passent apres correction.
 
@@ -54,7 +55,21 @@ La tolerance de 15 secondes prolonge aussi au maximum de 15 secondes l'acceptati
 
 ## Verification
 
-Resultats finaux a renseigner apres la fin des suites en cours.
+| Verification                                            | Resultat                                                                                                                                                           |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Tests unitaires frontend, suite complete                | 51 tests reussis dans 13 fichiers                                                                                                                                  |
+| Playwright : authentification, generation et resilience | 35 scenarios reussis sur mobile, tablette et desktop ; 1 test de menu mobile ignore sur desktop                                                                    |
+| TypeScript et ESLint                                    | Reussis ; controle cible du transport relance apres la derniere correction                                                                                         |
+| Prettier sur les fichiers modifies                      | Reussi                                                                                                                                                             |
+| Tests Go `go test -count=1 ./...`                       | Reussis sur tous les packages                                                                                                                                      |
+| `go vet ./...`, `staticcheck ./...`, `sqlc vet`         | Reussis                                                                                                                                                            |
+| Build frontend `npm run build`                          | Reussi avec `VITE_API_BASE_URL=https://api.example.com` et `VITE_E2E_MODE=false` definis uniquement pour le processus de validation ; aucun fichier `.env` modifie |
+| Detecteur de courses Go `go test -race -p 1 ./...`      | Reussi sur tous les packages, avec `GOMAXPROCS=2` pour limiter la memoire                                                                                          |
+| Integration PostgreSQL `make test-integration`          | Reussie contre PostgreSQL local sur le port 5433                                                                                                                   |
+
+Les premieres executions paralleles ont subi des delais de demarrage et de chargement, avec environ 370 Mo de RAM libre mesures. La validation frontend finale a ete executee avec un seul worker, sans allonger les delais ni desactiver les assertions. Deux ajustements issus des tests ont ete faits : conserver les `DOMException` de delai pendant l'annulation, et exposer `X-Request-ID` dans la simulation CORS comme le fait le vrai backend.
+
+La compilation instrumentee Go a egalement ete reprise avec une concurrence reduite, puis la suite globale a reussi. Le build frontend signale encore des bundles de plus de 500 Ko ; cet avertissement de taille ne bloque pas la compilation et ne concerne pas le refus de session.
 
 Les tests navigateur utilisent le mode E2E existant et une API interceptee. Ils prouvent les reprises du transport et le comportement des ecrans, pas une connexion Clerk reelle ni une generation OpenAI facturee. L'outil d'acces a l'onglet connecte a echoue a son initialisation ; aucun cookie ni profil de navigateur n'a ete extrait.
 

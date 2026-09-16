@@ -2,6 +2,8 @@
 
 ## Done
 
+- [x] Audit and fix false session-expired errors: reproduce the 13-second Clerk clock skew, bound backend JWT leeway to 15 seconds, refresh rejected frontend tokens once with shared refresh and preserved idempotency, distinguish API rejection from missing sessions, cover cancellation and recovery, and publish the audit in the vault. Validate with 51 frontend unit tests, 35 browser scenarios, typecheck, lint, formatting, production build, Go unit/race/static checks, sqlc vet and PostgreSQL integration tests.
+
 - [x] Audit and improve the Course AI frontend design across navigation, dashboard, generation and clarification, library, curriculum, reader, activities, authentication and fallback screens; add persistent themes, accessible controls, useful empty states and responsive layouts; document the audit and validate with typecheck, lint, formatting, production compilation using temporary validation environment values, 26 unit tests and 84 distinct applicable browser scenarios.
 
 - [x] Commit the current repository snapshot to git.

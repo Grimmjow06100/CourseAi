@@ -48,7 +48,7 @@ jobs:
           cache-dependency-path: backend-go/go.sum
       - name: Install verification tools
         run: |
-          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
           go install -tags="no_clickhouse no_mssql no_mysql no_sqlite3 no_libsql no_vertica no_ydb" github.com/pressly/goose/v3/cmd/goose@v3.27.1
           go install golang.org/x/vuln/cmd/govulncheck@latest
       - name: Verify generated database code

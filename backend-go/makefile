@@ -11,7 +11,7 @@ export DATABASE_URL
 .PHONY: tools lint test test-race test-integration test-all migrate-up migrate-down migrate-status migrate-create sqlc-generate sqlc-vet db-generate
 
 tools:
-	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+	go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
 	go install -tags="no_clickhouse no_mssql no_mysql no_sqlite3 no_libsql no_vertica no_ydb" github.com/pressly/goose/v3/cmd/goose@v3.27.1
 	go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
 	go install golang.org/x/vuln/cmd/govulncheck@latest
