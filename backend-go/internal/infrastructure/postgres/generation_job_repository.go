@@ -20,6 +20,18 @@ import (
 
 const defaultGenerationJobErrorCode = "generation_job_failed"
 
+var _ contract.GenerationJobClaimGuard = (*GenerationJobRepository)(nil)
+
+func (r *GenerationJobRepository) LockClaim(ctx context.Context, claim domain.JobClaim) error {
+	if err := claim.Validate(); err != nil {
+		return err
+	}
+	_, err := r.queries.LockGenerationJobClaim(ctx, dbsqlc.LockGenerationJobClaimParams{
+		ID: claim.JobID, WorkerID: &claim.WorkerID, AttemptCount: int32(claim.AttemptCount),
+	})
+	return mapNoRows(err, contract.ErrGenerationJobClaimLost)
+}
+
 type GenerationJobRepository struct {
 	queries *dbsqlc.Queries
 }
@@ -277,32 +289,33 @@ func validateQueuedGenerationJob(job domain.GenerationJob) error {
 
 func enqueueGenerationJobParams(job domain.GenerationJob) dbsqlc.EnqueueGenerationJobParams {
 	return dbsqlc.EnqueueGenerationJobParams{
-		ID:               job.ID,
-		RequestID:        job.RequestID,
-		ParentJobID:      nullableUUID(job.ParentJobID),
-		Kind:             dbsqlc.GenerationJobKind(job.Kind),
-		Status:           dbsqlc.GenerationJobStatus(job.Status),
-		TargetID:         nullableUUID(job.TargetID),
-		IdempotencyKey:   job.IdempotencyKey,
-		Payload:          jsonutil.Clone(job.Payload),
-		Priority:         int32(job.Priority),
-		AttemptCount:     int32(job.AttemptCount),
-		MaxAttempts:      int32(job.MaxAttempts),
-		AvailableAt:      job.AvailableAt,
-		LockedBy:         pointer.Clone(job.LockedBy),
-		LockedUntil:      pointer.Clone(job.LockedUntil),
-		StartedAt:        pointer.Clone(job.StartedAt),
-		CompletedAt:      pointer.Clone(job.CompletedAt),
-		LastErrorCode:    pointer.Clone(job.LastErrorCode),
-		LastErrorMessage: pointer.Clone(job.LastErrorMessage),
-		FailureHandledAt: pointer.Clone(job.FailureHandledAt),
-		CreatedAt:        job.CreatedAt,
-		UpdatedAt:        job.UpdatedAt,
+		GenerationAttempt: int32(job.GenerationAttempt),
+		ID:                job.ID,
+		RequestID:         job.RequestID,
+		ParentJobID:       nullableUUID(job.ParentJobID),
+		Kind:              dbsqlc.GenerationJobKind(job.Kind),
+		Status:            dbsqlc.GenerationJobStatus(job.Status),
+		TargetID:          nullableUUID(job.TargetID),
+		IdempotencyKey:    job.IdempotencyKey,
+		Payload:           jsonutil.Clone(job.Payload),
+		Priority:          int32(job.Priority),
+		AttemptCount:      int32(job.AttemptCount),
+		MaxAttempts:       int32(job.MaxAttempts),
+		AvailableAt:       job.AvailableAt,
+		LockedBy:          pointer.Clone(job.LockedBy),
+		LockedUntil:       pointer.Clone(job.LockedUntil),
+		StartedAt:         pointer.Clone(job.StartedAt),
+		CompletedAt:       pointer.Clone(job.CompletedAt),
+		LastErrorCode:     pointer.Clone(job.LastErrorCode),
+		LastErrorMessage:  pointer.Clone(job.LastErrorMessage),
+		FailureHandledAt:  pointer.Clone(job.FailureHandledAt),
+		CreatedAt:         job.CreatedAt,
+		UpdatedAt:         job.UpdatedAt,
 	}
 }
 
 func sameGenerationJobOperation(existing, candidate domain.GenerationJob) bool {
-	return existing.RequestID == candidate.RequestID &&
+	return existing.RequestID == candidate.RequestID && existing.GenerationAttempt == candidate.GenerationAttempt &&
 		existing.Kind == candidate.Kind &&
 		pointer.Equal(existing.TargetID, candidate.TargetID) &&
 		jsonutil.EqualObjects(existing.Payload, candidate.Payload)

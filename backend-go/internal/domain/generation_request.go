@@ -55,6 +55,7 @@ type AnalysisSummary struct {
 }
 
 type GenerationRequest struct {
+	GenerationAttempt         int
 	ID                        uuid.UUID
 	ClerkUserID               string
 	InitialUserPrompt         string
@@ -96,6 +97,7 @@ func NewGenerationRequestAt(prompt string, clerkUserID string, now time.Time) (G
 	}
 
 	request := GenerationRequest{
+		GenerationAttempt: 1,
 		ID:                id,
 		ClerkUserID:       normalizeText(clerkUserID),
 		InitialUserPrompt: normalizeText(prompt),
@@ -388,10 +390,22 @@ func (r *GenerationRequest) MarkCompleted(now time.Time) error {
 		return fmt.Errorf("%w: %s -> %s", ErrInvalidStatusTransition, r.PipelineStatus, PipelineStatusCompleted)
 	}
 	r.PipelineStatus = PipelineStatusCompleted
+	r.FailureMessage = nil
+	step := "generation_completed"
+	r.CurrentStep = &step
 	r.ProgressPercent = 100
 	r.CompletedAt = &now
 	r.UpdatedAt = now
 	return nil
+}
+
+// ReconcileCompletedCourse repairs a request without starting another AI attempt.
+func (r *GenerationRequest) ReconcileCompletedCourse(complete bool, now time.Time) error {
+	if !complete || r.PipelineStatus == PipelineStatusAwaitingClarification || r.IsOutOfScope {
+		return ErrGenerationRequestNotReady
+	}
+	r.PipelineStatus = PipelineStatusRunning
+	return r.MarkCompleted(now)
 }
 
 func (r *GenerationRequest) RestartFromFailure(step string, percent int, now time.Time) error {
@@ -407,6 +421,7 @@ func (r *GenerationRequest) RestartFromFailure(step string, percent int, now tim
 	}
 
 	r.PipelineStatus = PipelineStatusRunning
+	r.GenerationAttempt++
 	r.CurrentStep = &step
 	r.ProgressPercent = percent
 	r.FailureMessage = nil

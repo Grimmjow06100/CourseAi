@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
 )
 
@@ -58,7 +59,22 @@ func (e *GenerationJobExecutor) Execute(ctx context.Context, job domain.Generati
 	if err := requireEmptyJobPayload(job.Payload); err != nil {
 		return err
 	}
-	return run(ctx, job)
+	err = run(context.WithValue(ctx, generationJobContextKey{}, job), job)
+	if errors.Is(err, errGenerationSuperseded) {
+		return nil
+	}
+	return err
+}
+
+// ReconcileCompletedGenerations delegates maintenance without running any AI job.
+func (e *GenerationJobExecutor) ReconcileCompletedGenerations(ctx context.Context, limit int) error {
+	if e == nil || e.runner == nil {
+		return ErrGenerationJobExecutorDependency
+	}
+	if reconciler, ok := e.runner.(contract.GenerationSuccessReconciler); ok {
+		return reconciler.ReconcileCompletedGenerations(ctx, limit)
+	}
+	return nil
 }
 
 func (e *GenerationJobExecutor) handlerFor(kind domain.GenerationJobKind) (func(context.Context, domain.GenerationJob) error, error) {

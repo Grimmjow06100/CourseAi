@@ -21,7 +21,7 @@ func (s *CourseGeneratorService) ListGenerationJobs(ctx context.Context, request
 		return nil, fmt.Errorf("%w: generation request id", domain.ErrBlankField)
 	}
 	var jobs []domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
 			return err
 		}

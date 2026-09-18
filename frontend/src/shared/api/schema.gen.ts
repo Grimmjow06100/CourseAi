@@ -516,6 +516,15 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /** @description Monotonic generation attempt, distinct from job retry count. */
+            generationAttempt?: number;
+            /** @description Persisted course content validated independently of pipeline status. */
+            contentComplete?: boolean;
+            /**
+             * @description Safe translatable public failure category.
+             * @enum {string|null}
+             */
+            failureCode?: "generation_failed" | "finalization_failed" | null;
         };
         GenerationJobResponse: {
             /** Format: uuid */
@@ -545,6 +554,7 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            generationAttempt?: number;
         };
         GenerationStatusResponse: {
             /** Format: uuid */
@@ -567,6 +577,15 @@ export interface components {
             detectedLanguage: components["schemas"]["Language"] | null;
             clarificationQuestions: components["schemas"]["ClarificationQuestionResponse"][];
             actionRequired: components["schemas"]["GenerationActionRequiredResponse"] | null;
+            /** @description Monotonic generation attempt, distinct from job retry count. */
+            generationAttempt?: number;
+            /** @description Persisted course content validated independently of pipeline status. */
+            contentComplete?: boolean;
+            /**
+             * @description Safe translatable public failure category.
+             * @enum {string|null}
+             */
+            failureCode?: "generation_failed" | "finalization_failed" | null;
         };
         GenerationActionRequiredResponse: {
             /** @enum {string} */

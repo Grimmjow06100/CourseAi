@@ -1,5 +1,6 @@
 -- name: EnqueueGenerationJob :one
 INSERT INTO generation_jobs (
+  generation_attempt,
   id,
   request_id,
   parent_job_id,
@@ -23,6 +24,7 @@ INSERT INTO generation_jobs (
   updated_at
 )
 VALUES (
+  @generation_attempt,
   @id,
   @request_id,
   sqlc.narg('parent_job_id'),
@@ -52,6 +54,12 @@ RETURNING *;
 SELECT *
 FROM generation_jobs
 WHERE id = @id;
+
+-- name: LockGenerationJobClaim :one
+SELECT id FROM generation_jobs
+WHERE id = @id AND locked_by = @worker_id AND attempt_count = @attempt_count
+  AND status = 'running' AND locked_until > clock_timestamp()
+FOR UPDATE;
 
 -- name: GetGenerationJobByIdempotencyKey :one
 SELECT *

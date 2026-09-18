@@ -5,7 +5,7 @@ import type { GenerationSummary } from '@/shared/api/types'
 import { formatDate } from '@/shared/lib/format'
 import { Button } from '@/shared/ui/button'
 import { ConfirmDialog } from '@/shared/ui/confirm-dialog'
-import { PipelineStatusBadge } from '@/shared/ui/status-badge'
+import { PipelineStatusBadge } from './status-badge'
 import { useDeleteGeneration } from './api'
 
 export function GenerationList({ generations, limit }: { generations: GenerationSummary[]; limit?: number }) {
@@ -24,7 +24,7 @@ export function GenerationList({ generations, limit }: { generations: Generation
             </span>
             <div className="min-w-0">
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <PipelineStatusBadge status={generation.pipelineStatus} />
+                <PipelineStatusBadge generation={generation} />
                 <span className="text-xs text-muted-foreground">
                   {formatDate(generation.createdAt, i18n.language)}
                 </span>

@@ -101,6 +101,13 @@ export const resources = {
         emptyCourses: 'Votre bibliothèque est encore vide.',
       },
       generation: {
+        contentAvailable: 'Contenu disponible',
+        finalizationFailed:
+          'Le contenu est prêt, mais la finalisation a rencontré un problème. Vous pouvez ouvrir la formation et actualiser son statut.',
+        openPartialCourse: 'Consulter la formation partielle',
+        refreshStatus: 'Actualiser le statut',
+        requestId: 'Identifiant de génération',
+
         title: 'Créer une formation',
         subtitle: 'Décrivez le sujet, votre niveau et le résultat attendu.',
         promptInvalid: 'Décrivez votre objectif en 10 à 4000 caractères.',
@@ -335,6 +342,13 @@ export const resources = {
         emptyCourses: 'Your library is still empty.',
       },
       generation: {
+        contentAvailable: 'Content available',
+        finalizationFailed:
+          'The content is ready, but finalization encountered a problem. You can open the course and refresh its status.',
+        openPartialCourse: 'View partial course',
+        refreshStatus: 'Refresh status',
+        requestId: 'Generation ID',
+
         title: 'Create a course',
         subtitle: 'Describe the topic, your current level, and the outcome you expect.',
         promptInvalid: 'Describe your goal in 10 to 4000 characters.',

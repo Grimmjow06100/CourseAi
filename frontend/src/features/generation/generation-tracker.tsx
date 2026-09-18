@@ -7,12 +7,14 @@ import { ApiErrorNotice } from '@/shared/ui/api-error-notice'
 import { Progress } from '@/shared/ui/progress'
 import { ClarificationForm } from './clarification-form'
 import { useRetryGeneration } from './api'
+import { hasCompleteCourse } from './presentation'
 
 const steps = ['analysis', 'architecture', 'lessons', 'content', 'finalization'] as const
 
 export function GenerationTracker({ status }: { status: GenerationStatus }) {
   const { t } = useTranslation()
   const retry = useRetryGeneration(status.requestId)
+  const complete = hasCompleteCourse(status)
   const activeIndex =
     status.progressPercent >= 95
       ? 4
@@ -45,16 +47,36 @@ export function GenerationTracker({ status }: { status: GenerationStatus }) {
     )
   if (status.pipelineStatus === 'failed')
     return (
-      <section className="rounded-2xl border border-danger/20 bg-danger-soft px-5 py-12 text-center">
-        <AlertCircle className="mx-auto size-8 text-danger" />
-        <h2 className="mt-4 text-xl font-bold">{t('generation.failed')}</h2>
+      <section
+        className={`rounded-2xl border px-5 py-12 text-center ${complete ? 'border-warning/30 bg-warning-soft' : 'border-danger/20 bg-danger-soft'}`}
+      >
+        <AlertCircle className={`mx-auto size-8 ${complete ? 'text-warning' : 'text-danger'}`} />
+        <h2 className="mt-4 text-xl font-bold">
+          {t(complete ? 'generation.contentAvailable' : 'generation.failed')}
+        </h2>
         <p className="mx-auto mt-2 max-w-xl text-sm text-muted-foreground">
-          {status.failureMessage ?? t('generation.failedText')}
+          {t(
+            complete || status.failureCode === 'finalization_failed'
+              ? 'generation.finalizationFailed'
+              : 'generation.failedText',
+          )}
         </p>
-        <Button className="mt-6" disabled={retry.isPending} onClick={() => retry.mutate()}>
-          <RotateCcw className="size-4" />
-          {t('common.retry')}
-        </Button>
+        <p className="mt-3 text-sm select-all">
+          {t('generation.requestId')}: {status.requestId}
+        </p>
+        {status.courseId ? (
+          <Button asChild className="mt-6 mr-3">
+            <Link to="/courses/$courseId" params={{ courseId: status.courseId }}>
+              {t(complete ? 'generation.openCourse' : 'generation.openPartialCourse')}
+            </Link>
+          </Button>
+        ) : null}
+        {!complete ? (
+          <Button className="mt-6" disabled={retry.isPending} onClick={() => retry.mutate()}>
+            <RotateCcw className="size-4" />
+            {t('common.retry')}
+          </Button>
+        ) : null}
         <ApiErrorNotice error={retry.error} />
       </section>
     )

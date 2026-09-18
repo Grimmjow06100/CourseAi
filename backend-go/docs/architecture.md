@@ -15,7 +15,7 @@ cmd/api
   `-- infrastructure/prompts --> contract
 ```
 
-`domain` imports neither services nor infrastructure. `contract` exposes ports using domain types. `service` implements use cases against those ports. Infrastructure packages implement the ports for specific technologies. `cmd/api` is the only composition root that knows every concrete adapter.
+`domain` imports neither services nor infrastructure. `contract` exposes ports using domain types. `service` implements use cases against those ports. Infrastructure packages implement the ports for specific technologies. `cmd/api` is the server composition root. The operational `cmd/reconcile-generations` entry point only wires database/clock adapters to the same reconciliation service; it does not implement business transitions.
 
 ## Package map
 
@@ -65,6 +65,10 @@ analysis
 The worker pool claims jobs atomically in PostgreSQL. A claim contains a worker ID, an attempt number and a lease deadline. The heartbeat renews the lease during long OpenAI calls. Completion, retry or terminal failure uses the claim as a fencing token so an obsolete worker cannot overwrite a newer attempt.
 
 Application job behavior belongs to `service.GenerationJobExecutor` and `CourseGeneratorService`. Generic execution mechanics belong to `infrastructure/jobs`.
+
+Each request and job also carries `generation_attempt`, a business retry epoch distinct from the job claim's `attempt_count` and the clarification version. Worker transactions lock the request before checking the epoch and locking the live claim, then recheck claim expiry before commit. AI calls remain outside transactions. Old attempts cannot persist content or propagate failure into a newer retry.
+
+Finalization validates persisted completeness and updates the request/course pair in one transaction. Maintenance reconciles interrupted completions only after current-attempt work is terminal. The read-only-by-default reconciliation command uses the same service and requires `-apply` to write. See [generation status fixes and rollout](generation-status-fixes-2026-09-18.md) before applying migration 00010 or repairing historical records.
 
 ## Persistence model
 

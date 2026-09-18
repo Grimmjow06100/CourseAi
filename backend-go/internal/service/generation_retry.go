@@ -29,7 +29,7 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
 			return err
 		}
@@ -40,6 +40,9 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 		}
 		continuation, err := s.prepareFailedRequestRetry(&lockedRequest)
 		if err != nil {
+			return err
+		}
+		if err := s.cancelSupersededJobs(ctx, repositories, lockedRequest); err != nil {
 			return err
 		}
 		request, err = repositories.GenerationRequests().UpdateGenerationRequest(ctx, lockedRequest)
@@ -98,11 +101,12 @@ func (s *CourseGeneratorService) enqueueAnalysisRetry(
 	}
 	now := s.now()
 	job, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
-		RequestID:      request.ID,
-		Kind:           domain.GenerationJobKindAnalysis,
-		IdempotencyKey: "analysis:" + request.ID.String() + ":" + reason + ":" + uuid.NewString(),
-		Payload:        json.RawMessage(`{}`),
-		AvailableAt:    now,
+		GenerationAttempt: request.GenerationAttempt,
+		RequestID:         request.ID,
+		Kind:              domain.GenerationJobKindAnalysis,
+		IdempotencyKey:    "analysis:" + request.ID.String() + ":" + reason + ":" + uuid.NewString(),
+		Payload:           json.RawMessage(`{}`),
+		AvailableAt:       now,
 	}, now)
 	if err != nil {
 		return domain.GenerationJob{}, err

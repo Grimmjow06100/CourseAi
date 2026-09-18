@@ -78,3 +78,26 @@ func TestGenerationResultWrapper(t *testing.T) {
 		t.Fatalf("unexpected wrapper response: %+v", result)
 	}
 }
+
+func TestGenerationFailureProjection(t *testing.T) {
+	for _, complete := range []bool{false, true} {
+		internalMessage := "private provider SQL details"
+		wantCode := "generation_failed"
+		if complete {
+			wantCode = "finalization_failed"
+		}
+		response := GenerationStatusFromContract(contract.GenerationStatus{
+			PipelineStatus: domain.PipelineStatusFailed, ContentComplete: complete,
+			GenerationAttempt: 3, FailureMessage: &internalMessage,
+		})
+		if response.FailureCode == nil || *response.FailureCode != wantCode || response.ContentComplete != complete || response.GenerationAttempt != 3 {
+			t.Fatalf("invalid public status projection: %+v", response)
+		}
+		if response.FailureMessage == nil || *response.FailureMessage == internalMessage {
+			t.Fatal("internal failure details exposed")
+		}
+	}
+	if generationFailureCode(domain.PipelineStatusCompleted, true) != nil {
+		t.Fatal("completed pipeline must not expose a failure code")
+	}
+}

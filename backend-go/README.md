@@ -105,6 +105,8 @@ make migrate-status
 
 La migration `00005_migrate_users_to_clerk.sql` a prepare la transition depuis l'ancienne authentification locale. La migration `00006_add_clerk_ownership_and_webhooks.sql` a introduit l'ownership initial. La migration `00007_remove_clerk_user_sync.sql` retire ensuite la projection `users` et les evenements webhook. La migration `00008_generation_operational_safety.sql` ajoute le suivi de reconciliation des echecs workers et les index d'admission/retention. La migration `00009_generation_history.sql` indexe l'historique chronologique par proprietaire Clerk.
 
+La migration `00010_generation_consistency.sql` ajoute la tentative metier des demandes/jobs et la projection de completude du contenu. Elle accompagne une finalisation atomique, la protection des ecritures par tentative et claim, et une reconciliation des contenus complets. Arreter les anciens writers et suivre le [guide de mise en service et de reparation](docs/generation-status-fixes-2026-09-18.md) ; ne pas melanger les anciennes et nouvelles versions de workers. La commande `go run ./cmd/reconcile-generations` est en lecture seule par defaut ; `-apply` demande explicitement une reparation transactionnelle sans appel IA.
+
 ## Routes
 
 ### Horloge et authentification

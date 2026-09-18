@@ -121,15 +121,16 @@ func (k GenerationJobKind) RequiresTarget() bool {
 }
 
 type NewGenerationJobParams struct {
-	RequestID      uuid.UUID
-	ParentJobID    *uuid.UUID
-	Kind           GenerationJobKind
-	TargetID       *uuid.UUID
-	IdempotencyKey string
-	Payload        json.RawMessage
-	Priority       int
-	MaxAttempts    int
-	AvailableAt    time.Time
+	GenerationAttempt int
+	RequestID         uuid.UUID
+	ParentJobID       *uuid.UUID
+	Kind              GenerationJobKind
+	TargetID          *uuid.UUID
+	IdempotencyKey    string
+	Payload           json.RawMessage
+	Priority          int
+	MaxAttempts       int
+	AvailableAt       time.Time
 }
 
 type JobClaim struct {
@@ -152,27 +153,28 @@ func (c JobClaim) Validate() error {
 }
 
 type GenerationJob struct {
-	ID               uuid.UUID
-	RequestID        uuid.UUID
-	ParentJobID      *uuid.UUID
-	Kind             GenerationJobKind
-	Status           GenerationJobStatus
-	TargetID         *uuid.UUID
-	IdempotencyKey   string
-	Payload          json.RawMessage
-	Priority         int
-	AttemptCount     int
-	MaxAttempts      int
-	AvailableAt      time.Time
-	LockedBy         *string
-	LockedUntil      *time.Time
-	StartedAt        *time.Time
-	CompletedAt      *time.Time
-	LastErrorCode    *string
-	LastErrorMessage *string
-	FailureHandledAt *time.Time
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	GenerationAttempt int
+	ID                uuid.UUID
+	RequestID         uuid.UUID
+	ParentJobID       *uuid.UUID
+	Kind              GenerationJobKind
+	Status            GenerationJobStatus
+	TargetID          *uuid.UUID
+	IdempotencyKey    string
+	Payload           json.RawMessage
+	Priority          int
+	AttemptCount      int
+	MaxAttempts       int
+	AvailableAt       time.Time
+	LockedBy          *string
+	LockedUntil       *time.Time
+	StartedAt         *time.Time
+	CompletedAt       *time.Time
+	LastErrorCode     *string
+	LastErrorMessage  *string
+	FailureHandledAt  *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 func NewGenerationJob(params NewGenerationJobParams) (GenerationJob, error) {
@@ -199,19 +201,20 @@ func NewGenerationJobAt(params NewGenerationJobParams, now time.Time) (Generatio
 	}
 
 	job := GenerationJob{
-		ID:             id,
-		RequestID:      params.RequestID,
-		ParentJobID:    pointer.Clone(params.ParentJobID),
-		Kind:           params.Kind,
-		Status:         GenerationJobStatusQueued,
-		TargetID:       pointer.Clone(params.TargetID),
-		IdempotencyKey: strings.TrimSpace(params.IdempotencyKey),
-		Payload:        payload,
-		Priority:       params.Priority,
-		MaxAttempts:    maxAttempts,
-		AvailableAt:    availableAt,
-		CreatedAt:      now,
-		UpdatedAt:      now,
+		GenerationAttempt: max(1, params.GenerationAttempt),
+		ID:                id,
+		RequestID:         params.RequestID,
+		ParentJobID:       pointer.Clone(params.ParentJobID),
+		Kind:              params.Kind,
+		Status:            GenerationJobStatusQueued,
+		TargetID:          pointer.Clone(params.TargetID),
+		IdempotencyKey:    strings.TrimSpace(params.IdempotencyKey),
+		Payload:           payload,
+		Priority:          params.Priority,
+		MaxAttempts:       maxAttempts,
+		AvailableAt:       availableAt,
+		CreatedAt:         now,
+		UpdatedAt:         now,
 	}
 
 	if err := job.Validate(); err != nil {

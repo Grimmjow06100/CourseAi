@@ -543,6 +543,7 @@ func (r *fakeCourseRepository) DeleteCourseByRequestID(_ context.Context, reques
 }
 
 type fakeGenerationRequestRepository struct {
+	contract.GenerationRequestRepository
 	requests       map[uuid.UUID]domain.GenerationRequest
 	admissionUsage contract.GenerationAdmissionUsage
 }

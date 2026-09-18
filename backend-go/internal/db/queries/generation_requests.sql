@@ -1,5 +1,6 @@
 -- name: CreateGenerationRequest :one
 INSERT INTO generation_requests (
+  generation_attempt,
   id,
   clerk_user_id,
   initial_user_prompt,
@@ -35,6 +36,7 @@ INSERT INTO generation_requests (
   updated_at
 )
 VALUES (
+  @generation_attempt,
   @id,
   @clerk_user_id,
   @initial_user_prompt,
@@ -74,6 +76,7 @@ RETURNING *;
 -- name: UpdateGenerationRequest :one
 UPDATE generation_requests
 SET
+  generation_attempt = @generation_attempt,
   clerk_user_id = @clerk_user_id,
   initial_user_prompt = @initial_user_prompt,
   pipeline_status = @pipeline_status::generation_pipeline_status,
@@ -122,6 +125,8 @@ FOR UPDATE;
 -- name: GetGenerationStatusByID :one
 SELECT
   gr.id AS request_id,
+  gr.generation_attempt,
+  COALESCE(cs.content_complete, false)::boolean AS content_complete,
   gr.pipeline_status,
   gr.current_step,
   gr.progress_percent,
@@ -140,6 +145,7 @@ SELECT
   c.status AS course_status
 FROM generation_requests gr
 LEFT JOIN courses c ON c.request_id = gr.id
+LEFT JOIN course_content_states cs ON cs.course_id = c.id
 WHERE gr.id = @id;
 
 -- name: CountGenerationRequestsByOwner :one
@@ -154,6 +160,8 @@ WHERE request.clerk_user_id = @clerk_user_id
 -- name: ListGenerationRequestsByOwner :many
 SELECT
   request.id AS request_id,
+  request.generation_attempt,
+  COALESCE(cs.content_complete, false)::boolean AS content_complete,
   course.id AS course_id,
   request.initial_user_prompt,
   COALESCE(course.title, request.confirmed_title, request.suggested_title, request.initial_user_prompt) AS title,
@@ -167,6 +175,7 @@ SELECT
   request.updated_at
 FROM generation_requests AS request
 LEFT JOIN courses AS course ON course.request_id = request.id
+LEFT JOIN course_content_states cs ON cs.course_id = course.id
 WHERE request.clerk_user_id = @clerk_user_id
   AND (
     sqlc.narg('pipeline_status')::generation_pipeline_status IS NULL
@@ -209,6 +218,22 @@ FROM admission_lock;
 -- name: DeleteGenerationRequestByID :execrows
 DELETE FROM generation_requests
 WHERE id = @id;
+
+-- name: ListGenerationCompletionCandidates :many
+SELECT gr.id FROM generation_requests gr
+JOIN courses c ON c.request_id = gr.id
+JOIN course_content_states cs ON cs.course_id = c.id
+WHERE cs.content_complete
+  AND gr.pipeline_status <> 'awaiting_clarification'
+  AND NOT gr.is_out_of_scope
+  AND (gr.pipeline_status <> 'completed' OR c.status <> 'completed')
+  AND NOT EXISTS (
+    SELECT 1 FROM generation_jobs j
+    WHERE j.request_id = gr.id AND j.generation_attempt = gr.generation_attempt
+      AND j.status IN ('queued', 'running', 'retry_scheduled')
+  )
+ORDER BY gr.updated_at, gr.id
+LIMIT @limit_rows;
 
 -- name: PurgeRawGenerationOutputsBefore :one
 WITH eligible_requests AS MATERIALIZED (

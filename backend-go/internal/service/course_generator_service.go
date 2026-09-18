@@ -116,7 +116,7 @@ func (s *CourseGeneratorService) GetGenerationStatus(ctx context.Context, reques
 	}
 
 	var status contract.GenerationStatus
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
 			return err
 		}
@@ -146,11 +146,11 @@ func (s *CourseGeneratorService) GetGenerationResult(ctx context.Context, reques
 	}
 
 	var result contract.GenerationResult
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
 			return err
 		}
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
 		}
@@ -210,8 +210,8 @@ func (s *CourseGeneratorService) runPromptAnalysis(ctx context.Context, request 
 
 func (s *CourseGeneratorService) loadGenerationRequest(ctx context.Context, requestID uuid.UUID) (domain.GenerationRequest, error) {
 	var request domain.GenerationRequest
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		loadedRequest, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		loadedRequest, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
 		}
@@ -223,8 +223,8 @@ func (s *CourseGeneratorService) loadGenerationRequest(ctx context.Context, requ
 
 func (s *CourseGeneratorService) updateRequestProgress(ctx context.Context, requestID uuid.UUID, step string, percent int) (domain.GenerationRequest, error) {
 	var updatedRequest domain.GenerationRequest
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
 		}
@@ -234,6 +234,10 @@ func (s *CourseGeneratorService) updateRequestProgress(ctx context.Context, requ
 			if err := request.MarkRunning(step, now); err != nil {
 				return err
 			}
+		}
+		if request.PipelineStatus.IsTerminal() || percent < request.ProgressPercent {
+			updatedRequest = request
+			return nil
 		}
 		if err := request.UpdateProgress(step, percent, now); err != nil {
 			return err
@@ -247,8 +251,8 @@ func (s *CourseGeneratorService) updateRequestProgress(ctx context.Context, requ
 
 func (s *CourseGeneratorService) persistAnalysis(ctx context.Context, requestID uuid.UUID, summary domain.AnalysisSummary, rawOutput json.RawMessage) (domain.GenerationRequest, error) {
 	var updatedRequest domain.GenerationRequest
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
 		}
@@ -282,7 +286,7 @@ func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, reques
 	course.Modules = modules
 
 	var savedCourse domain.Course
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		persistedCourse, err := repositories.Courses().SaveCourse(ctx, course)
 		if err != nil {
 			return err
@@ -302,7 +306,7 @@ func (s *CourseGeneratorService) persistArchitecture(ctx context.Context, reques
 
 func (s *CourseGeneratorService) persistLessonPlan(ctx context.Context, module domain.Module, lessons []domain.Lesson) ([]domain.Lesson, error) {
 	var savedLessons []domain.Lesson
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if _, err := repositories.Modules().UpdateModule(ctx, module); err != nil {
 			return err
 		}
@@ -318,7 +322,7 @@ func (s *CourseGeneratorService) persistLessonPlan(ctx context.Context, module d
 }
 
 func (s *CourseGeneratorService) persistLessonContent(ctx context.Context, lesson domain.Lesson) error {
-	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	return s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if _, err := repositories.Lessons().ReplaceLessonContent(ctx, lesson); err != nil {
 			return err
 		}
@@ -332,13 +336,24 @@ func (s *CourseGeneratorService) persistLessonContent(ctx context.Context, lesso
 
 func (s *CourseGeneratorService) transitionCourse(ctx context.Context, course domain.Course, mutate func(course *domain.Course) error) (domain.Course, error) {
 	var updatedCourse domain.Course
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		if _, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, course.RequestID); err != nil {
+			return err
+		}
+		current, err := repositories.Courses().FindCourseByID(ctx, course.ID)
+		if err != nil {
+			return err
+		}
+		if current.Status != course.Status {
+			updatedCourse = current
+			return nil
+		}
+		course = current
 		if err := mutate(&course); err != nil {
 			return err
 		}
 		course.UpdatedAt = s.now()
 
-		var err error
 		updatedCourse, err = repositories.Courses().UpdateCourse(ctx, course)
 		return err
 	})
@@ -346,8 +361,8 @@ func (s *CourseGeneratorService) transitionCourse(ctx context.Context, course do
 }
 
 func (s *CourseGeneratorService) completeRequest(ctx context.Context, requestID uuid.UUID) error {
-	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+	return s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
 		}
@@ -359,49 +374,36 @@ func (s *CourseGeneratorService) completeRequest(ctx context.Context, requestID 
 	})
 }
 
-func (s *CourseGeneratorService) markPipelineFailed(ctx context.Context, requestID uuid.UUID, cause error) error {
-	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		now := s.now()
-		message := failureMessage(cause)
-
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
-		if err != nil {
-			return err
-		}
-		if !request.PipelineStatus.IsTerminal() {
-			if err := request.MarkFailed(message, now); err != nil {
-				return err
-			}
-			if _, err := repositories.GenerationRequests().UpdateGenerationRequest(ctx, request); err != nil {
-				return err
-			}
-		}
-
-		course, err := repositories.Courses().FindCourseStateByRequestID(ctx, request.ID)
-		if err != nil {
-			if errors.Is(err, contract.ErrCourseNotFound) {
-				return nil
-			}
-			return err
-		}
-		if !course.Status.IsTerminal() {
-			if err := course.MarkFailed(); err != nil {
-				return err
-			}
-			course.UpdatedAt = now
-			if _, err := repositories.Courses().UpdateCourse(ctx, course); err != nil {
-				return err
-			}
-		}
-
+func (s *CourseGeneratorService) failRequestWithRepositories(ctx context.Context, repositories contract.TransactionalRepositories, request domain.GenerationRequest, cause error) error {
+	now := s.now()
+	if err := request.MarkFailed(failureMessage(cause), now); err != nil {
+		return err
+	}
+	if _, err := repositories.GenerationRequests().UpdateGenerationRequest(ctx, request); err != nil {
+		return err
+	}
+	course, err := repositories.Courses().FindCourseStateByRequestID(ctx, request.ID)
+	if errors.Is(err, contract.ErrCourseNotFound) {
 		return nil
-	})
+	}
+	if err != nil {
+		return err
+	}
+	if course.Status.IsTerminal() {
+		return nil
+	}
+	if err := course.MarkFailed(); err != nil {
+		return err
+	}
+	course.UpdatedAt = now
+	_, err = repositories.Courses().UpdateCourse(ctx, course)
+	return err
 }
 
 func (s *CourseGeneratorService) prepareStructureRetry(ctx context.Context, requestID uuid.UUID) (domain.GenerationRequest, error) {
 	var updatedRequest domain.GenerationRequest
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		request, err := repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
 		}
@@ -441,7 +443,7 @@ func isStructureRetryableStep(step *string) bool {
 }
 func (s *CourseGeneratorService) loadCourseByID(ctx context.Context, courseID uuid.UUID) (domain.Course, error) {
 	var course domain.Course
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		loadedCourse, err := repositories.Courses().FindCourseByID(ctx, courseID)
 		if err != nil {
 			return err
@@ -456,7 +458,7 @@ func (s *CourseGeneratorService) loadLessonGenerationContext(ctx context.Context
 	var course domain.Course
 	var module domain.Module
 	var lesson domain.Lesson
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		loadedLesson, err := repositories.Lessons().FindLessonByID(ctx, lessonID)
 		if err != nil {
 			return err
@@ -481,7 +483,7 @@ func (s *CourseGeneratorService) loadLessonGenerationContext(ctx context.Context
 func (s *CourseGeneratorService) loadModuleGenerationContext(ctx context.Context, moduleID uuid.UUID) (domain.Course, domain.Module, error) {
 	var course domain.Course
 	var module domain.Module
-	err := s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		loadedModule, err := repositories.Modules().FindModuleByID(ctx, moduleID)
 		if err != nil {
 			return err
@@ -498,33 +500,6 @@ func (s *CourseGeneratorService) loadModuleGenerationContext(ctx context.Context
 	return course, module, err
 }
 
-func (s *CourseGeneratorService) completeCourseIfReady(ctx context.Context, courseID uuid.UUID) error {
-	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		isComplete, err := repositories.Courses().IsCourseContentComplete(ctx, courseID)
-		if err != nil || !isComplete {
-			return err
-		}
-
-		course, err := repositories.Courses().FindCourseStateByID(ctx, courseID)
-		if err != nil {
-			return err
-		}
-		if course.Status == domain.CourseStatusCompleted {
-			return nil
-		}
-		if course.Status != domain.CourseStatusContentGenerating {
-			if err := course.MarkContentGenerating(); err != nil {
-				return err
-			}
-		}
-		if err := course.MarkCompletedWithValidatedContent(isComplete); err != nil {
-			return err
-		}
-		course.UpdatedAt = s.now()
-		_, err = repositories.Courses().UpdateCourse(ctx, course)
-		return err
-	})
-}
 func (s *CourseGeneratorService) generationStarted(request domain.GenerationRequest, job domain.GenerationJob) contract.GenerationStarted {
 	return contract.GenerationStarted{
 		JobID:        job.ID,

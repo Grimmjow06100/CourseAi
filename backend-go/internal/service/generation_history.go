@@ -24,7 +24,7 @@ func (s *CourseGeneratorService) ListGenerationRequests(ctx context.Context, fil
 	filters.Pagination = filters.Pagination.Normalize()
 
 	var page contract.Page[contract.GenerationSummary]
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		var err error
 		page, err = repositories.GenerationRequests().ListGenerationRequests(ctx, filters)
 		return err

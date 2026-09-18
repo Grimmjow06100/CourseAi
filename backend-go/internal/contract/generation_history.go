@@ -17,6 +17,8 @@ type GenerationHistoryFilters struct {
 // GenerationSummary is the read projection used to resume a generation without
 // loading raw AI outputs or the complete generated course graph.
 type GenerationSummary struct {
+	GenerationAttempt int
+	ContentComplete   bool
 	RequestID         uuid.UUID
 	CourseID          *uuid.UUID
 	InitialUserPrompt string

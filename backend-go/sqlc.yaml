@@ -12,6 +12,7 @@ sql:
       - "migrations/00007_remove_clerk_user_sync.sql"
       - "migrations/00008_generation_operational_safety.sql"
       - "migrations/00009_generation_history.sql"
+      - "migrations/00010_generation_consistency.sql"
     queries: "internal/db/queries"
     gen:
       go:

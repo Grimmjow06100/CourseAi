@@ -6,8 +6,10 @@ export function isJobActive(job: GenerationJob) {
 
 // A retry supersedes an older terminal job for the same operation and target.
 export function latestTargetJobs(jobs: GenerationJob[]) {
+  const attempt = Math.max(1, ...jobs.map((job) => job.generationAttempt ?? 1))
   const latest = new Map<string, GenerationJob>()
   for (const job of jobs) {
+    if ((job.generationAttempt ?? 1) !== attempt) continue
     const key = `${job.kind}:${job.targetId ?? ''}`
     const previous = latest.get(key)
     if (

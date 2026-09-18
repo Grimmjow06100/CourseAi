@@ -42,6 +42,7 @@ type OwnershipRepository interface {
 }
 
 type GenerationRequestRepository interface {
+	ListCompletionCandidates(ctx context.Context, limit int) ([]uuid.UUID, error)
 	SaveGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error)
 	UpdateGenerationRequest(ctx context.Context, request domain.GenerationRequest) (domain.GenerationRequest, error)
 	ListGenerationRequests(ctx context.Context, filters GenerationHistoryFilters) (Page[GenerationSummary], error)

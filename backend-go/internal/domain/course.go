@@ -206,6 +206,15 @@ func (c *Course) MarkCompletedWithValidatedContent(hasCompleteContent bool) erro
 	return c.TransitionTo(CourseStatusCompleted)
 }
 
+// ReconcileCompletedContent repairs lifecycle bookkeeping only after persisted content is validated.
+func (c *Course) ReconcileCompletedContent(complete bool) error {
+	if !complete {
+		return ErrMissingCourseContent
+	}
+	c.Status = CourseStatusCompleted
+	return nil
+}
+
 func (c *Course) MarkFailed() error {
 	return c.TransitionTo(CourseStatusFailed)
 }

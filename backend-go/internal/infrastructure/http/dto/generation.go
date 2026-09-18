@@ -35,6 +35,9 @@ type ClarificationAnswerRequest struct {
 }
 
 type GenerationSummaryResponse struct {
+	GenerationAttempt int       `json:"generationAttempt"`
+	ContentComplete   bool      `json:"contentComplete"`
+	FailureCode       *string   `json:"failureCode"`
 	RequestID         string    `json:"requestId"`
 	CourseID          *string   `json:"courseId"`
 	InitialUserPrompt string    `json:"initialUserPrompt"`
@@ -63,6 +66,9 @@ func GenerationPageFromContract(page contract.Page[contract.GenerationSummary]) 
 	items := make([]GenerationSummaryResponse, 0, len(page.Items))
 	for _, summary := range page.Items {
 		items = append(items, GenerationSummaryResponse{
+			GenerationAttempt: summary.GenerationAttempt,
+			ContentComplete:   summary.ContentComplete,
+			FailureCode:       generationFailureCode(summary.PipelineStatus, summary.ContentComplete),
 			RequestID:         summary.RequestID.String(),
 			CourseID:          pointer.Map(summary.CourseID, func(value uuid.UUID) string { return value.String() }),
 			InitialUserPrompt: summary.InitialUserPrompt,
@@ -72,7 +78,7 @@ func GenerationPageFromContract(page contract.Page[contract.GenerationSummary]) 
 			CurrentStep:       summary.CurrentStep,
 			ProgressPercent:   summary.ProgressPercent,
 			IsOutOfScope:      summary.IsOutOfScope,
-			FailureMessage:    summary.FailureMessage,
+			FailureMessage:    publicGenerationFailure(summary.FailureMessage),
 			CreatedAt:         summary.CreatedAt,
 			UpdatedAt:         summary.UpdatedAt,
 		})
@@ -84,26 +90,30 @@ func GenerationPageFromContract(page contract.Page[contract.GenerationSummary]) 
 }
 
 type GenerationJobResponse struct {
-	ID               string     `json:"id"`
-	RequestID        string     `json:"requestId"`
-	ParentJobID      *string    `json:"parentJobId"`
-	Kind             string     `json:"kind"`
-	Status           string     `json:"status"`
-	TargetID         *string    `json:"targetId"`
-	Priority         int        `json:"priority"`
-	AttemptCount     int        `json:"attemptCount"`
-	MaxAttempts      int        `json:"maxAttempts"`
-	AvailableAt      time.Time  `json:"availableAt"`
-	LockedUntil      *time.Time `json:"lockedUntil"`
-	StartedAt        *time.Time `json:"startedAt"`
-	CompletedAt      *time.Time `json:"completedAt"`
-	LastErrorCode    *string    `json:"lastErrorCode"`
-	LastErrorMessage *string    `json:"lastErrorMessage"`
-	CreatedAt        time.Time  `json:"createdAt"`
-	UpdatedAt        time.Time  `json:"updatedAt"`
+	GenerationAttempt int        `json:"generationAttempt"`
+	ID                string     `json:"id"`
+	RequestID         string     `json:"requestId"`
+	ParentJobID       *string    `json:"parentJobId"`
+	Kind              string     `json:"kind"`
+	Status            string     `json:"status"`
+	TargetID          *string    `json:"targetId"`
+	Priority          int        `json:"priority"`
+	AttemptCount      int        `json:"attemptCount"`
+	MaxAttempts       int        `json:"maxAttempts"`
+	AvailableAt       time.Time  `json:"availableAt"`
+	LockedUntil       *time.Time `json:"lockedUntil"`
+	StartedAt         *time.Time `json:"startedAt"`
+	CompletedAt       *time.Time `json:"completedAt"`
+	LastErrorCode     *string    `json:"lastErrorCode"`
+	LastErrorMessage  *string    `json:"lastErrorMessage"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
 }
 
 type GenerationStatusResponse struct {
+	GenerationAttempt      int                               `json:"generationAttempt"`
+	ContentComplete        bool                              `json:"contentComplete"`
+	FailureCode            *string                           `json:"failureCode"`
 	RequestID              string                            `json:"requestId"`
 	CourseID               *string                           `json:"courseId"`
 	PipelineStatus         string                            `json:"pipelineStatus"`
@@ -203,28 +213,32 @@ func GenerationStartedFromContract(started contract.GenerationStarted) Generatio
 
 func GenerationJobFromDomain(job domain.GenerationJob) GenerationJobResponse {
 	return GenerationJobResponse{
-		ID:               job.ID.String(),
-		RequestID:        job.RequestID.String(),
-		ParentJobID:      pointer.Map(job.ParentJobID, uuid.UUID.String),
-		Kind:             string(job.Kind),
-		Status:           string(job.Status),
-		TargetID:         pointer.Map(job.TargetID, uuid.UUID.String),
-		Priority:         job.Priority,
-		AttemptCount:     job.AttemptCount,
-		MaxAttempts:      job.MaxAttempts,
-		AvailableAt:      job.AvailableAt,
-		LockedUntil:      job.LockedUntil,
-		StartedAt:        job.StartedAt,
-		CompletedAt:      job.CompletedAt,
-		LastErrorCode:    job.LastErrorCode,
-		LastErrorMessage: publicGenerationFailure(job.LastErrorMessage),
-		CreatedAt:        job.CreatedAt,
-		UpdatedAt:        job.UpdatedAt,
+		GenerationAttempt: job.GenerationAttempt,
+		ID:                job.ID.String(),
+		RequestID:         job.RequestID.String(),
+		ParentJobID:       pointer.Map(job.ParentJobID, uuid.UUID.String),
+		Kind:              string(job.Kind),
+		Status:            string(job.Status),
+		TargetID:          pointer.Map(job.TargetID, uuid.UUID.String),
+		Priority:          job.Priority,
+		AttemptCount:      job.AttemptCount,
+		MaxAttempts:       job.MaxAttempts,
+		AvailableAt:       job.AvailableAt,
+		LockedUntil:       job.LockedUntil,
+		StartedAt:         job.StartedAt,
+		CompletedAt:       job.CompletedAt,
+		LastErrorCode:     job.LastErrorCode,
+		LastErrorMessage:  publicGenerationFailure(job.LastErrorMessage),
+		CreatedAt:         job.CreatedAt,
+		UpdatedAt:         job.UpdatedAt,
 	}
 }
 
 func GenerationStatusFromContract(status contract.GenerationStatus) GenerationStatusResponse {
 	response := GenerationStatusResponse{
+		GenerationAttempt:      status.GenerationAttempt,
+		ContentComplete:        status.ContentComplete,
+		FailureCode:            generationFailureCode(status.PipelineStatus, status.ContentComplete),
 		RequestID:              status.RequestID.String(),
 		CourseID:               pointer.Map(status.CourseID, uuid.UUID.String),
 		PipelineStatus:         string(status.PipelineStatus),
@@ -299,6 +313,17 @@ func publicGenerationFailure(message *string) *string {
 	}
 	publicMessage := "generation failed; retry the operation or contact support with the request id"
 	return &publicMessage
+}
+
+func generationFailureCode(status domain.GenerationPipelineStatus, complete bool) *string {
+	if status != domain.PipelineStatusFailed {
+		return nil
+	}
+	code := "generation_failed"
+	if complete {
+		code = "finalization_failed"
+	}
+	return &code
 }
 
 func clarificationQuestionsFromDomain(questions []domain.ClarificationQuestion) []ClarificationQuestionResponse {

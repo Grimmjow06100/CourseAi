@@ -5,13 +5,18 @@ import { courseKeys } from '@/features/catalog/query-keys'
 import { ensureApiSuccess, unwrapApiResult } from '@/shared/api/errors'
 import type { GenerationPage, GenerationStarted, GenerationStatus, PipelineStatus } from '@/shared/api/types'
 import type { ClarificationFormValues } from './schemas'
+import { shouldPollGenerations } from './presentation'
 import { generationKeys } from './query-keys'
 
 export function useGenerationList(filters: { status?: PipelineStatus; page: number; pageSize?: number }) {
   const client = useApiClient()
   const pageSize = filters.pageSize ?? 20
-  return useQuery({
+  return useQuery<GenerationPage>({
     queryKey: generationKeys.list({ ...filters, pageSize }),
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+    refetchInterval: (query) =>
+      !query.state.error && shouldPollGenerations(query.state.data?.items ?? [], query) ? 5_000 : false,
     queryFn: async ({ signal }) =>
       unwrapApiResult<GenerationPage>(
         await client.GET('/api/generations', {
@@ -29,6 +34,9 @@ export function useGenerationStatus(requestId: string) {
   const cache = useQueryClient()
   return useQuery({
     queryKey: generationKeys.detail(requestId),
+    staleTime: 0,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
     queryFn: async ({ signal }) => {
       const status = unwrapApiResult<GenerationStatus>(
         await client.GET('/api/generations/{requestID}/status', {
@@ -37,15 +45,21 @@ export function useGenerationStatus(requestId: string) {
         }),
       )
       const previous = cache.getQueryData<GenerationStatus>(generationKeys.detail(requestId))
-      if (status.pipelineStatus !== previous?.pipelineStatus) {
+      if (
+        status.pipelineStatus !== previous?.pipelineStatus ||
+        status.courseStatus !== previous.courseStatus ||
+        status.contentComplete !== previous.contentComplete ||
+        status.generationAttempt !== previous.generationAttempt
+      ) {
         void cache.invalidateQueries({ queryKey: courseKeys.all })
         void cache.invalidateQueries({ queryKey: generationKeys.lists() })
       }
       return status
     },
     refetchInterval(query) {
-      const status = query.state.data?.pipelineStatus
-      return !query.state.error && (status === 'queued' || status === 'running') ? 2_000 : false
+      return !query.state.error && shouldPollGenerations(query.state.data ? [query.state.data] : [], query)
+        ? 2_000
+        : false
     },
   })
 }

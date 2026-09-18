@@ -41,6 +41,8 @@ type GenerationStarted struct {
 }
 
 type GenerationStatus struct {
+	GenerationAttempt      int
+	ContentComplete        bool
 	RequestID              uuid.UUID
 	CourseID               *uuid.UUID
 	PipelineStatus         domain.GenerationPipelineStatus

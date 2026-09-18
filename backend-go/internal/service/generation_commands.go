@@ -37,7 +37,7 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		idempotencyKey := generationRequestIdempotencyKey(owner, params.IdempotencyKey)
 		if idempotencyKey != "" {
 			existing, err := repositories.GenerationJobs().FindByIdempotencyKey(ctx, idempotencyKey)
@@ -73,11 +73,12 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 			idempotencyKey = "analysis:" + createdRequest.ID.String() + ":v1"
 		}
 		createdJob, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
-			RequestID:      createdRequest.ID,
-			Kind:           domain.GenerationJobKindAnalysis,
-			IdempotencyKey: idempotencyKey,
-			Payload:        json.RawMessage(`{}`),
-			AvailableAt:    now,
+			GenerationAttempt: createdRequest.GenerationAttempt,
+			RequestID:         createdRequest.ID,
+			Kind:              domain.GenerationJobKindAnalysis,
+			IdempotencyKey:    idempotencyKey,
+			Payload:           json.RawMessage(`{}`),
+			AvailableAt:       now,
 		}, now)
 		if err != nil {
 			return err
@@ -115,7 +116,7 @@ func (s *CourseGeneratorService) EnqueueCourseStructure(ctx context.Context, par
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, params.RequestID, owner); err != nil {
 			return err
 		}
@@ -173,7 +174,7 @@ func (s *CourseGeneratorService) SubmitClarifications(ctx context.Context, param
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, params.RequestID, owner); err != nil {
 			return err
 		}
@@ -224,7 +225,7 @@ func (s *CourseGeneratorService) EnqueueStructureRetry(ctx context.Context, para
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, params.RequestID, owner); err != nil {
 			return err
 		}
@@ -248,6 +249,9 @@ func (s *CourseGeneratorService) EnqueueStructureRetry(ctx context.Context, para
 			return err
 		}
 		if err := loadedRequest.RestartFromFailure(stepAnalysisCompleted, 25, s.now()); err != nil {
+			return err
+		}
+		if err := s.cancelSupersededJobs(ctx, repositories, loadedRequest); err != nil {
 			return err
 		}
 		if err := loadedRequest.ConfirmBrief(brief, s.now()); err != nil {
@@ -286,7 +290,7 @@ func (s *CourseGeneratorService) GetGenerationJob(ctx context.Context, jobID uui
 		return domain.GenerationJob{}, fmt.Errorf("%w: generation job id", domain.ErrBlankField)
 	}
 	var job domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationJob, jobID, owner); err != nil {
 			return err
 		}
@@ -311,7 +315,7 @@ func (s *CourseGeneratorService) DeleteGenerationRequest(ctx context.Context, re
 	if requestID == uuid.Nil {
 		return fmt.Errorf("%w: generation request id", domain.ErrBlankField)
 	}
-	return s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	return s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationRequest, requestID, owner); err != nil {
 			return err
 		}
@@ -336,7 +340,7 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 
 	var request domain.GenerationRequest
 	var job domain.GenerationJob
-	err = s.uow.WithinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
 		resource := ownedModule
 		if kind == domain.GenerationJobKindLessonContent {
 			resource = ownedLesson
@@ -348,9 +352,12 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 		if err != nil {
 			return err
 		}
-		request, err = repositories.GenerationRequests().FindGenerationRequestByID(ctx, requestID)
+		request, err = repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, requestID)
 		if err != nil {
 			return err
+		}
+		if request.PipelineStatus == domain.PipelineStatusFailed {
+			return ErrGenerationNotRetryable
 		}
 		idempotencyKey := fmt.Sprintf("%s:%s:v%d:%s", kind, request.ID, request.ClarificationVersion, targetID)
 		existing, findErr := repositories.GenerationJobs().FindByIdempotencyKey(ctx, idempotencyKey)
@@ -365,12 +372,13 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 			idempotencyKey += ":retry:" + uuid.NewString()
 		}
 		createdJob, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
-			RequestID:      request.ID,
-			Kind:           kind,
-			TargetID:       &targetID,
-			IdempotencyKey: idempotencyKey,
-			Payload:        json.RawMessage(`{}`),
-			AvailableAt:    s.now(),
+			GenerationAttempt: request.GenerationAttempt,
+			RequestID:         request.ID,
+			Kind:              kind,
+			TargetID:          &targetID,
+			IdempotencyKey:    idempotencyKey,
+			Payload:           json.RawMessage(`{}`),
+			AvailableAt:       s.now(),
 		}, s.now())
 		if err != nil {
 			return err

@@ -40,6 +40,13 @@ func (p *WorkerPool) requeueExpired(ctx context.Context) {
 }
 
 func (p *WorkerPool) reconcileTerminalFailures(ctx context.Context) {
+	defer func() {
+		if reconciler, ok := p.executor.(contract.GenerationSuccessReconciler); ok {
+			if err := reconciler.ReconcileCompletedGenerations(ctx, p.config.ReconciliationBatch); err != nil {
+				p.logger.ErrorContext(ctx, "reconcile completed generation content", "event", "generation_completion_reconciliation_failed", "error", err)
+			}
+		}
+	}()
 	reconciler, ok := p.queue.(contract.GenerationJobFailureReconciler)
 	if !ok {
 		return

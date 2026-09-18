@@ -5,6 +5,7 @@ import { useGenerationStatus } from '@/features/generation/api'
 import { GenerationTracker } from '@/features/generation/generation-tracker'
 import { ErrorState, LoadingState } from '@/shared/ui/feedback'
 import { PageHeader } from '@/shared/ui/page'
+import { Button } from '@/shared/ui/button'
 
 function GenerationDetailPage() {
   const { requestId } = Route.useParams()
@@ -26,6 +27,14 @@ function GenerationDetailPage() {
         description={t('generation.trackingSubtitle')}
       />
       <GenerationTracker status={query.data} />
+      <Button
+        variant="secondary"
+        className="mt-4"
+        disabled={query.isFetching}
+        onClick={() => void query.refetch()}
+      >
+        {t('generation.refreshStatus')}
+      </Button>
     </div>
   )
 }

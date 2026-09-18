@@ -38,6 +38,7 @@ func generationRequestFromSQLC(row dbsqlc.GenerationRequest) (domain.GenerationR
 	}
 
 	request := domain.GenerationRequest{
+		GenerationAttempt:         int(row.GenerationAttempt),
 		ID:                        row.ID,
 		ClerkUserID:               row.ClerkUserID,
 		InitialUserPrompt:         row.InitialUserPrompt,
@@ -110,27 +111,28 @@ func generationJobFromSQLC(row dbsqlc.GenerationJob) (domain.GenerationJob, erro
 	}
 
 	job := domain.GenerationJob{
-		ID:               row.ID,
-		RequestID:        row.RequestID,
-		ParentJobID:      uuidPointerFromPGType(row.ParentJobID),
-		Kind:             kind,
-		Status:           status,
-		TargetID:         uuidPointerFromPGType(row.TargetID),
-		IdempotencyKey:   row.IdempotencyKey,
-		Payload:          rawJSONFromBytes(row.Payload),
-		Priority:         int(row.Priority),
-		AttemptCount:     int(row.AttemptCount),
-		MaxAttempts:      int(row.MaxAttempts),
-		AvailableAt:      row.AvailableAt,
-		LockedBy:         pointer.Clone(row.LockedBy),
-		LockedUntil:      pointer.Clone(row.LockedUntil),
-		StartedAt:        pointer.Clone(row.StartedAt),
-		CompletedAt:      pointer.Clone(row.CompletedAt),
-		LastErrorCode:    pointer.Clone(row.LastErrorCode),
-		LastErrorMessage: pointer.Clone(row.LastErrorMessage),
-		FailureHandledAt: pointer.Clone(row.FailureHandledAt),
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
+		GenerationAttempt: int(row.GenerationAttempt),
+		ID:                row.ID,
+		RequestID:         row.RequestID,
+		ParentJobID:       uuidPointerFromPGType(row.ParentJobID),
+		Kind:              kind,
+		Status:            status,
+		TargetID:          uuidPointerFromPGType(row.TargetID),
+		IdempotencyKey:    row.IdempotencyKey,
+		Payload:           rawJSONFromBytes(row.Payload),
+		Priority:          int(row.Priority),
+		AttemptCount:      int(row.AttemptCount),
+		MaxAttempts:       int(row.MaxAttempts),
+		AvailableAt:       row.AvailableAt,
+		LockedBy:          pointer.Clone(row.LockedBy),
+		LockedUntil:       pointer.Clone(row.LockedUntil),
+		StartedAt:         pointer.Clone(row.StartedAt),
+		CompletedAt:       pointer.Clone(row.CompletedAt),
+		LastErrorCode:     pointer.Clone(row.LastErrorCode),
+		LastErrorMessage:  pointer.Clone(row.LastErrorMessage),
+		FailureHandledAt:  pointer.Clone(row.FailureHandledAt),
+		CreatedAt:         row.CreatedAt,
+		UpdatedAt:         row.UpdatedAt,
 	}
 	return job, job.Validate()
 }

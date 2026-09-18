@@ -1465,7 +1465,25 @@
           "isOutOfScope": {"type": "boolean"},
           "failureMessage": {"type": "string", "nullable": true},
           "createdAt": {"type": "string", "format": "date-time"},
-          "updatedAt": {"type": "string", "format": "date-time"}
+          "updatedAt": {"type": "string", "format": "date-time"},
+          "generationAttempt": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Monotonic generation attempt, distinct from job retry count."
+          },
+          "contentComplete": {
+            "type": "boolean",
+            "description": "Persisted course content validated independently of pipeline status."
+          },
+          "failureCode": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "generation_failed",
+              "finalization_failed"
+            ],
+            "description": "Safe translatable public failure category."
+          }
         }
       },
       "GenerationJobResponse": {
@@ -1559,6 +1577,10 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "generationAttempt": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       },
@@ -1678,6 +1700,24 @@
               }
             ],
             "nullable": true
+          },
+          "generationAttempt": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Monotonic generation attempt, distinct from job retry count."
+          },
+          "contentComplete": {
+            "type": "boolean",
+            "description": "Persisted course content validated independently of pipeline status."
+          },
+          "failureCode": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "generation_failed",
+              "finalization_failed"
+            ],
+            "description": "Safe translatable public failure category."
           }
         }
       },

@@ -27,6 +27,16 @@ type GenerationJobExecutor interface {
 	Execute(ctx context.Context, job domain.GenerationJob) error
 }
 
+// GenerationJobClaimGuard locks and checks a live claim within the business transaction.
+type GenerationJobClaimGuard interface {
+	LockClaim(ctx context.Context, claim domain.JobClaim) error
+}
+
+// GenerationSuccessReconciler completes persisted content whose finalizer was interrupted.
+type GenerationSuccessReconciler interface {
+	ReconcileCompletedGenerations(ctx context.Context, limit int) error
+}
+
 // GenerationJobFailureHandler synchronizes application state after a terminal job failure.
 type GenerationJobFailureHandler interface {
 	HandleTerminalFailure(ctx context.Context, job domain.GenerationJob, cause error) error

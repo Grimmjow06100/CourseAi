@@ -4,7 +4,7 @@ import { unwrapApiResult } from '@/shared/api/errors'
 import type { GenerationJob } from '@/shared/api/types'
 import { courseKeys } from '@/features/catalog/query-keys'
 import { generationKeys } from './query-keys'
-import { isJobActive } from './job-state'
+import { isJobActive, latestTargetJobs } from './job-state'
 
 export function useRequestJobs(requestId: string) {
   const client = useApiClient()
@@ -26,11 +26,13 @@ export function useRequestJobs(requestId: string) {
       if (hasNewTerminal) {
         void cache.invalidateQueries({ queryKey: courseKeys.all })
         void cache.invalidateQueries({ queryKey: generationKeys.lists() })
+        void cache.invalidateQueries({ queryKey: generationKeys.detail(requestId) })
       }
       return jobs
     },
     staleTime: 0,
     refetchOnWindowFocus: true,
-    refetchInterval: (query) => (!query.state.error && query.state.data?.some(isJobActive) ? 2_000 : false),
+    refetchInterval: (query) =>
+      !query.state.error && latestTargetJobs(query.state.data ?? []).some(isJobActive) ? 2_000 : false,
   })
 }

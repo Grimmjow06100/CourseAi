@@ -17,6 +17,10 @@ type GenerationRequestRepository struct {
 	queries *dbsqlc.Queries
 }
 
+func (r *GenerationRequestRepository) ListCompletionCandidates(ctx context.Context, limit int) ([]uuid.UUID, error) {
+	return r.queries.ListGenerationCompletionCandidates(ctx, int32(limit))
+}
+
 func NewGenerationRequestRepository(db DBTX) *GenerationRequestRepository {
 	return &GenerationRequestRepository{queries: dbsqlc.New(db)}
 }
@@ -82,6 +86,8 @@ func (r *GenerationRequestRepository) ListGenerationRequests(ctx context.Context
 	items := make([]contract.GenerationSummary, 0, len(rows))
 	for _, row := range rows {
 		summary := contract.GenerationSummary{
+			GenerationAttempt: int(row.GenerationAttempt),
+			ContentComplete:   row.ContentComplete,
 			RequestID:         row.RequestID,
 			InitialUserPrompt: row.InitialUserPrompt,
 			Title:             row.Title,
@@ -176,17 +182,19 @@ func (r *GenerationRequestRepository) FindGenerationStatusByID(ctx context.Conte
 	}
 
 	status := contract.GenerationStatus{
-		RequestID:       row.RequestID,
-		PipelineStatus:  domain.GenerationPipelineStatus(row.PipelineStatus),
-		CurrentStep:     row.CurrentStep,
-		ProgressPercent: int(row.ProgressPercent),
-		FailureMessage:  row.FailureMessage,
-		IsOutOfScope:    row.IsOutOfScope,
-		ErrorMessage:    row.ErrorMessage,
-		WarningMessage:  row.WarningMessage,
-		SuggestedTitle:  row.SuggestedTitle,
-		ShortSynopsis:   row.ShortSynopsis,
-		DetectedGoal:    row.DetectedGoal,
+		GenerationAttempt: int(row.GenerationAttempt),
+		ContentComplete:   row.ContentComplete,
+		RequestID:         row.RequestID,
+		PipelineStatus:    domain.GenerationPipelineStatus(row.PipelineStatus),
+		CurrentStep:       row.CurrentStep,
+		ProgressPercent:   int(row.ProgressPercent),
+		FailureMessage:    row.FailureMessage,
+		IsOutOfScope:      row.IsOutOfScope,
+		ErrorMessage:      row.ErrorMessage,
+		WarningMessage:    row.WarningMessage,
+		SuggestedTitle:    row.SuggestedTitle,
+		ShortSynopsis:     row.ShortSynopsis,
+		DetectedGoal:      row.DetectedGoal,
 	}
 	if row.DetectedCurrentLevel != nil {
 		level, parseErr := domain.ParseLevel(string(*row.DetectedCurrentLevel))
@@ -269,6 +277,7 @@ func createGenerationRequestParams(request domain.GenerationRequest) (dbsqlc.Cre
 		BriefConfirmedAt:          request.BriefConfirmedAt,
 		ClarificationsSubmittedAt: request.ClarificationsSubmittedAt,
 		ClarificationVersion:      int32(request.ClarificationVersion),
+		GenerationAttempt:         int32(request.GenerationAttempt),
 		CreatedAt:                 request.CreatedAt,
 		UpdatedAt:                 request.UpdatedAt,
 	}, nil
@@ -318,6 +327,7 @@ func updateGenerationRequestParams(request domain.GenerationRequest) (dbsqlc.Upd
 		BriefConfirmedAt:          request.BriefConfirmedAt,
 		ClarificationsSubmittedAt: request.ClarificationsSubmittedAt,
 		ClarificationVersion:      int32(request.ClarificationVersion),
+		GenerationAttempt:         int32(request.GenerationAttempt),
 		UpdatedAt:                 request.UpdatedAt,
 		ID:                        request.ID,
 	}, nil

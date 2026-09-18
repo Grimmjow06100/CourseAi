@@ -491,28 +491,34 @@ type Course struct {
 	ClerkUserID             string                 `db:"clerk_user_id" json:"clerk_user_id"`
 }
 
+type CourseContentState struct {
+	CourseID        uuid.UUID `db:"course_id" json:"course_id"`
+	ContentComplete *bool     `db:"content_complete" json:"content_complete"`
+}
+
 type GenerationJob struct {
-	ID               uuid.UUID           `db:"id" json:"id"`
-	RequestID        uuid.UUID           `db:"request_id" json:"request_id"`
-	ParentJobID      pgtype.UUID         `db:"parent_job_id" json:"parent_job_id"`
-	Kind             GenerationJobKind   `db:"kind" json:"kind"`
-	Status           GenerationJobStatus `db:"status" json:"status"`
-	TargetID         pgtype.UUID         `db:"target_id" json:"target_id"`
-	IdempotencyKey   string              `db:"idempotency_key" json:"idempotency_key"`
-	Payload          json.RawMessage     `db:"payload" json:"payload"`
-	Priority         int32               `db:"priority" json:"priority"`
-	AttemptCount     int32               `db:"attempt_count" json:"attempt_count"`
-	MaxAttempts      int32               `db:"max_attempts" json:"max_attempts"`
-	AvailableAt      time.Time           `db:"available_at" json:"available_at"`
-	LockedBy         *string             `db:"locked_by" json:"locked_by"`
-	LockedUntil      *time.Time          `db:"locked_until" json:"locked_until"`
-	StartedAt        *time.Time          `db:"started_at" json:"started_at"`
-	CompletedAt      *time.Time          `db:"completed_at" json:"completed_at"`
-	LastErrorCode    *string             `db:"last_error_code" json:"last_error_code"`
-	LastErrorMessage *string             `db:"last_error_message" json:"last_error_message"`
-	CreatedAt        time.Time           `db:"created_at" json:"created_at"`
-	UpdatedAt        time.Time           `db:"updated_at" json:"updated_at"`
-	FailureHandledAt *time.Time          `db:"failure_handled_at" json:"failure_handled_at"`
+	ID                uuid.UUID           `db:"id" json:"id"`
+	RequestID         uuid.UUID           `db:"request_id" json:"request_id"`
+	ParentJobID       pgtype.UUID         `db:"parent_job_id" json:"parent_job_id"`
+	Kind              GenerationJobKind   `db:"kind" json:"kind"`
+	Status            GenerationJobStatus `db:"status" json:"status"`
+	TargetID          pgtype.UUID         `db:"target_id" json:"target_id"`
+	IdempotencyKey    string              `db:"idempotency_key" json:"idempotency_key"`
+	Payload           json.RawMessage     `db:"payload" json:"payload"`
+	Priority          int32               `db:"priority" json:"priority"`
+	AttemptCount      int32               `db:"attempt_count" json:"attempt_count"`
+	MaxAttempts       int32               `db:"max_attempts" json:"max_attempts"`
+	AvailableAt       time.Time           `db:"available_at" json:"available_at"`
+	LockedBy          *string             `db:"locked_by" json:"locked_by"`
+	LockedUntil       *time.Time          `db:"locked_until" json:"locked_until"`
+	StartedAt         *time.Time          `db:"started_at" json:"started_at"`
+	CompletedAt       *time.Time          `db:"completed_at" json:"completed_at"`
+	LastErrorCode     *string             `db:"last_error_code" json:"last_error_code"`
+	LastErrorMessage  *string             `db:"last_error_message" json:"last_error_message"`
+	CreatedAt         time.Time           `db:"created_at" json:"created_at"`
+	UpdatedAt         time.Time           `db:"updated_at" json:"updated_at"`
+	FailureHandledAt  *time.Time          `db:"failure_handled_at" json:"failure_handled_at"`
+	GenerationAttempt int32               `db:"generation_attempt" json:"generation_attempt"`
 }
 
 type GenerationRequest struct {
@@ -549,6 +555,7 @@ type GenerationRequest struct {
 	ClarificationsSubmittedAt *time.Time               `db:"clarifications_submitted_at" json:"clarifications_submitted_at"`
 	ClarificationVersion      int32                    `db:"clarification_version" json:"clarification_version"`
 	ClerkUserID               string                   `db:"clerk_user_id" json:"clerk_user_id"`
+	GenerationAttempt         int32                    `db:"generation_attempt" json:"generation_attempt"`
 }
 
 type Lesson struct {
