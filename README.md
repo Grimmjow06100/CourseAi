@@ -2,6 +2,8 @@
 
 Course AI est une application de generation de formations IT avec l'IA.
 
+**Site en production : [www.courseai.site](http://www.courseai.site)**
+
 Le backend officiel du projet est le backend Go situe dans `backend-go/`.
 
 ## Etat actuel
