@@ -7,7 +7,7 @@ Client React/Vite de Course AI. L'application permet de lancer une génération 
 - React 19, TypeScript strict et Vite
 - TanStack Router et TanStack Query
 - Clerk React
-- Tailwind CSS v4 et composants Radix
+- Tailwind CSS v4 et shadcn/ui (Radix), polices Geist locales
 - React Hook Form et Zod
 - i18next (français et anglais)
 - React Markdown, GFM, Prism et Mermaid
@@ -60,10 +60,10 @@ npm run api:check
 ## Parcours de génération
 
 1. `POST /api/generations` retourne immédiatement un `requestId` et le frontend ouvre la page de suivi.
-2. Le statut est interrogé toutes les deux secondes uniquement pendant `queued` ou `running`.
+2. Le suivi utilise un instantané léger, avec polling pendant le travail actif et conservation des données en cas de perte réseau.
 3. Sur `awaiting_clarification`, le polling s'arrête. Le formulaire renvoie exclusivement les `value` des options proposées.
-4. Après validation, le backend poursuit ses jobs durables. Le suivi reprend jusqu'à `completed` ou `failed`.
-5. Les contenus manquants peuvent être générés par leçon ou par module.
+4. Après validation, les jobs durables poursuivent le travail jusqu’au résultat terminé, partiel ou échoué.
+5. La page de suivi permet des reprises ciblées et groupées idempotentes, en conservant les contenus disponibles.
 6. Les corrections sont chargées via `/solutions` uniquement après une action explicite.
 
 ## Déploiement Vercel
@@ -76,8 +76,10 @@ Suivre le [guide de mise en production](docs/vercel-deployment.md) : import du d
 - Les variables sont publiques et intégrées au bundle : toute modification nécessite un nouveau déploiement. Ne jamais ajouter une clé secrète Clerk ou OpenAI dans une variable `VITE_*`.
 - Le build valide la configuration avec Zod et refuse une API non HTTPS, une URL contenant `/api`, une clé Clerk factice ou `VITE_E2E_MODE=true`. Sur `VERCEL_ENV=production`, une clé `pk_live_*` est obligatoire. Les previews peuvent utiliser une instance Clerk de test avec les origines correspondantes. La validation de syntaxe ne vérifie pas l'existence de l'instance Clerk.
 - `vercel.json` fournit le rewrite SPA, `nosniff`, une politique de référent et une CSP minimale interdisant l'intégration du frontend dans une iframe. Une CSP restrictive complète nécessite d'inventorier les domaines de l'instance Clerk réelle.
-- Déployer la version backend qui expose `GET /api/generations/:requestID/jobs`. Aucune nouvelle migration n'est nécessaire pour ce correctif ; la migration d'historique `00009` du MVP reste requise.
+- Déployer d’abord le backend et les migrations 00011–00013 ; suivre le [guide de livraison](../docs/site-refactor-release.md).
 - Les tests Playwright utilisent un serveur dédié sur `4180`, deux workers et une API simulée. Ils ne valident pas les paramètres de votre instance Clerk, Railway ou Vercel.
 - Avant ouverture publique : tester connexion/déconnexion et changement de compte avec Clerk réel, les liens profonds après rechargement, CORS, une génération complète et une relance après échec. Configurer aussi le suivi des erreurs frontend dans votre outil d'observabilité.
 
 Voir [`docs/application-hardening.md`](docs/application-hardening.md) pour les corrections applicatives et les limites restantes.
+
+Architecture et fonctionnement : [refonte shadcn/ui et suivi](docs/site-refactor.md).

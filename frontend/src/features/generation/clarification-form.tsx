@@ -1,13 +1,15 @@
-import * as Checkbox from '@radix-ui/react-checkbox'
-import * as RadioGroup from '@radix-ui/react-radio-group'
-import { Check } from 'lucide-react'
+import { Checkbox } from '@/components/ui/checkbox'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useMemo, useState, type SyntheticEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { GenerationStatus } from '@/shared/api/types'
 import { getErrorMessage } from '@/shared/api/error-message'
-import { Button } from '@/shared/ui/button'
-import { Field, Input, Select, Textarea } from '@/shared/ui/form-controls'
+import { Button } from '@/components/ui/button'
+import { FormField as Field } from '@/components/ui/form-field'
+import { Input } from '@/components/ui/input'
+import { NativeSelect as Select } from '@/components/ui/native-select'
+import { Textarea } from '@/components/ui/textarea'
 import { useSubmitClarifications } from './api'
 import { clarificationFormSchema } from './schemas'
 
@@ -77,9 +79,9 @@ export function ClarificationForm({ status }: { status: GenerationStatus }) {
                 return (
                   <label
                     key={option.value}
-                    className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-success-soft"
+                    className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-4 text-sm transition-colors hover:border-primary has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted"
                   >
-                    <Checkbox.Root
+                    <Checkbox
                       checked={checked}
                       onCheckedChange={(next) =>
                         setAnswers((current) => ({
@@ -91,38 +93,32 @@ export function ClarificationForm({ status }: { status: GenerationStatus }) {
                         }))
                       }
                       className="mt-0.5 grid size-5 shrink-0 place-items-center rounded border border-border data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
-                    >
-                      <Checkbox.Indicator>
-                        <Check className="size-3.5" />
-                      </Checkbox.Indicator>
-                    </Checkbox.Root>
+                    ></Checkbox>
                     {option.label}
                   </label>
                 )
               })}
             </div>
           ) : (
-            <RadioGroup.Root
+            <RadioGroup
               aria-label={question.question}
-              value={answers[question.id]?.[0] ?? null}
+              value={answers[question.id]?.[0] ?? ''}
               onValueChange={(value) => setAnswers((current) => ({ ...current, [question.id]: [value] }))}
               className="grid gap-2 sm:grid-cols-2"
             >
               {question.options.map((option) => (
                 <label
                   key={option.value}
-                  className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface p-4 text-sm transition-colors hover:border-primary has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-success-soft"
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-surface p-4 text-sm transition-colors hover:border-primary has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-muted"
                 >
-                  <RadioGroup.Item
+                  <RadioGroupItem
                     value={option.value}
                     className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full border border-border data-[state=checked]:border-primary"
-                  >
-                    <RadioGroup.Indicator className="size-2.5 rounded-full bg-primary" />
-                  </RadioGroup.Item>
+                  ></RadioGroupItem>
                   {option.label}
                 </label>
               ))}
-            </RadioGroup.Root>
+            </RadioGroup>
           )}
         </fieldset>
       ))}

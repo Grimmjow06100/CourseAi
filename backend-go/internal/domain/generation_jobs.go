@@ -153,6 +153,9 @@ func (c JobClaim) Validate() error {
 }
 
 type GenerationJob struct {
+	IsCurrent         bool
+	OperationVersion  int
+	SupersedesJobID   *uuid.UUID
 	GenerationAttempt int
 	ID                uuid.UUID
 	RequestID         uuid.UUID
@@ -201,6 +204,8 @@ func NewGenerationJobAt(params NewGenerationJobParams, now time.Time) (Generatio
 	}
 
 	job := GenerationJob{
+		IsCurrent:         true,
+		OperationVersion:  1,
 		GenerationAttempt: max(1, params.GenerationAttempt),
 		ID:                id,
 		RequestID:         params.RequestID,

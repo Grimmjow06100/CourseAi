@@ -103,6 +103,7 @@ export function useSubmitClarifications(requestId: string) {
         }),
       ),
     onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: generationKeys.tracking(requestId) })
       await queryClient.invalidateQueries({ queryKey: generationKeys.detail(requestId) })
       await queryClient.invalidateQueries({ queryKey: generationKeys.lists() })
     },

@@ -5,7 +5,7 @@ import { generationKeys } from './query-keys'
 import { useGenerationList, useGenerationStatus } from './api'
 import { useRequestJobs } from './jobs'
 import { GenerationTracker } from './generation-tracker'
-import type { GenerationStatus } from '@/shared/api/types'
+import { trackingFixture } from '@/test/tracking-fixture'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: PropsWithChildren) => <a href="/courses/course">{children}</a>,
@@ -14,7 +14,7 @@ vi.mock('@tanstack/react-router', () => ({
 const { get } = vi.hoisted(() => ({ get: vi.fn() }))
 vi.mock('@/shared/api/context', () => ({ useApiClient: () => ({ GET: get }) }))
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'fr' } }),
 }))
 
 function setup() {
@@ -42,22 +42,16 @@ it('offers access to completed content without claiming the pipeline succeeded',
   const { cache, Wrapper } = setup()
   render(
     <GenerationTracker
-      status={
-        {
-          requestId: 'request',
-          courseId: 'course',
-          courseStatus: 'completed',
-          pipelineStatus: 'failed',
-          progressPercent: 95,
-          failureMessage: 'generation failed; retry the operation or contact support with the request id',
-          isOutOfScope: false,
-        } as GenerationStatus
-      }
+      snapshot={trackingFixture({
+        pipelineStatus: 'failed',
+        contentComplete: true,
+        reconciliation: 'pending',
+      })}
     />,
     { wrapper: Wrapper },
   )
-  expect(screen.getByText('generation.contentAvailable')).toBeInTheDocument()
-  expect(screen.getByText('generation.finalizationFailed')).toBeInTheDocument()
+  expect(screen.getByText('tracking.repair')).toBeInTheDocument()
+  expect(screen.queryByText('tracking.restart')).not.toBeInTheDocument()
   expect(screen.getByRole('link')).toBeInTheDocument()
   cache.clear()
 })

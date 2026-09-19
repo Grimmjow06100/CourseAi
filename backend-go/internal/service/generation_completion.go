@@ -85,14 +85,64 @@ func (s *CourseGeneratorService) ReconcileCompletedGeneration(ctx context.Contex
 			return err
 		}
 		for _, job := range jobs {
-			if job.GenerationAttempt == request.GenerationAttempt && !job.Status.IsTerminal() {
+			if job.IsCurrent && job.GenerationAttempt == request.GenerationAttempt && !job.Status.IsTerminal() {
 				return nil
 			}
 		}
 		repaired, err = s.finalizePersistedCourse(ctx, r, request)
-		return err
+		if err != nil || repaired {
+			return err
+		}
+		return s.settleStoppedGeneration(ctx, r, request, jobs)
 	})
 	return repaired, err
+}
+
+// A local terminal error is an incident while siblings are still working. Only
+// an inactive attempt can receive a terminal incomplete outcome.
+func (s *CourseGeneratorService) settleStoppedGeneration(ctx context.Context, r contract.TransactionalRepositories, request domain.GenerationRequest, jobs []domain.GenerationJob) error {
+	// Legacy terminal jobs may have been purged before tracking was introduced.
+	// Their persisted failed request is evidence of a stopped attempt; the
+	// available content still determines whether that outcome is partial.
+	failed := request.PipelineStatus == domain.PipelineStatusFailed
+	for _, job := range jobs {
+		if !job.IsCurrent || job.GenerationAttempt != request.GenerationAttempt {
+			continue
+		}
+		if !job.Status.IsTerminal() {
+			return nil
+		}
+		if job.Status == domain.GenerationJobStatusFailed || job.Status == domain.GenerationJobStatusCancelled {
+			failed = true
+		}
+	}
+	if !failed {
+		return nil
+	}
+	course, err := r.Courses().FindCourseByRequestID(ctx, request.ID)
+	if err != nil && !errors.Is(err, contract.ErrCourseNotFound) {
+		return err
+	}
+	hasContent := false
+	if err == nil {
+		for _, module := range course.Modules {
+			for _, lesson := range module.Lessons {
+				hasContent = hasContent || lesson.HasContent()
+			}
+		}
+		if err := course.SettleIncomplete(hasContent); err != nil {
+			return err
+		}
+		course.UpdatedAt = s.now()
+		if _, err := r.Courses().UpdateCourse(ctx, course); err != nil {
+			return err
+		}
+	}
+	if err := request.SettleIncomplete(hasContent, s.now()); err != nil {
+		return err
+	}
+	_, err = r.GenerationRequests().UpdateGenerationRequest(ctx, request)
+	return err
 }
 
 func (s *CourseGeneratorService) cancelSupersededJobs(ctx context.Context, repositories contract.TransactionalRepositories, request domain.GenerationRequest) error {

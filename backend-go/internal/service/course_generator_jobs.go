@@ -363,11 +363,8 @@ func (s *CourseGeneratorService) enqueueLessonContentJobs(ctx context.Context, r
 		}
 		planParents := make(map[uuid.UUID]uuid.UUID)
 		for _, job := range jobs {
-			if job.Kind == domain.GenerationJobKindLessonPlan && job.TargetID != nil {
-				expectedKey := fmt.Sprintf("lesson_plan:%s:v%d:%s", request.ID, request.ClarificationVersion, *job.TargetID)
-				if job.IdempotencyKey == expectedKey {
-					planParents[*job.TargetID] = job.ID
-				}
+			if job.IsCurrent && job.GenerationAttempt == request.GenerationAttempt && job.Kind == domain.GenerationJobKindLessonPlan && job.TargetID != nil {
+				planParents[*job.TargetID] = job.ID
 			}
 		}
 		for _, lesson := range lessons {
@@ -561,10 +558,26 @@ func (s *CourseGeneratorService) handleTerminalJobFailure(ctx context.Context, j
 		if request.GenerationAttempt != job.GenerationAttempt || request.PipelineStatus.IsTerminal() {
 			return nil
 		}
+		current, err := repositories.GenerationJobs().FindByID(ctx, job.ID)
+		if err != nil {
+			return err
+		}
+		if !current.IsCurrent || current.Status != domain.GenerationJobStatusFailed {
+			return nil
+		}
+		jobs, err := repositories.GenerationJobs().ListByRequestID(ctx, request.ID)
+		if err != nil {
+			return err
+		}
+		for _, sibling := range jobs {
+			if sibling.IsCurrent && sibling.GenerationAttempt == request.GenerationAttempt && !sibling.Status.IsTerminal() {
+				return nil
+			}
+		}
 		complete, err := s.finalizePersistedCourse(ctx, repositories, request)
 		if err != nil || complete {
 			return err
 		}
-		return s.failRequestWithRepositories(ctx, repositories, request, cause)
+		return s.settleStoppedGeneration(ctx, repositories, request, jobs)
 	})
 }

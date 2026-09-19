@@ -6,6 +6,7 @@ package sqlc
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,6 +41,7 @@ type Querier interface {
 	FailGenerationJob(ctx context.Context, arg FailGenerationJobParams) (int64, error)
 	GetCourseByID(ctx context.Context, id uuid.UUID) (Course, error)
 	GetCourseByRequestID(ctx context.Context, requestID uuid.UUID) (Course, error)
+	GetCurrentGenerationOperation(ctx context.Context, arg GetCurrentGenerationOperationParams) (GenerationJob, error)
 	GetGenerationAdmissionUsage(ctx context.Context, arg GetGenerationAdmissionUsageParams) (GetGenerationAdmissionUsageRow, error)
 	GetGenerationJobByID(ctx context.Context, id uuid.UUID) (GenerationJob, error)
 	GetGenerationJobByIdempotencyKey(ctx context.Context, idempotencyKey string) (GenerationJob, error)
@@ -47,7 +49,9 @@ type Querier interface {
 	GetGenerationRequestByCourseID(ctx context.Context, courseID uuid.UUID) (GenerationRequest, error)
 	GetGenerationRequestByID(ctx context.Context, id uuid.UUID) (GenerationRequest, error)
 	GetGenerationRequestForUpdate(ctx context.Context, id uuid.UUID) (GenerationRequest, error)
+	GetGenerationRetryReceipt(ctx context.Context, arg GetGenerationRetryReceiptParams) (GetGenerationRetryReceiptRow, error)
 	GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (GetGenerationStatusByIDRow, error)
+	GetGenerationTrackingSnapshot(ctx context.Context, requestID uuid.UUID) (json.RawMessage, error)
 	GetLessonByID(ctx context.Context, id uuid.UUID) (Lesson, error)
 	GetModuleByID(ctx context.Context, id uuid.UUID) (Module, error)
 	IsCourseContentComplete(ctx context.Context, courseID uuid.UUID) (*bool, error)
@@ -70,6 +74,7 @@ type Querier interface {
 	ListLessonsByModuleIDs(ctx context.Context, moduleIds []uuid.UUID) ([]Lesson, error)
 	ListModulesByCourseID(ctx context.Context, courseID uuid.UUID) ([]Module, error)
 	ListModulesByCourseIDs(ctx context.Context, courseIds []uuid.UUID) ([]Module, error)
+	ListPublicGenerationEvents(ctx context.Context, arg ListPublicGenerationEventsParams) ([]ListPublicGenerationEventsRow, error)
 	ListUnreconciledFailedGenerationJobs(ctx context.Context, limitRows int32) ([]GenerationJob, error)
 	LockGenerationJobClaim(ctx context.Context, arg LockGenerationJobClaimParams) (uuid.UUID, error)
 	MarkGenerationJobFailureHandled(ctx context.Context, arg MarkGenerationJobFailureHandledParams) (int64, error)
@@ -78,12 +83,16 @@ type Querier interface {
 	OwnsGenerationRequest(ctx context.Context, arg OwnsGenerationRequestParams) (bool, error)
 	OwnsLesson(ctx context.Context, arg OwnsLessonParams) (bool, error)
 	OwnsModule(ctx context.Context, arg OwnsModuleParams) (bool, error)
+	PurgeGenerationRetryReceiptsBefore(ctx context.Context, arg PurgeGenerationRetryReceiptsBeforeParams) (int64, error)
+	PurgePublicGenerationEventsBefore(ctx context.Context, arg PurgePublicGenerationEventsBeforeParams) (int64, error)
 	PurgeRawGenerationOutputsBefore(ctx context.Context, arg PurgeRawGenerationOutputsBeforeParams) (int64, error)
 	PurgeTerminalGenerationJobsBefore(ctx context.Context, arg PurgeTerminalGenerationJobsBeforeParams) (int64, error)
 	RenewGenerationJobLease(ctx context.Context, arg RenewGenerationJobLeaseParams) (int64, error)
 	ReplaceLessonContent(ctx context.Context, arg ReplaceLessonContentParams) (Lesson, error)
 	RequeueExpiredGenerationJobs(ctx context.Context, requeuedAt time.Time) (int64, error)
 	RetryGenerationJob(ctx context.Context, arg RetryGenerationJobParams) (int64, error)
+	SaveGenerationRetryReceipt(ctx context.Context, arg SaveGenerationRetryReceiptParams) error
+	SupersedeGenerationOperation(ctx context.Context, arg SupersedeGenerationOperationParams) (int64, error)
 	UpdateCourse(ctx context.Context, arg UpdateCourseParams) (Course, error)
 	UpdateGenerationRequest(ctx context.Context, arg UpdateGenerationRequestParams) (GenerationRequest, error)
 	UpdateLesson(ctx context.Context, arg UpdateLessonParams) (Lesson, error)

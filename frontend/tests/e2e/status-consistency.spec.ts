@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { courseId, mockApi, requestId } from './mock-api'
+import { courseId, mockApi, requestId, tracking } from './mock-api'
 
 test('keeps completed content accessible and refreshes status without retrying generation', async ({
   page,
@@ -11,34 +11,26 @@ test('keeps completed content accessible and refreshes status without retrying g
   page.on('request', (request) => {
     if (request.method() === 'POST') mutations++
   })
-  await page.route(`**/api/generations/${requestId}/status`, (route) =>
+  await page.route(`**/api/generations/${requestId}/tracking`, (route) =>
     route.fulfill({
-      json: {
-        requestId,
-        courseId,
+      json: tracking('completed', {
         pipelineStatus: complete ? 'completed' : 'failed',
-        courseStatus: 'completed',
-        contentComplete: true,
-        generationAttempt: 2,
-        progressPercent: complete ? 100 : 95,
-        isOutOfScope: false,
-        failureCode: complete ? null : 'finalization_failed',
-        failureMessage: 'generation failed; retry the operation or contact support with the request id',
-        clarificationQuestions: [],
-        suggestedTitle: 'Linux',
-      },
+        reconciliation: complete ? 'none' : 'pending',
+        revision: complete ? '21' : '20',
+      }),
     }),
   )
   await page.goto(`/generations/${requestId}`)
-  await expect(page.getByRole('heading', { name: 'Contenu disponible' })).toBeVisible()
-  await expect(page.getByRole('link', { name: /commencer la formation/i })).toHaveAttribute(
+  await expect(
+    page.getByText('Le contenu est disponible. La finalisation du suivi est en cours.'),
+  ).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Ouvrir la formation' })).toHaveAttribute(
     'href',
     `/courses/${courseId}`,
   )
-  await expect(page.getByText(/generation failed;/)).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Réessayer', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Reprendre la génération', exact: true })).toHaveCount(0)
   complete = true
-  await page.getByRole('button', { name: 'Actualiser le statut' }).click()
-  await expect(page.getByRole('heading', { name: /formation est prête/i })).toBeVisible()
+  await page.getByRole('button', { name: 'Vérifier maintenant' }).click()
+  await expect(page.getByText('Toutes les leçons sont disponibles.')).toBeVisible()
   expect(mutations).toBe(0)
 })

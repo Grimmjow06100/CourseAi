@@ -1,7 +1,15 @@
-import * as AlertDialog from '@radix-ui/react-alert-dialog'
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogCancel,
+  AlertDialogFooter,
+} from '@/components/ui/alert-dialog'
 import { useState, type ReactNode } from 'react'
 import { ApiErrorNotice } from './api-error-notice'
-import { Button } from './button'
+import { Button } from '@/components/ui/button'
 
 interface ConfirmDialogProps {
   trigger: ReactNode
@@ -38,7 +46,7 @@ export function ConfirmDialog({
     }
   }
   return (
-    <AlertDialog.Root
+    <AlertDialog
       open={open}
       onOpenChange={(next) => {
         if (!busy) {
@@ -47,27 +55,20 @@ export function ConfirmDialog({
         }
       }}
     >
-      <AlertDialog.Trigger asChild>{trigger}</AlertDialog.Trigger>
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/45" />
-        <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%_-_2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border border-border bg-surface p-6 shadow-xl">
-          <AlertDialog.Title className="text-lg font-semibold text-foreground">{title}</AlertDialog.Title>
-          <AlertDialog.Description className="mt-2 text-sm leading-6 text-muted-foreground">
-            {description}
-          </AlertDialog.Description>
-          <ApiErrorNotice error={error} />
-          <div className="mt-6 flex flex-wrap justify-end gap-3">
-            <AlertDialog.Cancel asChild>
-              <Button variant="secondary" disabled={busy || pending}>
-                {cancelLabel}
-              </Button>
-            </AlertDialog.Cancel>
-            <Button variant="danger" disabled={pending || busy} onClick={() => void confirm()}>
-              {confirmLabel}
-            </Button>
-          </div>
-        </AlertDialog.Content>
-      </AlertDialog.Portal>
-    </AlertDialog.Root>
+      <AlertDialogTrigger asChild>{trigger}</AlertDialogTrigger>
+      <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+        <AlertDialogTitle className="text-lg font-semibold text-foreground">{title}</AlertDialogTitle>
+        <AlertDialogDescription className="mt-2 text-sm leading-6 text-muted-foreground">
+          {description}
+        </AlertDialogDescription>
+        <ApiErrorNotice error={error} />
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy || pending}>{cancelLabel}</AlertDialogCancel>
+          <Button variant="destructive" disabled={pending || busy} onClick={() => void confirm()}>
+            {confirmLabel}
+          </Button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   )
 }

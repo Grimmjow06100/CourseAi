@@ -40,9 +40,7 @@
   "paths": {
     "/health": {
       "get": {
-        "tags": [
-          "System"
-        ],
+        "tags": ["System"],
         "operationId": "getHealth",
         "summary": "Vérifier la disponibilité de l'API",
         "responses": {
@@ -71,7 +69,13 @@
         "responses": {
           "200": {
             "description": "Le processus HTTP répond.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/HealthResponse"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
           }
         },
         "security": []
@@ -85,11 +89,23 @@
         "responses": {
           "200": {
             "description": "L'API est prête à accepter du trafic.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReadinessResponse"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
           },
           "503": {
             "description": "PostgreSQL est indisponible ou le worker est désactivé.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ReadinessResponse"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessResponse"
+                }
+              }
+            }
           }
         },
         "security": []
@@ -105,35 +121,60 @@
           {
             "name": "status",
             "in": "query",
-            "schema": {"$ref": "#/components/schemas/PipelineStatus"}
+            "schema": {
+              "$ref": "#/components/schemas/PipelineStatus"
+            }
           },
           {
             "name": "page",
             "in": "query",
-            "schema": {"type": "integer", "minimum": 1, "default": 1}
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            }
           },
           {
             "name": "pageSize",
             "in": "query",
-            "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
           }
         ],
         "responses": {
           "200": {
             "description": "Page de demandes de génération.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/GenerationPageResponse"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationPageResponse"
+                }
+              }
+            }
           },
-          "400": {"$ref": "#/components/responses/BadRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "429": {"$ref": "#/components/responses/RateLimited"},
-          "503": {"$ref": "#/components/responses/ServiceUnavailable"},
-          "500": {"$ref": "#/components/responses/InternalError"}
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
         }
       },
       "post": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "startFullGeneration",
         "summary": "Démarrer une génération complète",
         "description": "Persiste la demande et enfile un job d'analyse. La réponse 202 est immédiate. Si l'analyse requiert des précisions, la pipeline passe à awaiting_clarification et le client doit appeler l'URL fournie dans actionRequired. Dans le cas contraire, le job d'architecture est automatiquement enfilé.",
@@ -170,6 +211,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
@@ -179,14 +223,11 @@
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
@@ -197,21 +238,33 @@
         "operationId": "deleteGenerationRequest",
         "summary": "Supprimer une demande et toutes ses données",
         "description": "Supprime atomiquement la demande possédée par l'utilisateur, ses jobs, son cours et tout le graphe pédagogique par cascade PostgreSQL.",
-        "parameters": [{"$ref": "#/components/parameters/RequestID"}],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
         "responses": {
-          "204": {"description": "Demande supprimée."},
-          "400": {"$ref": "#/components/responses/BadRequest"},
-          "404": {"$ref": "#/components/responses/NotFound"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "500": {"$ref": "#/components/responses/InternalError"}
+          "204": {
+            "description": "Demande supprimée."
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
         }
       }
     },
     "/api/generations/{requestID}/clarifications": {
       "post": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "submitGenerationClarifications",
         "summary": "Soumettre les clarifications et continuer la génération",
         "description": "Valide les réponses contre les questions persistées, confirme le brief puis enfile atomiquement le job d'architecture. selectedValues doit utiliser les champs value reçus dans clarificationQuestions. Un rejeu strictement identique est idempotent.",
@@ -231,21 +284,15 @@
                 "answers": [
                   {
                     "questionId": "currentLevel",
-                    "selectedValues": [
-                      "beginner"
-                    ]
+                    "selectedValues": ["beginner"]
                   },
                   {
                     "questionId": "targetLevel",
-                    "selectedValues": [
-                      "advanced"
-                    ]
+                    "selectedValues": ["advanced"]
                   },
                   {
                     "questionId": "goals",
-                    "selectedValues": [
-                      "server_administration"
-                    ]
+                    "selectedValues": ["server_administration"]
                   }
                 ],
                 "title": "Administration Linux de débutant à avancé",
@@ -262,6 +309,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -274,23 +324,18 @@
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/generations/{requestID}/structure": {
       "post": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "generateCourseStructure",
         "summary": "Enfiler la génération de la structure",
         "description": "Confirme le brief s'il ne l'est pas encore et enfile l'architecture, les modules et les plans de leçons. Cette opération ne génère pas le contenu détaillé des leçons et refuse une demande encore en attente de clarification.",
@@ -311,10 +356,7 @@
                 "synopsis": "Une progression pratique de l'image au déploiement.",
                 "currentLevel": "beginner",
                 "targetLevel": "intermediate",
-                "goals": [
-                  "Comprendre Docker",
-                  "Conteneuriser une API"
-                ],
+                "goals": ["Comprendre Docker", "Conteneuriser une API"],
                 "language": "fr"
               }
             }
@@ -327,38 +369,36 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
-          "422": {
-            "$ref": "#/components/responses/UnprocessableEntity"
-          },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/generations/{requestID}/structure/retry": {
       "post": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "retryCourseStructure",
         "summary": "Relancer uniquement la structure",
         "description": "Disponible seulement pour une pipeline failed dont currentStep correspond à architecture_generation ou lesson_plan_generation. Les données partielles de structure sont supprimées avant l'enfilage du nouveau job.",
@@ -384,38 +424,36 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
-          "422": {
-            "$ref": "#/components/responses/UnprocessableEntity"
-          },
           "413": {
             "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/generations/lessons/{lessonID}/content": {
       "post": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "generateLessonContent",
         "summary": "Enfiler la génération du contenu d'une leçon",
         "description": "Enfile un job ciblé qui remplace atomiquement le Markdown, les exercices et les quiz persistés de la leçon.",
@@ -431,29 +469,27 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/generations/modules/{moduleID}/contents": {
       "post": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "generateModuleLessonContents",
         "summary": "Enfiler le contenu de toutes les leçons d'un module",
         "description": "Enfile un job parent de module qui orchestre la génération du contenu de chaque leçon du module.",
@@ -469,29 +505,27 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/generations/{requestID}/status": {
       "get": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "getGenerationStatus",
         "summary": "Consulter l'état fonctionnel d'une génération",
         "description": "Endpoint de polling principal. actionRequired indique au frontend qu'une soumission de clarifications est nécessaire.",
@@ -514,26 +548,24 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/generations/{requestID}/result": {
       "get": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "getGenerationResult",
         "summary": "Récupérer le résultat complet d'une génération",
         "description": "Retourne la demande et le graphe complet course/modules/lessons/activities. Tant que la pipeline n'est pas completed, l'API retourne 409.",
@@ -556,32 +588,30 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
           "409": {
             "$ref": "#/components/responses/Conflict"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/generations/{requestID}/retry": {
       "post": {
-        "tags": [
-          "Generations"
-        ],
+        "tags": ["Generations"],
         "operationId": "retryFullGeneration",
         "summary": "Relancer une génération échouée",
-        "description": "Relance la pipeline durable à partir de son checkpoint. Seules les générations failed sont éligibles.",
+        "description": "Relance globale depuis le checkpoint pour une génération failed ou partial. Crée une nouvelle tentative générale en conservant les contenus persistés. Préférer les reprises ciblées versionnées depuis la page de suivi.",
         "parameters": [
           {
             "$ref": "#/components/parameters/RequestID"
@@ -594,6 +624,9 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
           },
@@ -603,14 +636,11 @@
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
-          },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
@@ -621,22 +651,46 @@
         "operationId": "listGenerationJobs",
         "summary": "Retrouver les jobs d'une generation",
         "description": "Retourne les etats publics des jobs de la demande appartenant a l'utilisateur connecte, pour reprendre le suivi apres rechargement. Les payloads internes ne sont pas exposes.",
-        "parameters": [{"$ref": "#/components/parameters/RequestID"}],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
         "responses": {
-          "200": {"description": "Jobs de la demande.", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/GenerationJobResponse"}}}}},
-          "400": {"$ref": "#/components/responses/BadRequest"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "404": {"$ref": "#/components/responses/NotFound"},
-          "500": {"$ref": "#/components/responses/InternalError"},
-          "503": {"$ref": "#/components/responses/ServiceUnavailable"}
+          "200": {
+            "description": "Jobs de la demande.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GenerationJobResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
         }
       }
     },
     "/api/generation-jobs/{jobID}": {
       "get": {
-        "tags": [
-          "Generation jobs"
-        ],
+        "tags": ["Generation jobs"],
         "operationId": "getGenerationJob",
         "summary": "Consulter l'état technique d'un job",
         "description": "Expose le type, les tentatives, le verrou et l'erreur terminale d'un job asynchrone.",
@@ -659,26 +713,24 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/courses": {
       "get": {
-        "tags": [
-          "Courses"
-        ],
+        "tags": ["Courses"],
         "operationId": "listCourses",
         "summary": "Lister les formations",
         "description": "Retourne une page de formations triées. pageSize est normalisé par le backend et limité à 100.",
@@ -711,12 +763,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": [
-                "created_at",
-                "updated_at",
-                "title",
-                "status"
-              ],
+              "enum": ["created_at", "updated_at", "title", "status"],
               "default": "created_at"
             }
           },
@@ -725,10 +772,7 @@
             "in": "query",
             "schema": {
               "type": "string",
-              "enum": [
-                "asc",
-                "desc"
-              ],
+              "enum": ["asc", "desc"],
               "default": "desc"
             }
           },
@@ -766,23 +810,21 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/courses/{courseID}": {
       "get": {
-        "tags": [
-          "Courses"
-        ],
+        "tags": ["Courses"],
         "operationId": "getCourse",
         "summary": "Récupérer une formation complète",
         "description": "Charge le cours et toutes ses relations : modules, leçons, exercices et quiz.",
@@ -805,24 +847,22 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       },
       "delete": {
-        "tags": [
-          "Courses"
-        ],
+        "tags": ["Courses"],
         "operationId": "deleteCourse",
         "summary": "Supprimer une formation",
         "description": "Supprime le cours et ses relations selon les contraintes de cascade PostgreSQL.",
@@ -838,27 +878,24 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/courses/{courseID}/modules": {
       "get": {
-        "tags": [
-          "Courses",
-          "Modules"
-        ],
+        "tags": ["Courses", "Modules"],
         "operationId": "listCourseModules",
         "summary": "Lister les modules d'une formation",
         "parameters": [
@@ -883,23 +920,21 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/modules/{moduleID}": {
       "get": {
-        "tags": [
-          "Modules"
-        ],
+        "tags": ["Modules"],
         "operationId": "getModule",
         "summary": "Récupérer un module",
         "parameters": [
@@ -921,27 +956,24 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/modules/{moduleID}/lessons": {
       "get": {
-        "tags": [
-          "Modules",
-          "Lessons"
-        ],
+        "tags": ["Modules", "Lessons"],
         "operationId": "listModuleLessons",
         "summary": "Lister les leçons d'un module",
         "parameters": [
@@ -966,23 +998,21 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
     },
     "/api/lessons/{lessonID}": {
       "get": {
-        "tags": [
-          "Lessons"
-        ],
+        "tags": ["Lessons"],
         "operationId": "getLesson",
         "summary": "Récupérer une leçon complète",
         "description": "Retourne le Markdown, les exercices structurés et les quiz de la leçon.",
@@ -1005,17 +1035,17 @@
           "400": {
             "$ref": "#/components/responses/BadRequest"
           },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "404": {
             "$ref": "#/components/responses/NotFound"
-          },
-          "503": {
-            "$ref": "#/components/responses/ServiceUnavailable"
           },
           "500": {
             "$ref": "#/components/responses/InternalError"
           },
-          "401": {
-            "$ref": "#/components/responses/Unauthorized"
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
           }
         }
       }
@@ -1026,16 +1056,312 @@
         "operationId": "getLessonSolutions",
         "summary": "Révéler les solutions d'une leçon",
         "description": "Retourne explicitement les corrections des exercices et les réponses des quiz. Les endpoints ordinaires n'exposent jamais ces données.",
-        "parameters": [{"$ref": "#/components/parameters/LessonID"}],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/LessonID"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Solutions de la leçon.",
-            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/LessonSolutionsResponse"}}}
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LessonSolutionsResponse"
+                }
+              }
+            }
           },
-          "400": {"$ref": "#/components/responses/BadRequest"},
-          "404": {"$ref": "#/components/responses/NotFound"},
-          "401": {"$ref": "#/components/responses/Unauthorized"},
-          "500": {"$ref": "#/components/responses/InternalError"}
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/tracking": {
+      "get": {
+        "tags": ["Generations"],
+        "operationId": "getGenerationTracking",
+        "summary": "Suivi cohérent et léger de la génération",
+        "description": "Projection des opérations courantes, modules et leçons sans contenu Markdown, solutions ni diagnostics internes. Lecture sans effet de bord. Mise à jour recommandée toutes les deux secondes seulement pendant le travail actif.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Résultat de la demande.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationTracking"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/events": {
+      "get": {
+        "tags": ["Generations"],
+        "operationId": "getGenerationEvents",
+        "summary": "Historique public durable",
+        "description": "Événements du plus récent au plus ancien. Le curseur exclusif est un entier décimal renvoyé sous forme de chaîne. historyComplete dans le suivi signale les anciennes générations ou les événements purgés.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9]+$",
+              "default": "0"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 30
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Résultat de la demande.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationEventPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/jobs/{jobID}/retry": {
+      "post": {
+        "tags": ["Generations"],
+        "operationId": "retryGenerationJob",
+        "summary": "Relancer une opération définitivement arrêtée",
+        "description": "Sélection atomique et versionnée. Préserve les autres opérations et le contenu disponible. Rejouer la même clé et la même sélection renvoie les mêmes remplacements, même après une réponse perdue. Une sélection obsolète ou une clé réutilisée avec un autre corps renvoie 409.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "$ref": "#/components/parameters/JobID"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operationVersion"],
+                "properties": {
+                  "operationVersion": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Résultat de la demande.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryOperationsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
+        }
+      }
+    },
+    "/api/generations/{requestID}/retry-failed": {
+      "post": {
+        "tags": ["Generations"],
+        "operationId": "retryFailedGenerationJobs",
+        "summary": "Relancer une sélection d’opérations arrêtées",
+        "description": "Sélection atomique et versionnée. Préserve les autres opérations et le contenu disponible. Rejouer la même clé et la même sélection renvoie les mêmes remplacements, même après une réponse perdue. Une sélection obsolète ou une clé réutilisée avec un autre corps renvoie 409.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RequestID"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 8,
+              "maxLength": 200
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["operations"],
+                "properties": {
+                  "operations": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/RetryOperation"
+                    },
+                    "minItems": 1,
+                    "maxItems": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Résultat de la demande.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetryOperationsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "413": {
+            "$ref": "#/components/responses/PayloadTooLarge"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/ServiceUnavailable"
+          }
         }
       }
     }
@@ -1201,20 +1527,35 @@
         "description": "Le body JSON dépasse la limite configurée.",
         "content": {
           "application/json": {
-            "schema": {"$ref": "#/components/schemas/ErrorResponse"},
-            "example": {"code": "payload_too_large", "message": "request body is too large"}
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "payload_too_large",
+              "message": "request body is too large"
+            }
           }
         }
       },
       "RateLimited": {
         "description": "La limite de commandes de génération est atteinte.",
         "headers": {
-          "Retry-After": {"schema": {"type": "integer"}, "description": "Délai conseillé en secondes."}
+          "Retry-After": {
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Délai conseillé en secondes."
+          }
         },
         "content": {
           "application/json": {
-            "schema": {"$ref": "#/components/schemas/ErrorResponse"},
-            "example": {"code": "rate_limit_exceeded", "message": "too many generation commands"}
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            },
+            "example": {
+              "code": "rate_limit_exceeded",
+              "message": "too many generation commands"
+            }
           }
         }
       },
@@ -1236,46 +1577,31 @@
     "schemas": {
       "HealthResponse": {
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok"
-            ]
+            "enum": ["ok"]
           }
         }
       },
       "ReadinessResponse": {
         "type": "object",
-        "required": [
-          "status"
-        ],
+        "required": ["status"],
         "properties": {
           "status": {
             "type": "string",
-            "enum": [
-              "ok",
-              "not_ready"
-            ]
+            "enum": ["ok", "not_ready"]
           },
           "reason": {
             "type": "string",
-            "enum": [
-              "worker_disabled",
-              "database_unavailable"
-            ]
+            "enum": ["worker_disabled", "database_unavailable"]
           }
         }
       },
       "ErrorResponse": {
         "type": "object",
-        "required": [
-          "code",
-          "message"
-        ],
+        "required": ["code", "message"],
         "properties": {
           "code": {
             "type": "string",
@@ -1289,9 +1615,7 @@
       },
       "StartGenerationRequest": {
         "type": "object",
-        "required": [
-          "prompt"
-        ],
+        "required": ["prompt"],
         "properties": {
           "prompt": {
             "type": "string",
@@ -1342,12 +1666,7 @@
       },
       "SubmitClarificationsRequest": {
         "type": "object",
-        "required": [
-          "answers",
-          "title",
-          "synopsis",
-          "language"
-        ],
+        "required": ["answers", "title", "synopsis", "language"],
         "properties": {
           "answers": {
             "type": "array",
@@ -1373,18 +1692,11 @@
       },
       "ClarificationAnswerRequest": {
         "type": "object",
-        "required": [
-          "questionId",
-          "selectedValues"
-        ],
+        "required": ["questionId", "selectedValues"],
         "properties": {
           "questionId": {
             "type": "string",
-            "enum": [
-              "goals",
-              "currentLevel",
-              "targetLevel"
-            ]
+            "enum": ["goals", "currentLevel", "targetLevel"]
           },
           "selectedValues": {
             "type": "array",
@@ -1439,33 +1751,114 @@
       },
       "GenerationPageResponse": {
         "type": "object",
-        "required": ["items", "page", "pageSize", "totalItems", "totalPages", "hasNext", "hasPrevious"],
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "totalItems",
+          "totalPages",
+          "hasNext",
+          "hasPrevious"
+        ],
         "properties": {
-          "items": {"type": "array", "items": {"$ref": "#/components/schemas/GenerationSummaryResponse"}},
-          "page": {"type": "integer", "minimum": 1},
-          "pageSize": {"type": "integer", "minimum": 1, "maximum": 100},
-          "totalItems": {"type": "integer", "minimum": 0},
-          "totalPages": {"type": "integer", "minimum": 0},
-          "hasNext": {"type": "boolean"},
-          "hasPrevious": {"type": "boolean"}
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GenerationSummaryResponse"
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalItems": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "totalPages": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasNext": {
+            "type": "boolean"
+          },
+          "hasPrevious": {
+            "type": "boolean"
+          }
         }
       },
       "GenerationSummaryResponse": {
         "type": "object",
-        "required": ["requestId", "courseId", "initialUserPrompt", "title", "pipelineStatus", "courseStatus", "currentStep", "progressPercent", "isOutOfScope", "failureMessage", "createdAt", "updatedAt"],
+        "required": [
+          "requestId",
+          "courseId",
+          "initialUserPrompt",
+          "title",
+          "pipelineStatus",
+          "courseStatus",
+          "currentStep",
+          "progressPercent",
+          "isOutOfScope",
+          "failureMessage",
+          "createdAt",
+          "updatedAt"
+        ],
         "properties": {
-          "requestId": {"type": "string", "format": "uuid"},
-          "courseId": {"type": "string", "format": "uuid", "nullable": true},
-          "initialUserPrompt": {"type": "string"},
-          "title": {"type": "string"},
-          "pipelineStatus": {"$ref": "#/components/schemas/PipelineStatus"},
-          "courseStatus": {"allOf": [{"$ref": "#/components/schemas/CourseStatus"}], "nullable": true},
-          "currentStep": {"type": "string", "nullable": true},
-          "progressPercent": {"type": "integer", "minimum": 0, "maximum": 100},
-          "isOutOfScope": {"type": "boolean"},
-          "failureMessage": {"type": "string", "nullable": true},
-          "createdAt": {"type": "string", "format": "date-time"},
-          "updatedAt": {"type": "string", "format": "date-time"},
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "initialUserPrompt": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "pipelineStatus": {
+            "$ref": "#/components/schemas/PipelineStatus"
+          },
+          "courseStatus": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CourseStatus"
+              }
+            ],
+            "nullable": true
+          },
+          "currentStep": {
+            "type": "string",
+            "nullable": true
+          },
+          "progressPercent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "isOutOfScope": {
+            "type": "boolean"
+          },
+          "failureMessage": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
           "generationAttempt": {
             "type": "integer",
             "minimum": 1,
@@ -1478,10 +1871,7 @@
           "failureCode": {
             "type": "string",
             "nullable": true,
-            "enum": [
-              "generation_failed",
-              "finalization_failed"
-            ],
+            "enum": ["generation_failed", "finalization_failed"],
             "description": "Safe translatable public failure category."
           }
         }
@@ -1505,7 +1895,10 @@
           "lastErrorCode",
           "lastErrorMessage",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "isCurrent",
+          "operationVersion",
+          "supersedesJobId"
         ],
         "properties": {
           "id": {
@@ -1581,6 +1974,18 @@
           "generationAttempt": {
             "type": "integer",
             "minimum": 1
+          },
+          "isCurrent": {
+            "type": "boolean"
+          },
+          "operationVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "supersedesJobId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
           }
         }
       },
@@ -1713,26 +2118,18 @@
           "failureCode": {
             "type": "string",
             "nullable": true,
-            "enum": [
-              "generation_failed",
-              "finalization_failed"
-            ],
+            "enum": ["generation_failed", "finalization_failed"],
             "description": "Safe translatable public failure category."
           }
         }
       },
       "GenerationActionRequiredResponse": {
         "type": "object",
-        "required": [
-          "type",
-          "url"
-        ],
+        "required": ["type", "url"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": [
-              "submit_clarifications"
-            ]
+            "enum": ["submit_clarifications"]
           },
           "url": {
             "type": "string",
@@ -1742,10 +2139,7 @@
       },
       "GenerationResultResponse": {
         "type": "object",
-        "required": [
-          "request",
-          "course"
-        ],
+        "required": ["request", "course"],
         "properties": {
           "request": {
             "$ref": "#/components/schemas/GenerationRequestResponse"
@@ -1917,20 +2311,11 @@
       },
       "ClarificationQuestionResponse": {
         "type": "object",
-        "required": [
-          "id",
-          "question",
-          "options",
-          "allowMultiple"
-        ],
+        "required": ["id", "question", "options", "allowMultiple"],
         "properties": {
           "id": {
             "type": "string",
-            "enum": [
-              "goals",
-              "currentLevel",
-              "targetLevel"
-            ]
+            "enum": ["goals", "currentLevel", "targetLevel"]
           },
           "question": {
             "type": "string"
@@ -1948,10 +2333,7 @@
       },
       "ClarificationOptionResponse": {
         "type": "object",
-        "required": [
-          "value",
-          "label"
-        ],
+        "required": ["value", "label"],
         "properties": {
           "value": {
             "type": "string"
@@ -1963,10 +2345,7 @@
       },
       "ClarificationAnswerResponse": {
         "type": "object",
-        "required": [
-          "questionId",
-          "selectedValues"
-        ],
+        "required": ["questionId", "selectedValues"],
         "properties": {
           "questionId": {
             "type": "string"
@@ -2058,18 +2437,53 @@
       },
       "CourseSummaryResponse": {
         "type": "object",
-        "required": ["id", "requestId", "language", "status", "title", "synopsis", "currentLevel", "targetLevel", "createdAt", "updatedAt"],
+        "required": [
+          "id",
+          "requestId",
+          "language",
+          "status",
+          "title",
+          "synopsis",
+          "currentLevel",
+          "targetLevel",
+          "createdAt",
+          "updatedAt"
+        ],
         "properties": {
-          "id": {"type": "string", "format": "uuid"},
-          "requestId": {"type": "string", "format": "uuid"},
-          "language": {"$ref": "#/components/schemas/Language"},
-          "status": {"$ref": "#/components/schemas/CourseStatus"},
-          "title": {"type": "string"},
-          "synopsis": {"type": "string"},
-          "currentLevel": {"$ref": "#/components/schemas/Level"},
-          "targetLevel": {"$ref": "#/components/schemas/Level"},
-          "createdAt": {"type": "string", "format": "date-time"},
-          "updatedAt": {"type": "string", "format": "date-time"}
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "language": {
+            "$ref": "#/components/schemas/Language"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CourseStatus"
+          },
+          "title": {
+            "type": "string"
+          },
+          "synopsis": {
+            "type": "string"
+          },
+          "currentLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "targetLevel": {
+            "$ref": "#/components/schemas/Level"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "CourseResponse": {
@@ -2388,13 +2802,40 @@
       "ExercisePayloadResponse": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["tasks", "resources", "starterCode", "expectedOutput", "hints"],
+        "required": [
+          "tasks",
+          "resources",
+          "starterCode",
+          "expectedOutput",
+          "hints"
+        ],
         "properties": {
-          "tasks": {"type": "array", "items": {"type": "string"}},
-          "resources": {"type": "array", "items": {"type": "string"}},
-          "starterCode": {"type": "string", "nullable": true},
-          "expectedOutput": {"type": "string", "nullable": true},
-          "hints": {"type": "array", "items": {"type": "string"}}
+          "tasks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "resources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "starterCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "expectedOutput": {
+            "type": "string",
+            "nullable": true
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       },
       "QuizResponse": {
@@ -2450,12 +2891,7 @@
       },
       "QuizQuestionResponse": {
         "type": "object",
-        "required": [
-          "order",
-          "type",
-          "question",
-          "options"
-        ],
+        "required": ["order", "type", "question", "options"],
         "properties": {
           "order": {
             "type": "integer",
@@ -2477,10 +2913,7 @@
       },
       "QuizOptionResponse": {
         "type": "object",
-        "required": [
-          "order",
-          "text"
-        ],
+        "required": ["order", "text"],
         "properties": {
           "order": {
             "type": "integer",
@@ -2493,10 +2926,7 @@
       },
       "QuizAnswerResponse": {
         "type": "object",
-        "required": [
-          "answer",
-          "answers"
-        ],
+        "required": ["answer", "answers"],
         "properties": {
           "answer": {
             "type": "string",
@@ -2514,14 +2944,21 @@
         "type": "object",
         "required": ["lessonId", "exercises", "quizzes"],
         "properties": {
-          "lessonId": {"type": "string", "format": "uuid"},
+          "lessonId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "exercises": {
             "type": "array",
-            "items": {"$ref": "#/components/schemas/ExerciseSolutionResponse"}
+            "items": {
+              "$ref": "#/components/schemas/ExerciseSolutionResponse"
+            }
           },
           "quizzes": {
             "type": "array",
-            "items": {"$ref": "#/components/schemas/QuizSolutionResponse"}
+            "items": {
+              "$ref": "#/components/schemas/QuizSolutionResponse"
+            }
           }
         }
       },
@@ -2529,18 +2966,28 @@
         "type": "object",
         "required": ["exerciseId", "correctionMarkdown"],
         "properties": {
-          "exerciseId": {"type": "string", "format": "uuid"},
-          "correctionMarkdown": {"type": "string"}
+          "exerciseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "correctionMarkdown": {
+            "type": "string"
+          }
         }
       },
       "QuizSolutionResponse": {
         "type": "object",
         "required": ["quizId", "questions"],
         "properties": {
-          "quizId": {"type": "string", "format": "uuid"},
+          "quizId": {
+            "type": "string",
+            "format": "uuid"
+          },
           "questions": {
             "type": "array",
-            "items": {"$ref": "#/components/schemas/QuizQuestionSolutionResponse"}
+            "items": {
+              "$ref": "#/components/schemas/QuizQuestionSolutionResponse"
+            }
           }
         }
       },
@@ -2548,44 +2995,33 @@
         "type": "object",
         "required": ["order", "answer", "correction"],
         "properties": {
-          "order": {"type": "integer", "minimum": 1},
-          "answer": {"$ref": "#/components/schemas/QuizAnswerResponse"},
-          "correction": {"type": "string"}
+          "order": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "answer": {
+            "$ref": "#/components/schemas/QuizAnswerResponse"
+          },
+          "correction": {
+            "type": "string"
+          }
         }
       },
       "Language": {
         "type": "string",
-        "enum": [
-          "fr",
-          "en"
-        ]
+        "enum": ["fr", "en"]
       },
       "Level": {
         "type": "string",
-        "enum": [
-          "beginner",
-          "intermediate",
-          "advanced",
-          "expert",
-          "unknown"
-        ]
+        "enum": ["beginner", "intermediate", "advanced", "expert", "unknown"]
       },
       "LessonType": {
         "type": "string",
-        "enum": [
-          "theory",
-          "practice",
-          "mixed",
-          "quiz"
-        ]
+        "enum": ["theory", "practice", "mixed", "quiz"]
       },
       "Difficulty": {
         "type": "string",
-        "enum": [
-          "beginner",
-          "intermediate",
-          "advanced"
-        ]
+        "enum": ["beginner", "intermediate", "advanced"]
       },
       "ExerciseType": {
         "type": "string",
@@ -2626,7 +3062,8 @@
           "running",
           "awaiting_clarification",
           "completed",
-          "failed"
+          "failed",
+          "partial"
         ]
       },
       "CourseStatus": {
@@ -2640,7 +3077,8 @@
           "lessons_generated",
           "content_generating",
           "completed",
-          "failed"
+          "failed",
+          "partial"
         ]
       },
       "JobStatus": {
@@ -2664,6 +3102,437 @@
           "module_content",
           "finalize_course"
         ]
+      },
+      "TrackingLesson": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "order", "hasContent"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "hasContent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TrackingModule": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title", "order", "lessons"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lessons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackingLesson"
+            }
+          }
+        }
+      },
+      "TrackingOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "parentJobId",
+          "targetId",
+          "kind",
+          "status",
+          "operationVersion",
+          "supersedesJobId",
+          "attemptCount",
+          "maxAttempts",
+          "availableAt",
+          "startedAt",
+          "completedAt",
+          "retryable",
+          "failureCode"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "parentJobId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "$ref": "#/components/schemas/JobKind"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "operationVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "supersedesJobId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "attemptCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "maxAttempts": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "availableAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "failureCode": {
+            "type": "string",
+            "enum": [
+              "operator_action_required",
+              "retry_exhausted",
+              "cancelled",
+              "generation_failed",
+              null
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "GenerationTracking": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "generationAttempt",
+          "revision",
+          "observedAt",
+          "pipelineStatus",
+          "title",
+          "courseId",
+          "createdAt",
+          "completedAt",
+          "isOutOfScope",
+          "historyComplete",
+          "contentComplete",
+          "contentAvailability",
+          "hasActiveWork",
+          "reconciliation",
+          "counts",
+          "phases",
+          "modules",
+          "operations"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "generationAttempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$",
+            "description": "Révision monotone décimale, comparée sans conversion en nombre JavaScript."
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pipelineStatus": {
+            "$ref": "#/components/schemas/PipelineStatus"
+          },
+          "title": {
+            "type": "string"
+          },
+          "courseId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "isOutOfScope": {
+            "type": "boolean"
+          },
+          "historyComplete": {
+            "type": "boolean"
+          },
+          "contentComplete": {
+            "type": "boolean"
+          },
+          "contentAvailability": {
+            "type": "string",
+            "enum": ["none", "partial", "complete"]
+          },
+          "hasActiveWork": {
+            "type": "boolean"
+          },
+          "reconciliation": {
+            "type": "string",
+            "enum": ["none", "pending", "attention_required"]
+          },
+          "counts": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "modules",
+              "plansReady",
+              "lessonsAvailable",
+              "lessonsExpected",
+              "jobsActive",
+              "jobsFailed",
+              "jobsCompleted"
+            ],
+            "properties": {
+              "modules": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "plansReady": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "lessonsAvailable": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "lessonsExpected": {
+                "type": "integer",
+                "minimum": 0,
+                "nullable": true
+              },
+              "jobsActive": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "jobsFailed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "jobsCompleted": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "phases": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["kind", "status"],
+              "properties": {
+                "kind": {
+                  "$ref": "#/components/schemas/JobKind"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pending",
+                    "blocked",
+                    "queued",
+                    "running",
+                    "retry_scheduled",
+                    "completed",
+                    "failed",
+                    "cancelled",
+                    "awaiting_clarification"
+                  ]
+                }
+              }
+            }
+          },
+          "modules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackingModule"
+            }
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TrackingOperation"
+            }
+          }
+        }
+      },
+      "GenerationEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "generationAttempt",
+          "jobId",
+          "kind",
+          "status",
+          "targetId",
+          "operationVersion",
+          "attemptCount",
+          "occurredAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "generationAttempt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "jobId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "operationVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          },
+          "attemptCount": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "GenerationEventPage": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["items", "nextCursor"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GenerationEvent"
+            }
+          },
+          "nextCursor": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
+      "RetryOperation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["jobId", "operationVersion"],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "operationVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "RetryOperationsResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "requestId",
+          "replacements",
+          "revision",
+          "generationAttempt"
+        ],
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "replacements": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["previousJobId", "jobId", "operationVersion"],
+              "properties": {
+                "previousJobId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "jobId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "operationVersion": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              }
+            }
+          },
+          "revision": {
+            "type": "string",
+            "pattern": "^[0-9]+$"
+          },
+          "generationAttempt": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
       }
     },
     "securitySchemes": {

@@ -13,6 +13,9 @@ sql:
       - "migrations/00008_generation_operational_safety.sql"
       - "migrations/00009_generation_history.sql"
       - "migrations/00010_generation_consistency.sql"
+      - "migrations/00011_partial_generation_status.sql"
+      - "migrations/00012_generation_tracking.sql"
+      - "migrations/00013_generation_event_retention.sql"
     queries: "internal/db/queries"
     gen:
       go:

@@ -31,7 +31,7 @@ La generation IA est cablee dans `cmd/api/app.go` via `internal/infrastructure/o
 - Base de donnees : PostgreSQL 16
 - Auth : Clerk et session token bearer
 - IA : OpenAI SDK Responses API avec Structured Outputs
-- Frontend : React, Vite, TanStack Router/Query, Clerk et Tailwind dans `frontend/`
+- Frontend : React, Vite, TanStack Router/Query, Clerk, Tailwind et shadcn/ui dans `frontend/`
 - Infra locale : Docker Compose pour PostgreSQL
 
 ## Structure du repo
@@ -71,7 +71,7 @@ La generation IA est cablee dans `cmd/api/app.go` via `internal/infrastructure/o
 - Docker Desktop
 - Goose CLI pour les migrations
 - Une cle OpenAI valide
-- Node.js 22+ et une publishable key Clerk pour le frontend
+- Node.js 24.x et une publishable key Clerk pour le frontend
 
 Installer Goose si besoin :
 
@@ -353,4 +353,9 @@ Depuis la racine :
 docker compose up -d
 docker compose down
 ```
+
+
+## Refonte du site
+
+Le suivi distingue les résultats terminés, partiels et échoués, avec opérations versionnées et reprises ciblées. Voir le [guide de livraison](docs/site-refactor-release.md) et la [documentation frontend](frontend/docs/site-refactor.md).
 

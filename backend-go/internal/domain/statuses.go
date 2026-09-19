@@ -212,6 +212,7 @@ const (
 	CourseStatusContentGenerating      CourseGenerationStatus = "content_generating"
 	CourseStatusCompleted              CourseGenerationStatus = "completed"
 	CourseStatusFailed                 CourseGenerationStatus = "failed"
+	CourseStatusPartial                CourseGenerationStatus = "partial"
 )
 
 func ParseCourseGenerationStatus(value string) (CourseGenerationStatus, error) {
@@ -232,7 +233,7 @@ func (s CourseGenerationStatus) Validate() error {
 		CourseStatusLessonsGenerated,
 		CourseStatusContentGenerating,
 		CourseStatusCompleted,
-		CourseStatusFailed:
+		CourseStatusFailed, CourseStatusPartial:
 		return nil
 	default:
 		return fmt.Errorf("%w: %s", ErrInvalidCourseStatus, s)
@@ -240,7 +241,7 @@ func (s CourseGenerationStatus) Validate() error {
 }
 
 func (s CourseGenerationStatus) IsTerminal() bool {
-	return s == CourseStatusCompleted || s == CourseStatusFailed
+	return s == CourseStatusCompleted || s == CourseStatusFailed || s == CourseStatusPartial
 }
 
 func (s CourseGenerationStatus) CanTransitionTo(next CourseGenerationStatus) bool {
@@ -298,6 +299,7 @@ const (
 	PipelineStatusAwaitingClarification GenerationPipelineStatus = "awaiting_clarification"
 	PipelineStatusCompleted             GenerationPipelineStatus = "completed"
 	PipelineStatusFailed                GenerationPipelineStatus = "failed"
+	PipelineStatusPartial               GenerationPipelineStatus = "partial"
 )
 
 func ParseGenerationPipelineStatus(value string) (GenerationPipelineStatus, error) {
@@ -310,7 +312,7 @@ func ParseGenerationPipelineStatus(value string) (GenerationPipelineStatus, erro
 
 func (s GenerationPipelineStatus) Validate() error {
 	switch s {
-	case PipelineStatusQueued, PipelineStatusRunning, PipelineStatusAwaitingClarification, PipelineStatusCompleted, PipelineStatusFailed:
+	case PipelineStatusQueued, PipelineStatusRunning, PipelineStatusAwaitingClarification, PipelineStatusCompleted, PipelineStatusFailed, PipelineStatusPartial:
 		return nil
 	default:
 		return fmt.Errorf("%w: %s", ErrInvalidGenerationStatus, s)
@@ -318,7 +320,7 @@ func (s GenerationPipelineStatus) Validate() error {
 }
 
 func (s GenerationPipelineStatus) IsTerminal() bool {
-	return s == PipelineStatusCompleted || s == PipelineStatusFailed
+	return s == PipelineStatusCompleted || s == PipelineStatusFailed || s == PipelineStatusPartial
 }
 
 func (s GenerationPipelineStatus) CanTransitionTo(next GenerationPipelineStatus) bool {

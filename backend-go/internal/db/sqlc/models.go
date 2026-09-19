@@ -69,6 +69,7 @@ const (
 	CourseGenerationStatusContentGenerating      CourseGenerationStatus = "content_generating"
 	CourseGenerationStatusCompleted              CourseGenerationStatus = "completed"
 	CourseGenerationStatusFailed                 CourseGenerationStatus = "failed"
+	CourseGenerationStatusPartial                CourseGenerationStatus = "partial"
 )
 
 func (e *CourseGenerationStatus) Scan(src interface{}) error {
@@ -296,6 +297,7 @@ const (
 	GenerationPipelineStatusAwaitingClarification GenerationPipelineStatus = "awaiting_clarification"
 	GenerationPipelineStatusCompleted             GenerationPipelineStatus = "completed"
 	GenerationPipelineStatusFailed                GenerationPipelineStatus = "failed"
+	GenerationPipelineStatusPartial               GenerationPipelineStatus = "partial"
 )
 
 func (e *GenerationPipelineStatus) Scan(src interface{}) error {
@@ -496,6 +498,19 @@ type CourseContentState struct {
 	ContentComplete *bool     `db:"content_complete" json:"content_complete"`
 }
 
+type GenerationEvent struct {
+	ID                int64       `db:"id" json:"id"`
+	RequestID         uuid.UUID   `db:"request_id" json:"request_id"`
+	GenerationAttempt int32       `db:"generation_attempt" json:"generation_attempt"`
+	JobID             pgtype.UUID `db:"job_id" json:"job_id"`
+	Kind              string      `db:"kind" json:"kind"`
+	Status            string      `db:"status" json:"status"`
+	TargetID          pgtype.UUID `db:"target_id" json:"target_id"`
+	OperationVersion  *int32      `db:"operation_version" json:"operation_version"`
+	AttemptCount      *int32      `db:"attempt_count" json:"attempt_count"`
+	OccurredAt        time.Time   `db:"occurred_at" json:"occurred_at"`
+}
+
 type GenerationJob struct {
 	ID                uuid.UUID           `db:"id" json:"id"`
 	RequestID         uuid.UUID           `db:"request_id" json:"request_id"`
@@ -519,6 +534,9 @@ type GenerationJob struct {
 	UpdatedAt         time.Time           `db:"updated_at" json:"updated_at"`
 	FailureHandledAt  *time.Time          `db:"failure_handled_at" json:"failure_handled_at"`
 	GenerationAttempt int32               `db:"generation_attempt" json:"generation_attempt"`
+	IsCurrent         bool                `db:"is_current" json:"is_current"`
+	OperationVersion  int32               `db:"operation_version" json:"operation_version"`
+	SupersedesJobID   pgtype.UUID         `db:"supersedes_job_id" json:"supersedes_job_id"`
 }
 
 type GenerationRequest struct {
@@ -556,6 +574,16 @@ type GenerationRequest struct {
 	ClarificationVersion      int32                    `db:"clarification_version" json:"clarification_version"`
 	ClerkUserID               string                   `db:"clerk_user_id" json:"clerk_user_id"`
 	GenerationAttempt         int32                    `db:"generation_attempt" json:"generation_attempt"`
+	TrackingRevision          int64                    `db:"tracking_revision" json:"tracking_revision"`
+	HistoryComplete           bool                     `db:"history_complete" json:"history_complete"`
+}
+
+type GenerationRetryCommand struct {
+	RequestID      uuid.UUID       `db:"request_id" json:"request_id"`
+	IdempotencyKey string          `db:"idempotency_key" json:"idempotency_key"`
+	Payload        json.RawMessage `db:"payload" json:"payload"`
+	Result         json.RawMessage `db:"result" json:"result"`
+	CreatedAt      time.Time       `db:"created_at" json:"created_at"`
 }
 
 type Lesson struct {

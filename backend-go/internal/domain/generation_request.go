@@ -409,7 +409,7 @@ func (r *GenerationRequest) ReconcileCompletedCourse(complete bool, now time.Tim
 }
 
 func (r *GenerationRequest) RestartFromFailure(step string, percent int, now time.Time) error {
-	if r.PipelineStatus != PipelineStatusFailed {
+	if r.PipelineStatus != PipelineStatusFailed && r.PipelineStatus != PipelineStatusPartial {
 		return ErrGenerationRequestNotReady
 	}
 	if err := validateProgressPercent(percent); err != nil {

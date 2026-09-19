@@ -1,75 +1,46 @@
 import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { course, courseId, lessonId, mockApi, moduleId, requestId } from './mock-api'
+import { course, courseId, lessonId, mockApi, requestId, tracking } from './mock-api'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('course-ai-language', 'fr'))
 })
 
-test('restores a running partial job after reload and stops on failure', async ({ page }) => {
+test('restores running work after reload and stops polling after terminal failure', async ({ page }) => {
   await mockApi(page)
   let failed = false
   let reads = 0
-  await page.route(`**/api/generations/${requestId}/jobs`, async (route) => {
+  await page.route(`**/api/generations/${requestId}/tracking`, async (route) => {
     reads++
-    await route.fulfill({
-      json: [
-        {
-          id: 'job',
-          targetId: lessonId,
-          kind: 'lesson_content',
-          status: failed ? 'failed' : 'running',
-          createdAt: '2026-09-06',
-          updatedAt: '2026-09-06',
-        },
-      ],
-    })
+    await route.fulfill({ json: tracking(failed ? 'failed' : 'running', { revision: failed ? '21' : '20' }) })
   })
   await page.goto(`/courses/${courseId}/lessons/${lessonId}`)
-  await expect(page.getByRole('button', { name: 'Génération…', exact: true })).toBeDisabled()
+  await expect(page.getByText('En cours', { exact: true })).toBeVisible()
   await page.reload()
-  await expect(page.getByRole('button', { name: 'Génération…', exact: true })).toBeDisabled()
+  await expect(page.getByText('En cours', { exact: true })).toBeVisible()
   failed = true
-  await expect(page.getByRole('alert')).toContainText('La génération a rencontré un problème')
-  await expect(page.getByRole('link', { name: 'Construction de votre formation' })).toBeVisible()
+  await expect(page.getByText('Échec', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Voir le suivi de génération' })).toBeVisible()
   const terminalReads = reads
   await page.waitForTimeout(2_500)
   expect(reads).toBe(terminalReads)
 })
 
-test('waits for module children and refreshes content when they finish', async ({ page }) => {
+test('refreshes the course when generated lessons become available', async ({ page }) => {
   const api = await mockApi(page)
   let finished = false
-  await page.route(`**/api/generations/${requestId}/jobs`, async (route) => {
-    await route.fulfill({
-      json: [
-        {
-          id: 'module-job',
-          targetId: moduleId,
-          kind: 'module_content',
-          status: 'completed',
-          createdAt: '2026-09-06',
-          updatedAt: '2026-09-06',
-        },
-        {
-          id: 'lesson-job',
-          targetId: lessonId,
-          kind: 'lesson_content',
-          status: finished ? 'completed' : 'running',
-          createdAt: '2026-09-06',
-          updatedAt: '2026-09-06',
-        },
-      ],
-    })
-  })
+  await page.route(`**/api/generations/${requestId}/tracking`, (route) =>
+    route.fulfill({
+      json: tracking(finished ? 'completed' : 'running', { revision: finished ? '21' : '20' }),
+    }),
+  )
   await page.goto(`/courses/${courseId}`)
-  await expect(page.getByRole('button', { name: /génération en cours/i })).toBeDisabled()
+  await expect(page.getByRole('heading', { name: 'Linux de zéro à autonome' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Commencer', exact: true })).toHaveCount(0)
   api.setContentGenerated(true)
   finished = true
-  await expect(page.getByRole('button', { name: /génération en cours/i })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: /générer les contenus/i })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: 'Commencer', exact: true })).toBeVisible()
 })
-
 test('shows dashboard failures and allows retry instead of displaying empty data', async ({ page }) => {
   await mockApi(page)
   let unavailable = true
@@ -130,7 +101,7 @@ test('respects browser history when a debounced catalog search changes', async (
 })
 
 test('mobile navigation has a named dialog and restores focus when closed', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'desktop', 'Desktop uses permanent navigation')
+  test.skip(testInfo.project.name !== 'mobile', 'Desktop uses permanent navigation')
   await mockApi(page)
   await page.goto('/')
   const menu = page.getByRole('button', { name: 'Menu', exact: true })

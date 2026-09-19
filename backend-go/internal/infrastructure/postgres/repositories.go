@@ -11,6 +11,7 @@ import (
 
 // Repositories exposes PostgreSQL implementations behind the application contract.
 type Repositories struct {
+	tracking           *GenerationTrackingRepository
 	ownership          *OwnershipRepository
 	generationRequests *GenerationRequestRepository
 	generationJobs     *GenerationJobRepository
@@ -23,6 +24,7 @@ type Repositories struct {
 
 func NewRepositories(db DBTX) *Repositories {
 	return &Repositories{
+		tracking:           NewGenerationTrackingRepository(db),
 		ownership:          NewOwnershipRepository(db),
 		generationRequests: NewGenerationRequestRepository(db),
 		generationJobs:     NewGenerationJobRepository(db),
@@ -98,3 +100,5 @@ func (u *UnitOfWork) WithinTx(ctx context.Context, fn func(ctx context.Context, 
 	committed = true
 	return nil
 }
+
+func (r *Repositories) Tracking() contract.GenerationTrackingRepository { return r.tracking }

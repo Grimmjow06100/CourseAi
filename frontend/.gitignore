@@ -16,6 +16,7 @@ test-results
 test-results-final
 *.local
 .vercel/
+.tanstack/
 .env*
 !.env.example
 !.env.*.example

@@ -24,7 +24,7 @@ export default defineConfig({
   webServer: {
     command: 'npm run dev -- --host 127.0.0.1 --port 4180',
     url: 'http://127.0.0.1:4180',
-    reuseExistingServer: false,
+    reuseExistingServer: process.env.PLAYWRIGHT_REUSE_SERVER === 'true',
     timeout: 120_000,
     env: {
       VITE_API_BASE_URL: 'http://api.course-ai.test',

@@ -7,9 +7,9 @@ import { CourseCard } from '@/features/catalog/course-card'
 import { catalogSearchSchema } from '@/features/catalog/schemas'
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/feedback'
 import { DebouncedSearch } from '@/shared/ui/debounced-search'
-import { Select } from '@/shared/ui/form-controls'
+import { NativeSelect as Select } from '@/components/ui/native-select'
 import { PageHeader, Pagination } from '@/shared/ui/page'
-import { Button } from '@/shared/ui/button'
+import { Button } from '@/components/ui/button'
 
 function CatalogPage() {
   const { t } = useTranslation()
@@ -34,9 +34,9 @@ function CatalogPage() {
           </Button>
         }
       />
-      <div className="studio-panel mb-6 p-4">
+      <div className="mb-6 border-b border-border pb-5">
         <div className="mb-3 flex min-h-9 items-center justify-between gap-3">
-          <h2 className="text-xs font-bold text-muted-foreground">{t('design.filters')}</h2>
+          <h2 className="text-xs font-medium text-muted-foreground">{t('design.filters')}</h2>
           {filtered ? (
             <Button variant="ghost" size="sm" onClick={resetFilters}>
               {t('design.reset')}

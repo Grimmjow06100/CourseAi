@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Input } from './form-controls'
+import { Input } from '@/components/ui/input'
 
 // Restore URL changes without remounting the input and losing keyboard focus.
 export function DebouncedSearch({

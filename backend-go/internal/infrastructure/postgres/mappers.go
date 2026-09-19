@@ -111,6 +111,9 @@ func generationJobFromSQLC(row dbsqlc.GenerationJob) (domain.GenerationJob, erro
 	}
 
 	job := domain.GenerationJob{
+		IsCurrent:         row.IsCurrent,
+		OperationVersion:  int(row.OperationVersion),
+		SupersedesJobID:   uuidPointerFromPGType(row.SupersedesJobID),
 		GenerationAttempt: int(row.GenerationAttempt),
 		ID:                row.ID,
 		RequestID:         row.RequestID,

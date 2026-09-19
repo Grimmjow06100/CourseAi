@@ -1,6 +1,7 @@
+import { Pagination as PaginationRoot } from '@/components/ui/pagination'
 import type { ReactNode } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
-import { Button } from './button'
+import { Button } from '@/components/ui/button'
 import { useTranslation } from 'react-i18next'
 
 export function PageHeader({
@@ -17,8 +18,10 @@ export function PageHeader({
   return (
     <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0">
-        {eyebrow ? <p className="mb-2 text-xs font-extrabold uppercase text-primary">{eyebrow}</p> : null}
-        <h1 className="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">{title}</h1>
+        {eyebrow ? (
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{eyebrow}</p>
+        ) : null}
+        <h1 className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">{title}</h1>
         {description ? (
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground sm:text-base">{description}</p>
         ) : null}
@@ -31,7 +34,7 @@ export function PageHeader({
 export function SectionHeader({ title, action }: { title: string; action?: ReactNode }) {
   return (
     <div className="mb-4 flex items-center justify-between gap-4">
-      <h2 className="text-lg font-bold">{title}</h2>
+      <h2 className="text-base font-semibold">{title}</h2>
       {action}
     </div>
   )
@@ -55,7 +58,7 @@ export function Pagination({
   const { t } = useTranslation()
   if (totalPages <= 1) return null
   return (
-    <nav
+    <PaginationRoot
       className="mt-8 flex items-center justify-between border-t border-border pt-5"
       aria-label="Pagination"
     >
@@ -76,6 +79,6 @@ export function Pagination({
       >
         <ChevronRight className="size-4" />{' '}
       </Button>
-    </nav>
+    </PaginationRoot>
   )
 }

@@ -87,11 +87,17 @@ func NewCourseGeneratorService(
 }
 
 func (s *CourseGeneratorService) enforceGenerationAdmission(ctx context.Context, repository contract.GenerationRequestRepository, owner string) error {
+	return s.enforceGenerationRetryAdmission(ctx, repository, owner, false)
+}
+
+// An operation retry within an active request consumes daily/queue capacity,
+// but does not reserve a second active-generation slot for the same request.
+func (s *CourseGeneratorService) enforceGenerationRetryAdmission(ctx context.Context, repository contract.GenerationRequestRepository, owner string, alreadyActive bool) error {
 	usage, err := repository.GetGenerationAdmissionUsage(ctx, owner, s.now().Add(-24*time.Hour))
 	if err != nil {
 		return err
 	}
-	if s.config.MaxActivePerUser > 0 && usage.ActiveRequests >= s.config.MaxActivePerUser {
+	if !alreadyActive && s.config.MaxActivePerUser > 0 && usage.ActiveRequests >= s.config.MaxActivePerUser {
 		return contract.ErrGenerationActiveLimitExceeded
 	}
 	if s.config.MaxDailyPerUser > 0 && usage.DailyRequests >= s.config.MaxDailyPerUser {
@@ -374,32 +380,6 @@ func (s *CourseGeneratorService) completeRequest(ctx context.Context, requestID 
 	})
 }
 
-func (s *CourseGeneratorService) failRequestWithRepositories(ctx context.Context, repositories contract.TransactionalRepositories, request domain.GenerationRequest, cause error) error {
-	now := s.now()
-	if err := request.MarkFailed(failureMessage(cause), now); err != nil {
-		return err
-	}
-	if _, err := repositories.GenerationRequests().UpdateGenerationRequest(ctx, request); err != nil {
-		return err
-	}
-	course, err := repositories.Courses().FindCourseStateByRequestID(ctx, request.ID)
-	if errors.Is(err, contract.ErrCourseNotFound) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if course.Status.IsTerminal() {
-		return nil
-	}
-	if err := course.MarkFailed(); err != nil {
-		return err
-	}
-	course.UpdatedAt = now
-	_, err = repositories.Courses().UpdateCourse(ctx, course)
-	return err
-}
-
 func (s *CourseGeneratorService) prepareStructureRetry(ctx context.Context, requestID uuid.UUID) (domain.GenerationRequest, error) {
 	var updatedRequest domain.GenerationRequest
 	err := s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
@@ -532,10 +512,6 @@ func isEmptyGeneratedCourse(course domain.Course) bool {
 		strings.TrimSpace(course.Title) == "" &&
 		strings.TrimSpace(course.Synopsis) == "" &&
 		len(course.Modules) == 0
-}
-
-func failureMessage(err error) string {
-	return "generation failed; retry the operation or contact support with the request id"
 }
 
 func normalizeStructureParams(params contract.GenerateStructureParams) (contract.GenerateStructureParams, error) {

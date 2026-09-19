@@ -1,32 +1,47 @@
 import { Monitor, Moon, Sun } from 'lucide-react'
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getTheme, saveTheme, type Theme } from '@/shared/lib/theme'
-import { Button } from './button'
+import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { useTheme } from '@/shared/hooks/use-theme'
+import { saveTheme } from '@/shared/lib/theme'
 
-const nextTheme: Record<Theme, Theme> = { system: 'light', light: 'dark', dark: 'system' }
 const icons = { system: Monitor, light: Sun, dark: Moon }
 
 export function ThemeControl() {
   const { t } = useTranslation()
-  const [theme, setTheme] = useState(getTheme)
+  const { theme } = useTheme()
   const Icon = icons[theme]
-  const label = t('design.themeSwitch', {
-    current: t(`design.${theme}`),
-    next: t(`design.${nextTheme[theme]}`),
-  })
   return (
-    <Button
-      variant="icon"
-      aria-label={label}
-      title={label}
-      onClick={() => {
-        const next = nextTheme[theme]
-        saveTheme(next)
-        setTheme(next)
-      }}
-    >
-      <Icon className="size-4" aria-hidden="true" />
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={t('common.theme')} title={t('common.theme')}>
+          <Icon className="size-4" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start">
+        <DropdownMenuRadioGroup
+          value={theme}
+          onValueChange={(value) => {
+            if (value === 'system' || value === 'light' || value === 'dark') saveTheme(value)
+          }}
+        >
+          {(['system', 'light', 'dark'] as const).map((value) => {
+            const ThemeIcon = icons[value]
+            return (
+              <DropdownMenuRadioItem key={value} value={value}>
+                <ThemeIcon className="mr-2 size-4" aria-hidden="true" />
+                {t(`design.${value}`)}
+              </DropdownMenuRadioItem>
+            )
+          })}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }

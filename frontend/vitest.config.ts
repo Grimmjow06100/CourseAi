@@ -10,7 +10,7 @@ export default defineConfig({
   test: {
     exclude: ['tests/e2e/**', 'node_modules/**', 'dist/**'],
     environment: 'jsdom',
-    pool: 'threads',
+    pool: process.platform === 'win32' ? 'forks' : 'threads',
     maxWorkers: 2,
     globals: true,
     setupFiles: ['./src/test/setup.ts'],

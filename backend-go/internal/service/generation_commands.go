@@ -13,6 +13,7 @@ import (
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
 	"github.com/google/uuid"
 )
 
@@ -356,7 +357,7 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 		if err != nil {
 			return err
 		}
-		if request.PipelineStatus == domain.PipelineStatusFailed {
+		if request.PipelineStatus == domain.PipelineStatusFailed || request.PipelineStatus == domain.PipelineStatusPartial {
 			return ErrGenerationNotRetryable
 		}
 		idempotencyKey := fmt.Sprintf("%s:%s:v%d:%s", kind, request.ID, request.ClarificationVersion, targetID)
@@ -393,6 +394,19 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 }
 
 func (s *CourseGeneratorService) enqueueWithCapacity(ctx context.Context, repositories contract.TransactionalRepositories, job domain.GenerationJob) (domain.GenerationJob, error) {
+	if job.GenerationAttempt > 1 {
+		job.IdempotencyKey += fmt.Sprintf(":attempt:%d", job.GenerationAttempt)
+	}
+	jobs, err := repositories.GenerationJobs().ListByRequestID(ctx, job.RequestID)
+	if err != nil {
+		return domain.GenerationJob{}, err
+	}
+	for _, existing := range jobs {
+		if existing.IsCurrent && existing.GenerationAttempt == job.GenerationAttempt && existing.Kind == job.Kind && pointer.Equal(existing.TargetID, job.TargetID) {
+			return existing, nil
+		}
+	}
+
 	if s.config.MaxPendingJobs > 0 {
 		pending, err := repositories.GenerationJobs().CountPendingWithAdmissionLock(ctx)
 		if err != nil {

@@ -1,5 +1,6 @@
 -- name: EnqueueGenerationJob :one
 INSERT INTO generation_jobs (
+  is_current, operation_version, supersedes_job_id,
   generation_attempt,
   id,
   request_id,
@@ -24,6 +25,7 @@ INSERT INTO generation_jobs (
   updated_at
 )
 VALUES (
+  @is_current, @operation_version, sqlc.narg('supersedes_job_id'),
   @generation_attempt,
   @id,
   @request_id,
@@ -47,7 +49,7 @@ VALUES (
   @created_at,
   @updated_at
 )
-ON CONFLICT (idempotency_key) DO NOTHING
+ON CONFLICT DO NOTHING
 RETURNING *;
 
 -- name: GetGenerationJobByID :one
@@ -58,7 +60,7 @@ WHERE id = @id;
 -- name: LockGenerationJobClaim :one
 SELECT id FROM generation_jobs
 WHERE id = @id AND locked_by = @worker_id AND attempt_count = @attempt_count
-  AND status = 'running' AND locked_until > clock_timestamp()
+  AND is_current AND status = 'running' AND locked_until > clock_timestamp()
 FOR UPDATE;
 
 -- name: GetGenerationJobByIdempotencyKey :one
@@ -73,10 +75,19 @@ WHERE request_id = @request_id
 ORDER BY created_at ASC, id ASC;
 
 -- name: ClaimNextGenerationJob :one
-WITH candidate AS (
+WITH request_lock AS MATERIALIZED (
+  SELECT r.id FROM generation_requests r JOIN LATERAL (
+    SELECT j.priority, j.available_at, j.created_at, j.id FROM generation_jobs j
+    WHERE j.request_id = r.id AND j.generation_attempt = r.generation_attempt AND j.is_current
+      AND j.status IN ('queued', 'retry_scheduled') AND j.available_at <= CURRENT_TIMESTAMP AND j.attempt_count < j.max_attempts
+    ORDER BY j.priority DESC, j.available_at, j.created_at, j.id LIMIT 1
+  ) next_job ON true
+  ORDER BY next_job.priority DESC, next_job.available_at, next_job.created_at, next_job.id
+  FOR UPDATE OF r SKIP LOCKED LIMIT 1
+), candidate AS (
   SELECT id
   FROM generation_jobs
-  WHERE status IN ('queued', 'retry_scheduled')
+  WHERE request_id IN (SELECT id FROM request_lock) AND is_current AND status IN ('queued', 'retry_scheduled')
     AND available_at <= CURRENT_TIMESTAMP
     AND attempt_count < max_attempts
   ORDER BY priority DESC, available_at ASC, created_at ASC, id ASC
@@ -111,7 +122,10 @@ WHERE id = @id
   AND @locked_until > CURRENT_TIMESTAMP;
 
 -- name: CompleteGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = @id FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = 'completed',
   locked_by = NULL,
@@ -120,14 +134,17 @@ SET
   last_error_code = NULL,
   last_error_message = NULL,
   updated_at = @completed_at
-WHERE id = @id
-  AND status = 'running'
-  AND locked_by = @worker_id
-  AND attempt_count = @attempt_count
-  AND locked_until > CURRENT_TIMESTAMP;
+WHERE job.id = @id AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status = 'running'
+  AND job.locked_by = @worker_id
+  AND job.attempt_count = @attempt_count
+  AND job.locked_until > CURRENT_TIMESTAMP;
 
 -- name: RetryGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = @id FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = CASE
     WHEN attempt_count < max_attempts THEN 'retry_scheduled'::generation_job_status
@@ -143,14 +160,17 @@ SET
   END,
   last_error_message = @error_message,
   updated_at = CURRENT_TIMESTAMP
-WHERE id = @id
-  AND status = 'running'
-  AND locked_by = @worker_id
-  AND attempt_count = @attempt_count
-  AND locked_until > CURRENT_TIMESTAMP;
+WHERE job.id = @id AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status = 'running'
+  AND job.locked_by = @worker_id
+  AND job.attempt_count = @attempt_count
+  AND job.locked_until > CURRENT_TIMESTAMP;
 
 -- name: FailGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = @id FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = 'failed',
   locked_by = NULL,
@@ -159,22 +179,30 @@ SET
   last_error_code = @error_code,
   last_error_message = @error_message,
   updated_at = @failed_at
-WHERE id = @id
-  AND status = 'running'
-  AND locked_by = @worker_id
-  AND attempt_count = @attempt_count
-  AND locked_until > CURRENT_TIMESTAMP;
+WHERE job.id = @id AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status = 'running'
+  AND job.locked_by = @worker_id
+  AND job.attempt_count = @attempt_count
+  AND job.locked_until > CURRENT_TIMESTAMP;
 
 -- name: CancelGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = @id FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = 'cancelled',
   completed_at = @cancelled_at,
   updated_at = @cancelled_at
-WHERE id = @id
-  AND status IN ('queued', 'retry_scheduled');
+WHERE job.id = @id AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status IN ('queued', 'retry_scheduled');
 
 -- name: RequeueExpiredGenerationJobs :execrows
+WITH request_locks AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r WHERE EXISTS (
+   SELECT 1 FROM generation_jobs j WHERE j.request_id = r.id AND j.status = 'running' AND j.locked_until <= @requeued_at
+ ) ORDER BY r.id FOR UPDATE OF r
+)
 UPDATE generation_jobs
 SET
   status = CASE
@@ -191,7 +219,7 @@ SET
   END,
   last_error_message = 'worker lease expired before the job completed',
   updated_at = @requeued_at
-WHERE status = 'running'
+WHERE request_id IN (SELECT id FROM request_locks) AND status = 'running'
   AND locked_until <= @requeued_at;
 
 -- name: ListUnreconciledFailedGenerationJobs :many
@@ -211,21 +239,12 @@ WHERE job.id = @id
   AND job.failure_handled_at IS NULL;
 
 -- name: PurgeTerminalGenerationJobsBefore :execrows
-DELETE FROM generation_jobs
-WHERE id IN (
-  SELECT root_job.id
-  FROM generation_jobs AS root_job
-  WHERE root_job.parent_job_id IS NULL
-    AND root_job.status IN ('completed', 'failed', 'cancelled')
-    AND root_job.updated_at < @cutoff
-    AND NOT EXISTS (
-      SELECT 1
-      FROM generation_jobs AS descendant
-      WHERE descendant.request_id = root_job.request_id
-        AND descendant.status NOT IN ('completed', 'failed', 'cancelled')
-    )
-  ORDER BY root_job.updated_at ASC, root_job.id ASC
-  LIMIT @limit_rows
+DELETE FROM generation_jobs WHERE id IN (
+ SELECT j.id FROM generation_jobs j JOIN generation_requests r ON r.id = j.request_id
+ WHERE (NOT j.is_current OR j.generation_attempt < r.generation_attempt)
+ AND j.status IN ('completed', 'failed', 'cancelled') AND j.updated_at < @cutoff
+ AND NOT EXISTS (SELECT 1 FROM generation_jobs child WHERE child.parent_job_id = j.id)
+ ORDER BY j.updated_at, j.id LIMIT @limit_rows
 );
 
 -- name: GetGenerationQueueMetrics :one

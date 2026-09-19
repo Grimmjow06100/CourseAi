@@ -13,6 +13,7 @@ type TransactionalRepositories interface {
 	Ownership() OwnershipRepository
 	GenerationRequests() GenerationRequestRepository
 	GenerationJobs() GenerationJobQueue
+	Tracking() GenerationTrackingRepository
 	Courses() CourseRepository
 	Modules() ModuleRepository
 	Lessons() LessonRepository

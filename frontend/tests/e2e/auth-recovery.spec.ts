@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { mockApi, requestId } from './mock-api'
+import { mockApi, requestId, tracking } from './mock-api'
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('course-ai-language', 'fr'))
@@ -44,20 +44,9 @@ test('retries the generation with the original prompt and idempotency key after 
 
 test('continues generation polling after refreshing a rejected token', async ({ page }) => {
   let reads = 0
-  await page.route(`**/api/generations/${requestId}/status`, async (route) => {
+  await page.route(`**/api/generations/${requestId}/tracking`, async (route) => {
     reads++
-    if (reads === 1)
-      return route.fulfill({
-        json: {
-          requestId,
-          pipelineStatus: 'running',
-          currentStep: 'analysis',
-          progressPercent: 10,
-          courseId: null,
-          courseStatus: null,
-          clarificationQuestions: [],
-        },
-      })
+    if (reads === 1) return route.fulfill({ json: tracking('running') })
     if (reads === 2)
       return route.fulfill({ status: 401, json: { code: 'unauthenticated', message: 'Invalid token' } })
     return route.fallback()
@@ -67,7 +56,6 @@ test('continues generation polling after refreshing a rejected token', async ({ 
   expect(reads).toBe(3)
   await expect(page.getByRole('alert')).toHaveCount(0)
 })
-
 test('bounds persistent 401 retries and allows a manual recovery on the dashboard', async ({ page }) => {
   let rejected = true
   let attempts = 0

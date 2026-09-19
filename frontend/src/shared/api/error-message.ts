@@ -2,6 +2,8 @@ import type { TFunction } from 'i18next'
 import { ApiError } from './errors'
 
 export function getErrorMessage(error: unknown, t: TFunction) {
+  if (error instanceof TypeError && /fetch|network|load failed/i.test(error.message))
+    return t('errors.network')
   if (!(error instanceof ApiError)) return t('errors.generic')
   if (error.status === 401)
     return t(error.code === 'session_expired' ? 'errors.unauthorized' : 'errors.authenticationRejected')

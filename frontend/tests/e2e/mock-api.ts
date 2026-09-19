@@ -1,3 +1,4 @@
+import type { GenerationTracking } from '../../src/shared/api/types'
 import type { Page } from '@playwright/test'
 
 export const requestId = 'd8c1571f-380e-44da-be06-9de1f8ba2aff'
@@ -93,6 +94,84 @@ export function course(hasContent: boolean) {
   }
 }
 
+export function tracking(
+  state: GenerationTracking['pipelineStatus'] = 'running',
+  overrides: Partial<GenerationTracking> = {},
+): GenerationTracking {
+  const complete = state === 'completed'
+  const ready = complete ? 1 : 0
+  return {
+    requestId,
+    courseId: state === 'awaiting_clarification' ? null : courseId,
+    generationAttempt: 1,
+    revision: '20',
+    observedAt: '2026-09-19T12:00:00Z',
+    createdAt: '2026-09-19T11:00:00Z',
+    completedAt: complete ? '2026-09-19T12:00:00Z' : null,
+    title: 'Linux de zéro à autonome',
+    pipelineStatus: state,
+    isOutOfScope: false,
+    historyComplete: true,
+    contentComplete: complete,
+    contentAvailability: complete ? 'complete' : 'none',
+    hasActiveWork: state === 'running',
+    reconciliation: 'none',
+    counts: {
+      modules: 1,
+      plansReady: 1,
+      lessonsExpected: 1,
+      lessonsAvailable: ready,
+      jobsActive: state === 'running' ? 1 : 0,
+      jobsFailed: state === 'failed' ? 1 : 0,
+      jobsCompleted: complete ? 1 : 0,
+    },
+    phases: (['analysis', 'architecture', 'lesson_plan', 'lesson_content', 'finalize_course'] as const).map(
+      (kind, index) => ({
+        kind,
+        status:
+          state === 'awaiting_clarification'
+            ? index === 0
+              ? 'awaiting_clarification'
+              : 'pending'
+            : complete || index < 3
+              ? 'completed'
+              : index === 3
+                ? state === 'partial'
+                  ? 'failed'
+                  : state
+                : 'pending',
+      }),
+    ),
+    modules: [
+      {
+        id: moduleId,
+        title: 'Fondations Linux',
+        order: 1,
+        lessons: [{ id: lessonId, title: 'Comprendre le système Linux', order: 1, hasContent: complete }],
+      },
+    ],
+    operations: [
+      {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        targetId: lessonId,
+        parentJobId: null,
+        kind: 'lesson_content',
+        status: state === 'failed' ? 'failed' : complete ? 'completed' : 'running',
+        operationVersion: 1,
+        supersedesJobId: null,
+        attemptCount: 1,
+        maxAttempts: 3,
+        availableAt: '2026-09-19T11:00:00Z',
+        startedAt: null,
+        completedAt: null,
+        retryable: state === 'failed',
+        failureCode: null,
+      },
+    ],
+    ...overrides,
+  }
+}
+
 export async function mockApi(page: Page) {
   let clarified = false
   let contentGenerated = false
@@ -137,6 +216,28 @@ export async function mockApi(page: Page) {
         },
         202,
       )
+    if (url.pathname === `/api/generations/${requestId}/tracking`)
+      return json(
+        tracking(
+          clarified ? 'completed' : 'awaiting_clarification',
+          clarified
+            ? {}
+            : {
+                modules: [],
+                operations: [],
+                counts: {
+                  modules: 0,
+                  plansReady: 0,
+                  lessonsAvailable: 0,
+                  lessonsExpected: null,
+                  jobsActive: 0,
+                  jobsFailed: 0,
+                  jobsCompleted: 1,
+                },
+              },
+        ),
+      )
+    if (url.pathname === `/api/generations/${requestId}/events`) return json({ items: [], nextCursor: null })
     if (url.pathname === `/api/generations/${requestId}/status`)
       return json(
         clarified
@@ -196,6 +297,7 @@ export async function mockApi(page: Page) {
       )
     if (url.pathname === `/api/generations/${requestId}/clarifications` && request.method() === 'POST') {
       clarified = true
+      contentGenerated = true
       return json(
         {
           jobId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',

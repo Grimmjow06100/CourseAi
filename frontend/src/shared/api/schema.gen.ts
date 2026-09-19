@@ -250,7 +250,7 @@ export interface paths {
         put?: never;
         /**
          * Relancer une génération échouée
-         * @description Relance la pipeline durable à partir de son checkpoint. Seules les générations failed sont éligibles.
+         * @description Relance globale depuis le checkpoint pour une génération failed ou partial. Crée une nouvelle tentative générale en conservant les contenus persistés. Préférer les reprises ciblées versionnées depuis la page de suivi.
          */
         post: operations["retryFullGeneration"];
         delete?: never;
@@ -434,6 +434,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/generations/{requestID}/tracking": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suivi cohérent et léger de la génération
+         * @description Projection des opérations courantes, modules et leçons sans contenu Markdown, solutions ni diagnostics internes. Lecture sans effet de bord. Mise à jour recommandée toutes les deux secondes seulement pendant le travail actif.
+         */
+        get: operations["getGenerationTracking"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generations/{requestID}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Historique public durable
+         * @description Événements du plus récent au plus ancien. Le curseur exclusif est un entier décimal renvoyé sous forme de chaîne. historyComplete dans le suivi signale les anciennes générations ou les événements purgés.
+         */
+        get: operations["getGenerationEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generations/{requestID}/jobs/{jobID}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relancer une opération définitivement arrêtée
+         * @description Sélection atomique et versionnée. Préserve les autres opérations et le contenu disponible. Rejouer la même clé et la même sélection renvoie les mêmes remplacements, même après une réponse perdue. Une sélection obsolète ou une clé réutilisée avec un autre corps renvoie 409.
+         */
+        post: operations["retryGenerationJob"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/generations/{requestID}/retry-failed": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Relancer une sélection d’opérations arrêtées
+         * @description Sélection atomique et versionnée. Préserve les autres opérations et le contenu disponible. Rejouer la même clé et la même sélection renvoie les mêmes remplacements, même après une réponse perdue. Une sélection obsolète ou une clé réutilisée avec un autre corps renvoie 409.
+         */
+        post: operations["retryFailedGenerationJobs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -555,6 +635,10 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
             generationAttempt?: number;
+            isCurrent: boolean;
+            operationVersion: number;
+            /** Format: uuid */
+            supersedesJobId: string | null;
         };
         GenerationStatusResponse: {
             /** Format: uuid */
@@ -836,13 +920,128 @@ export interface components {
         /** @enum {string} */
         QuizQuestionType: "single_choice" | "multiple_choice" | "true_false" | "short_answer";
         /** @enum {string} */
-        PipelineStatus: "queued" | "running" | "awaiting_clarification" | "completed" | "failed";
+        PipelineStatus: "queued" | "running" | "awaiting_clarification" | "completed" | "failed" | "partial";
         /** @enum {string} */
-        CourseStatus: "analysis_pending" | "analysis_completed" | "architecture_generating" | "structure_generated" | "lessons_generating" | "lessons_generated" | "content_generating" | "completed" | "failed";
+        CourseStatus: "analysis_pending" | "analysis_completed" | "architecture_generating" | "structure_generated" | "lessons_generating" | "lessons_generated" | "content_generating" | "completed" | "failed" | "partial";
         /** @enum {string} */
         JobStatus: "queued" | "running" | "retry_scheduled" | "completed" | "failed" | "cancelled";
         /** @enum {string} */
         JobKind: "analysis" | "architecture" | "lesson_plan" | "lesson_content" | "module_content" | "finalize_course";
+        TrackingLesson: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            order: number;
+            hasContent: boolean;
+        };
+        TrackingModule: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            order: number;
+            lessons: components["schemas"]["TrackingLesson"][];
+        };
+        TrackingOperation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            parentJobId: string | null;
+            /** Format: uuid */
+            targetId: string | null;
+            kind: components["schemas"]["JobKind"];
+            status: components["schemas"]["JobStatus"];
+            operationVersion: number;
+            /** Format: uuid */
+            supersedesJobId: string | null;
+            attemptCount: number;
+            maxAttempts: number;
+            /** Format: date-time */
+            availableAt: string;
+            /** Format: date-time */
+            startedAt: string | null;
+            /** Format: date-time */
+            completedAt: string | null;
+            retryable: boolean;
+            /** @enum {string|null} */
+            failureCode: "operator_action_required" | "retry_exhausted" | "cancelled" | "generation_failed" | null;
+        };
+        GenerationTracking: {
+            /** Format: uuid */
+            requestId: string;
+            generationAttempt: number;
+            /** @description Révision monotone décimale, comparée sans conversion en nombre JavaScript. */
+            revision: string;
+            /** Format: date-time */
+            observedAt: string;
+            pipelineStatus: components["schemas"]["PipelineStatus"];
+            title: string;
+            /** Format: uuid */
+            courseId: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            completedAt: string | null;
+            isOutOfScope: boolean;
+            historyComplete: boolean;
+            contentComplete: boolean;
+            /** @enum {string} */
+            contentAvailability: "none" | "partial" | "complete";
+            hasActiveWork: boolean;
+            /** @enum {string} */
+            reconciliation: "none" | "pending" | "attention_required";
+            counts: {
+                modules: number;
+                plansReady: number;
+                lessonsAvailable: number;
+                lessonsExpected: number | null;
+                jobsActive: number;
+                jobsFailed: number;
+                jobsCompleted: number;
+            };
+            phases: {
+                kind: components["schemas"]["JobKind"];
+                /** @enum {string} */
+                status: "pending" | "blocked" | "queued" | "running" | "retry_scheduled" | "completed" | "failed" | "cancelled" | "awaiting_clarification";
+            }[];
+            modules: components["schemas"]["TrackingModule"][];
+            operations: components["schemas"]["TrackingOperation"][];
+        };
+        GenerationEvent: {
+            id: string;
+            generationAttempt: number;
+            /** Format: uuid */
+            jobId: string | null;
+            kind: string;
+            status: string;
+            /** Format: uuid */
+            targetId: string | null;
+            operationVersion: number | null;
+            attemptCount: number | null;
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        GenerationEventPage: {
+            items: components["schemas"]["GenerationEvent"][];
+            nextCursor: string | null;
+        };
+        RetryOperation: {
+            /** Format: uuid */
+            jobId: string;
+            operationVersion: number;
+        };
+        RetryOperationsResult: {
+            /** Format: uuid */
+            requestId: string;
+            replacements: {
+                /** Format: uuid */
+                previousJobId: string;
+                /** Format: uuid */
+                jobId: string;
+                operationVersion: number;
+            }[];
+            revision: string;
+            generationAttempt: number;
+        };
     };
     responses: {
         /** @description Job durable accepté et enfilé. */
@@ -1706,6 +1905,151 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
             404: components["responses"]["NotFound"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    getGenerationTracking: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifiant UUID de la demande de génération. */
+                requestID: components["parameters"]["RequestID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Résultat de la demande. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationTracking"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    getGenerationEvents: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Identifiant UUID de la demande de génération. */
+                requestID: components["parameters"]["RequestID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Résultat de la demande. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationEventPage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    retryGenerationJob: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Identifiant UUID de la demande de génération. */
+                requestID: components["parameters"]["RequestID"];
+                /** @description Identifiant UUID du job de génération. */
+                jobID: components["parameters"]["JobID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    operationVersion: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Résultat de la demande. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetryOperationsResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
+        };
+    };
+    retryFailedGenerationJobs: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+            };
+            path: {
+                /** @description Identifiant UUID de la demande de génération. */
+                requestID: components["parameters"]["RequestID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    operations: components["schemas"]["RetryOperation"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Résultat de la demande. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetryOperationsResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            429: components["responses"]["RateLimited"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
 }

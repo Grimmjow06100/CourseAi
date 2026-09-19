@@ -32,6 +32,8 @@ func prepareConsistencyPipeline(t *testing.T) (*CourseGeneratorService, *pipelin
 		if err != nil {
 			t.Fatal(err)
 		}
+		job.Status = domain.GenerationJobStatusCompleted
+		store.jobs.jobs[job.ID] = job
 	}
 	return s, store, pipelineJobByKind(t, store, started.RequestID, domain.GenerationJobKindLessonContent)
 }
@@ -41,13 +43,14 @@ func TestTerminalCoordinationFailurePreservesCompleteContent(t *testing.T) {
 	if err := s.runLessonContentJob(authenticatedTestContext(), job); err != nil {
 		t.Fatal(err)
 	}
+	markConsistencyJobFailed(store, job)
 	if err := s.handleTerminalJobFailure(authenticatedTestContext(), job, errors.New("finalizer enqueue unavailable")); err != nil {
 		t.Fatal(err)
 	}
 	course, _ := store.courseByRequestID(job.RequestID)
 	request := store.requests[job.RequestID]
-	if course.Status != domain.CourseStatusCompleted || request.PipelineStatus != domain.PipelineStatusCompleted || request.FailureMessage != nil {
-		t.Fatalf("inconsistent completion: %s/%s", course.Status, request.PipelineStatus)
+	if course.Status != domain.CourseStatusContentGenerating || request.PipelineStatus != domain.PipelineStatusRunning || request.FailureMessage != nil {
+		t.Fatalf("active finalization must remain running: %s/%s", course.Status, request.PipelineStatus)
 	}
 	finalize := pipelineJobByKind(t, store, job.RequestID, domain.GenerationJobKindFinalizeCourse)
 	if err := s.runFinalizeCourseJob(authenticatedTestContext(), finalize); err != nil {
@@ -57,12 +60,14 @@ func TestTerminalCoordinationFailurePreservesCompleteContent(t *testing.T) {
 
 func TestOldFailureCannotPoisonRetriedGeneration(t *testing.T) {
 	s, store, job := prepareConsistencyPipeline(t)
+	markConsistencyJobFailed(store, job)
 	if err := s.handleTerminalJobFailure(authenticatedTestContext(), job, errors.New("old failure")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.RetryFullCourseGeneration(authenticatedTestContext(), job.RequestID); err != nil {
 		t.Fatal(err)
 	}
+	markConsistencyJobFailed(store, job)
 	if err := s.handleTerminalJobFailure(authenticatedTestContext(), job, errors.New("late callback")); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +79,7 @@ func TestOldFailureCannotPoisonRetriedGeneration(t *testing.T) {
 
 func TestFailedRequestRejectsTargetedJobsBeforeEnqueue(t *testing.T) {
 	s, store, job := prepareConsistencyPipeline(t)
+	markConsistencyJobFailed(store, job)
 	if err := s.handleTerminalJobFailure(authenticatedTestContext(), job, errors.New("content failure")); err != nil {
 		t.Fatal(err)
 	}
@@ -155,4 +161,9 @@ func TestReconcilerRepairsLegacyPairWithoutNewAttempt(t *testing.T) {
 	if repaired.PipelineStatus != domain.PipelineStatusCompleted || repaired.GenerationAttempt != request.GenerationAttempt {
 		t.Fatal("legacy pair not repaired")
 	}
+}
+
+func markConsistencyJobFailed(store *pipelineMemoryStore, job domain.GenerationJob) {
+	job.Status = domain.GenerationJobStatusFailed
+	store.jobs.jobs[job.ID] = job
 }

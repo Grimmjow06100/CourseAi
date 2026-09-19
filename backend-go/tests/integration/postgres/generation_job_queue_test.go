@@ -266,6 +266,11 @@ func TestGenerationJobConcurrentClaimsReturnDifferentJobs(t *testing.T) {
 		go func(workerID string) {
 			<-start
 			job, claimErr := repository.ClaimNext(ctx, workerID, time.Now().Add(time.Minute))
+			// A sibling worker may hold the shared request lock for its claim transaction.
+			for attempt := 0; errors.Is(claimErr, contract.ErrGenerationJobUnavailable) && attempt < 20; attempt++ {
+				time.Sleep(10 * time.Millisecond)
+				job, claimErr = repository.ClaimNext(ctx, workerID, time.Now().Add(time.Minute))
+			}
 			results <- claimResult{job: job, err: claimErr}
 		}(workerID)
 	}
@@ -297,9 +302,11 @@ func TestGenerationJobConcurrentClaimsReturnDifferentJobs(t *testing.T) {
 
 func newIntegrationGenerationJob(t *testing.T, requestID uuid.UUID, key string, now time.Time) domain.GenerationJob {
 	t.Helper()
+	targetID := uuid.New()
 	job, err := domain.NewGenerationJobAt(domain.NewGenerationJobParams{
+		TargetID:       &targetID,
 		RequestID:      requestID,
-		Kind:           domain.GenerationJobKindAnalysis,
+		Kind:           domain.GenerationJobKindLessonContent,
 		IdempotencyKey: key,
 		Payload:        json.RawMessage(`{"force":false}`),
 		AvailableAt:    now.Add(-time.Second),

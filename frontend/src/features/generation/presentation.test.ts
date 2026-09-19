@@ -43,6 +43,7 @@ it('ignores failed targets belonging to older generation attempts', () => {
   } as GenerationJob
   const current = {
     id: 'new',
+    isCurrent: true,
     generationAttempt: 2,
     targetId: 'module',
     kind: 'module_content',

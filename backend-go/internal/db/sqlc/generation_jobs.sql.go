@@ -15,13 +15,16 @@ import (
 )
 
 const cancelGenerationJob = `-- name: CancelGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = $2 FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = 'cancelled',
   completed_at = $1,
   updated_at = $1
-WHERE id = $2
-  AND status IN ('queued', 'retry_scheduled')
+WHERE job.id = $2 AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status IN ('queued', 'retry_scheduled')
 `
 
 type CancelGenerationJobParams struct {
@@ -38,10 +41,19 @@ func (q *Queries) CancelGenerationJob(ctx context.Context, arg CancelGenerationJ
 }
 
 const claimNextGenerationJob = `-- name: ClaimNextGenerationJob :one
-WITH candidate AS (
+WITH request_lock AS MATERIALIZED (
+  SELECT r.id FROM generation_requests r JOIN LATERAL (
+    SELECT j.priority, j.available_at, j.created_at, j.id FROM generation_jobs j
+    WHERE j.request_id = r.id AND j.generation_attempt = r.generation_attempt AND j.is_current
+      AND j.status IN ('queued', 'retry_scheduled') AND j.available_at <= CURRENT_TIMESTAMP AND j.attempt_count < j.max_attempts
+    ORDER BY j.priority DESC, j.available_at, j.created_at, j.id LIMIT 1
+  ) next_job ON true
+  ORDER BY next_job.priority DESC, next_job.available_at, next_job.created_at, next_job.id
+  FOR UPDATE OF r SKIP LOCKED LIMIT 1
+), candidate AS (
   SELECT id
   FROM generation_jobs
-  WHERE status IN ('queued', 'retry_scheduled')
+  WHERE request_id IN (SELECT id FROM request_lock) AND is_current AND status IN ('queued', 'retry_scheduled')
     AND available_at <= CURRENT_TIMESTAMP
     AND attempt_count < max_attempts
   ORDER BY priority DESC, available_at ASC, created_at ASC, id ASC
@@ -61,7 +73,7 @@ SET
 FROM candidate
 WHERE job.id = candidate.id
   AND $2 > CURRENT_TIMESTAMP
-RETURNING job.id, job.request_id, job.parent_job_id, job.kind, job.status, job.target_id, job.idempotency_key, job.payload, job.priority, job.attempt_count, job.max_attempts, job.available_at, job.locked_by, job.locked_until, job.started_at, job.completed_at, job.last_error_code, job.last_error_message, job.created_at, job.updated_at, job.failure_handled_at, job.generation_attempt
+RETURNING job.id, job.request_id, job.parent_job_id, job.kind, job.status, job.target_id, job.idempotency_key, job.payload, job.priority, job.attempt_count, job.max_attempts, job.available_at, job.locked_by, job.locked_until, job.started_at, job.completed_at, job.last_error_code, job.last_error_message, job.created_at, job.updated_at, job.failure_handled_at, job.generation_attempt, job.is_current, job.operation_version, job.supersedes_job_id
 `
 
 type ClaimNextGenerationJobParams struct {
@@ -95,12 +107,18 @@ func (q *Queries) ClaimNextGenerationJob(ctx context.Context, arg ClaimNextGener
 		&i.UpdatedAt,
 		&i.FailureHandledAt,
 		&i.GenerationAttempt,
+		&i.IsCurrent,
+		&i.OperationVersion,
+		&i.SupersedesJobID,
 	)
 	return i, err
 }
 
 const completeGenerationJob = `-- name: CompleteGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = $2 FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = 'completed',
   locked_by = NULL,
@@ -109,11 +127,11 @@ SET
   last_error_code = NULL,
   last_error_message = NULL,
   updated_at = $1
-WHERE id = $2
-  AND status = 'running'
-  AND locked_by = $3
-  AND attempt_count = $4
-  AND locked_until > CURRENT_TIMESTAMP
+WHERE job.id = $2 AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status = 'running'
+  AND job.locked_by = $3
+  AND job.attempt_count = $4
+  AND job.locked_until > CURRENT_TIMESTAMP
 `
 
 type CompleteGenerationJobParams struct {
@@ -154,6 +172,7 @@ func (q *Queries) CountPendingGenerationJobsWithAdmissionLock(ctx context.Contex
 
 const enqueueGenerationJob = `-- name: EnqueueGenerationJob :one
 INSERT INTO generation_jobs (
+  is_current, operation_version, supersedes_job_id,
   generation_attempt,
   id,
   request_id,
@@ -178,18 +197,16 @@ INSERT INTO generation_jobs (
   updated_at
 )
 VALUES (
-  $1,
-  $2,
-  $3,
+  $1, $2, $3,
   $4,
-  $5::generation_job_kind,
-  $6::generation_job_status,
+  $5,
+  $6,
   $7,
-  $8,
-  $9::jsonb,
+  $8::generation_job_kind,
+  $9::generation_job_status,
   $10,
   $11,
-  $12,
+  $12::jsonb,
   $13,
   $14,
   $15,
@@ -199,13 +216,19 @@ VALUES (
   $19,
   $20,
   $21,
-  $22
+  $22,
+  $23,
+  $24,
+  $25
 )
-ON CONFLICT (idempotency_key) DO NOTHING
-RETURNING id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt
+ON CONFLICT DO NOTHING
+RETURNING id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt, is_current, operation_version, supersedes_job_id
 `
 
 type EnqueueGenerationJobParams struct {
+	IsCurrent         bool                `db:"is_current" json:"is_current"`
+	OperationVersion  int32               `db:"operation_version" json:"operation_version"`
+	SupersedesJobID   pgtype.UUID         `db:"supersedes_job_id" json:"supersedes_job_id"`
 	GenerationAttempt int32               `db:"generation_attempt" json:"generation_attempt"`
 	ID                uuid.UUID           `db:"id" json:"id"`
 	RequestID         uuid.UUID           `db:"request_id" json:"request_id"`
@@ -232,6 +255,9 @@ type EnqueueGenerationJobParams struct {
 
 func (q *Queries) EnqueueGenerationJob(ctx context.Context, arg EnqueueGenerationJobParams) (GenerationJob, error) {
 	row := q.db.QueryRow(ctx, enqueueGenerationJob,
+		arg.IsCurrent,
+		arg.OperationVersion,
+		arg.SupersedesJobID,
 		arg.GenerationAttempt,
 		arg.ID,
 		arg.RequestID,
@@ -279,12 +305,18 @@ func (q *Queries) EnqueueGenerationJob(ctx context.Context, arg EnqueueGeneratio
 		&i.UpdatedAt,
 		&i.FailureHandledAt,
 		&i.GenerationAttempt,
+		&i.IsCurrent,
+		&i.OperationVersion,
+		&i.SupersedesJobID,
 	)
 	return i, err
 }
 
 const failGenerationJob = `-- name: FailGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = $4 FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = 'failed',
   locked_by = NULL,
@@ -293,11 +325,11 @@ SET
   last_error_code = $2,
   last_error_message = $3,
   updated_at = $1
-WHERE id = $4
-  AND status = 'running'
-  AND locked_by = $5
-  AND attempt_count = $6
-  AND locked_until > CURRENT_TIMESTAMP
+WHERE job.id = $4 AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status = 'running'
+  AND job.locked_by = $5
+  AND job.attempt_count = $6
+  AND job.locked_until > CURRENT_TIMESTAMP
 `
 
 type FailGenerationJobParams struct {
@@ -325,7 +357,7 @@ func (q *Queries) FailGenerationJob(ctx context.Context, arg FailGenerationJobPa
 }
 
 const getGenerationJobByID = `-- name: GetGenerationJobByID :one
-SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt, is_current, operation_version, supersedes_job_id
 FROM generation_jobs
 WHERE id = $1
 `
@@ -356,12 +388,15 @@ func (q *Queries) GetGenerationJobByID(ctx context.Context, id uuid.UUID) (Gener
 		&i.UpdatedAt,
 		&i.FailureHandledAt,
 		&i.GenerationAttempt,
+		&i.IsCurrent,
+		&i.OperationVersion,
+		&i.SupersedesJobID,
 	)
 	return i, err
 }
 
 const getGenerationJobByIdempotencyKey = `-- name: GetGenerationJobByIdempotencyKey :one
-SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt, is_current, operation_version, supersedes_job_id
 FROM generation_jobs
 WHERE idempotency_key = $1
 `
@@ -392,6 +427,9 @@ func (q *Queries) GetGenerationJobByIdempotencyKey(ctx context.Context, idempote
 		&i.UpdatedAt,
 		&i.FailureHandledAt,
 		&i.GenerationAttempt,
+		&i.IsCurrent,
+		&i.OperationVersion,
+		&i.SupersedesJobID,
 	)
 	return i, err
 }
@@ -437,7 +475,7 @@ func (q *Queries) GetGenerationQueueMetrics(ctx context.Context) (GetGenerationQ
 }
 
 const listGenerationJobsByRequestID = `-- name: ListGenerationJobsByRequestID :many
-SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt, is_current, operation_version, supersedes_job_id
 FROM generation_jobs
 WHERE request_id = $1
 ORDER BY created_at ASC, id ASC
@@ -475,6 +513,9 @@ func (q *Queries) ListGenerationJobsByRequestID(ctx context.Context, requestID u
 			&i.UpdatedAt,
 			&i.FailureHandledAt,
 			&i.GenerationAttempt,
+			&i.IsCurrent,
+			&i.OperationVersion,
+			&i.SupersedesJobID,
 		); err != nil {
 			return nil, err
 		}
@@ -487,7 +528,7 @@ func (q *Queries) ListGenerationJobsByRequestID(ctx context.Context, requestID u
 }
 
 const listUnreconciledFailedGenerationJobs = `-- name: ListUnreconciledFailedGenerationJobs :many
-SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt
+SELECT id, request_id, parent_job_id, kind, status, target_id, idempotency_key, payload, priority, attempt_count, max_attempts, available_at, locked_by, locked_until, started_at, completed_at, last_error_code, last_error_message, created_at, updated_at, failure_handled_at, generation_attempt, is_current, operation_version, supersedes_job_id
 FROM generation_jobs
 WHERE status = 'failed'
   AND failure_handled_at IS NULL
@@ -527,6 +568,9 @@ func (q *Queries) ListUnreconciledFailedGenerationJobs(ctx context.Context, limi
 			&i.UpdatedAt,
 			&i.FailureHandledAt,
 			&i.GenerationAttempt,
+			&i.IsCurrent,
+			&i.OperationVersion,
+			&i.SupersedesJobID,
 		); err != nil {
 			return nil, err
 		}
@@ -541,7 +585,7 @@ func (q *Queries) ListUnreconciledFailedGenerationJobs(ctx context.Context, limi
 const lockGenerationJobClaim = `-- name: LockGenerationJobClaim :one
 SELECT id FROM generation_jobs
 WHERE id = $1 AND locked_by = $2 AND attempt_count = $3
-  AND status = 'running' AND locked_until > clock_timestamp()
+  AND is_current AND status = 'running' AND locked_until > clock_timestamp()
 FOR UPDATE
 `
 
@@ -581,21 +625,12 @@ func (q *Queries) MarkGenerationJobFailureHandled(ctx context.Context, arg MarkG
 }
 
 const purgeTerminalGenerationJobsBefore = `-- name: PurgeTerminalGenerationJobsBefore :execrows
-DELETE FROM generation_jobs
-WHERE id IN (
-  SELECT root_job.id
-  FROM generation_jobs AS root_job
-  WHERE root_job.parent_job_id IS NULL
-    AND root_job.status IN ('completed', 'failed', 'cancelled')
-    AND root_job.updated_at < $1
-    AND NOT EXISTS (
-      SELECT 1
-      FROM generation_jobs AS descendant
-      WHERE descendant.request_id = root_job.request_id
-        AND descendant.status NOT IN ('completed', 'failed', 'cancelled')
-    )
-  ORDER BY root_job.updated_at ASC, root_job.id ASC
-  LIMIT $2
+DELETE FROM generation_jobs WHERE id IN (
+ SELECT j.id FROM generation_jobs j JOIN generation_requests r ON r.id = j.request_id
+ WHERE (NOT j.is_current OR j.generation_attempt < r.generation_attempt)
+ AND j.status IN ('completed', 'failed', 'cancelled') AND j.updated_at < $1
+ AND NOT EXISTS (SELECT 1 FROM generation_jobs child WHERE child.parent_job_id = j.id)
+ ORDER BY j.updated_at, j.id LIMIT $2
 )
 `
 
@@ -646,6 +681,11 @@ func (q *Queries) RenewGenerationJobLease(ctx context.Context, arg RenewGenerati
 }
 
 const requeueExpiredGenerationJobs = `-- name: RequeueExpiredGenerationJobs :execrows
+WITH request_locks AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r WHERE EXISTS (
+   SELECT 1 FROM generation_jobs j WHERE j.request_id = r.id AND j.status = 'running' AND j.locked_until <= $1
+ ) ORDER BY r.id FOR UPDATE OF r
+)
 UPDATE generation_jobs
 SET
   status = CASE
@@ -662,7 +702,7 @@ SET
   END,
   last_error_message = 'worker lease expired before the job completed',
   updated_at = $1
-WHERE status = 'running'
+WHERE request_id IN (SELECT id FROM request_locks) AND status = 'running'
   AND locked_until <= $1
 `
 
@@ -675,7 +715,10 @@ func (q *Queries) RequeueExpiredGenerationJobs(ctx context.Context, requeuedAt t
 }
 
 const retryGenerationJob = `-- name: RetryGenerationJob :execrows
-UPDATE generation_jobs
+WITH request_lock AS MATERIALIZED (
+ SELECT r.id FROM generation_requests r JOIN generation_jobs j ON j.request_id = r.id WHERE j.id = $4 FOR UPDATE OF r
+)
+UPDATE generation_jobs AS job
 SET
   status = CASE
     WHEN attempt_count < max_attempts THEN 'retry_scheduled'::generation_job_status
@@ -691,11 +734,11 @@ SET
   END,
   last_error_message = $3,
   updated_at = CURRENT_TIMESTAMP
-WHERE id = $4
-  AND status = 'running'
-  AND locked_by = $5
-  AND attempt_count = $6
-  AND locked_until > CURRENT_TIMESTAMP
+WHERE job.id = $4 AND job.request_id IN (SELECT id FROM request_lock)
+  AND job.status = 'running'
+  AND job.locked_by = $5
+  AND job.attempt_count = $6
+  AND job.locked_until > CURRENT_TIMESTAMP
 `
 
 type RetryGenerationJobParams struct {

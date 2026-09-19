@@ -8,7 +8,7 @@ export type GenerationPromptValues = z.infer<typeof generationPromptSchema>
 
 export const generationListSearchSchema = z.object({
   status: z
-    .enum(['queued', 'running', 'awaiting_clarification', 'completed', 'failed'])
+    .enum(['queued', 'running', 'awaiting_clarification', 'completed', 'partial', 'failed'])
     .optional()
     .catch(undefined),
   page: z.coerce.number().int().positive().catch(1),

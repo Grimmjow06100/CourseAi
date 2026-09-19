@@ -6,8 +6,8 @@ import { CourseSummaryLine } from '@/features/catalog/course-card'
 import { useGenerationList } from '@/features/generation/api'
 import { GenerationForm } from '@/features/generation/generation-form'
 import { GenerationList } from '@/features/generation/generation-list'
-import { LearningPath } from '@/features/generation/learning-path'
-import { Button } from '@/shared/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import { ApiErrorNotice } from '@/shared/ui/api-error-notice'
 import { EmptyState, LoadingState } from '@/shared/ui/feedback'
 import { SectionHeader } from '@/shared/ui/page'
@@ -18,22 +18,20 @@ function Dashboard() {
   const courses = useCourses({ page: 1, orderBy: 'created_at', orderDirection: 'desc' }, 5)
   return (
     <div>
-      <section className="mb-7">
-        <p className="text-[10px] font-extrabold tracking-[.18em] text-primary">{t('design.studio')}</p>
-        <h1 className="mt-3 max-w-3xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl xl:text-[42px]">
+      <section className="mx-auto mb-7 max-w-[800px] pt-5 text-center sm:pt-10">
+        <h1 className="mx-auto mt-3 max-w-3xl text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
           {t('dashboard.title')}
         </h1>
-        <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base">
           {t('dashboard.subtitle')}
         </p>
       </section>
-      <div className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
-        <div className="studio-panel p-5 sm:p-7">
+      <Card className="mx-auto max-w-[800px] shadow-none">
+        <CardContent>
           <GenerationForm compact />
-        </div>
-        <LearningPath />
-      </div>
-      <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
+        </CardContent>
+      </Card>
+      <div className="mx-auto mt-5 max-w-[800px] flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
         {courses.data && !courses.isError ? (
           <span className="flex items-center gap-2">
             <BookOpen className="size-4 text-primary" />
@@ -90,7 +88,7 @@ function Dashboard() {
           ) : courses.error ? (
             <ApiErrorNotice error={courses.error} onRetry={() => void courses.refetch()} />
           ) : courses.data?.items.length ? (
-            <div className="studio-panel px-5">
+            <div className="divide-y">
               {courses.data.items.map((course) => (
                 <CourseSummaryLine key={course.id} course={course} />
               ))}

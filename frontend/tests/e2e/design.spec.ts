@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { course, courseId, lessonId, mockApi, requestId } from './mock-api'
+import { course, courseId, lessonId, mockApi, requestId, tracking } from './mock-api'
 
 const screens = [
   ['dashboard', '/'],
@@ -82,7 +82,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
       if (name === 'library')
         await expect(page.getByRole('link', { name: 'Linux de zéro à autonome', exact: true })).toBeVisible()
       if (name === 'dashboard' || name === 'history')
-        await expect(page.getByRole('heading', { name: 'Mon parcours Linux' })).toBeVisible()
+        await expect(page.getByRole('link', { name: 'Mon parcours Linux', exact: true })).toBeVisible()
       await page.evaluate(() => document.fonts.ready)
       await page.screenshot({ path: testInfo.outputPath(`${name}-${colorScheme}.png`), fullPage: true })
       expect(
@@ -105,13 +105,21 @@ test('theme preference persists, language switches, and suggestions focus the pr
   await mockApi(page)
   await page.addInitScript(() => localStorage.setItem('course-ai-language', 'fr'))
   await page.goto('/')
-  await page.getByRole('button', { name: 'Thème : Système. Passer à Clair' }).click()
-  await page.getByRole('button', { name: 'Thème : Clair. Passer à Sombre' }).click()
+  if ((page.viewportSize()?.width ?? 1440) < 768)
+    await page.getByRole('button', { name: 'Menu', exact: true }).click()
+  await page.getByRole('button', { name: 'Thème', exact: true }).click()
+  await page.getByRole('menuitemradio', { name: 'Sombre' }).click()
   await page.reload()
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
-  await page.getByRole('button', { name: 'Thème : Sombre. Passer à Système' }).click()
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'system')
-  await page.getByRole('button', { name: 'en', exact: true }).click()
+  await expect(page.locator('html')).toHaveClass(/dark/)
+  if ((page.viewportSize()?.width ?? 1440) < 768)
+    await page.getByRole('button', { name: 'Menu', exact: true }).click()
+  await page.getByRole('button', { name: 'Thème', exact: true }).click()
+  await page.getByRole('menuitemradio', { name: 'Système' }).click()
+  expect(await page.evaluate(() => localStorage.getItem('course-ai-theme'))).toBe('system')
+  await page.getByRole('button', { name: 'Langue', exact: true }).click()
+  await page.getByRole('menuitemradio', { name: 'English' }).click()
+  if ((page.viewportSize()?.width ?? 1440) < 768)
+    await page.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'What will you learn today?' })).toBeVisible()
   await page.getByRole('button', { name: 'Linux & systems' }).click()
   const prompt = page.getByRole('textbox', { name: 'Your learning goal' })
@@ -184,44 +192,21 @@ test('small screens fit long course titles and content', async ({ page }, testIn
 test('generation progress, failure, and completion expose accessible next steps', async ({ page }) => {
   await mockApi(page)
   await page.addInitScript(() => localStorage.setItem('course-ai-language', 'fr'))
-  let state = 'running'
-  await page.route(`**/api/generations/${requestId}/status`, (route) =>
-    route.fulfill({
-      json: {
-        requestId,
-        courseId: state === 'completed' ? courseId : null,
-        pipelineStatus: state,
-        courseStatus: null,
-        currentStep: 'content',
-        progressPercent: state === 'completed' ? 100 : 80,
-        failureMessage: null,
-        isOutOfScope: false,
-        errorMessage: null,
-        warningMessage: null,
-        suggestedTitle: 'Parcours Linux',
-        shortSynopsis: 'Apprendre Linux.',
-        detectedCurrentLevel: 'beginner',
-        detectedTargetLevel: 'intermediate',
-        detectedGoal: 'Administrer Linux',
-        detectedLanguage: 'fr',
-        clarificationQuestions: [],
-        actionRequired: null,
-      },
-    }),
+  let state: 'running' | 'failed' | 'completed' = 'running'
+  await page.route(`**/api/generations/${requestId}/tracking`, (route) =>
+    route.fulfill({ json: tracking(state) }),
   )
-  await page.goto(`/generations/${requestId}`)
-  await expect(page.getByRole('progressbar', { name: 'Construction de votre formation' })).toHaveAttribute(
-    'aria-valuenow',
-    '80',
-  )
-  for (const next of ['running', 'failed', 'completed']) {
-    if (next !== state) {
-      state = next
-      await page.reload()
-    }
-    if (next === 'failed') await expect(page.getByRole('button', { name: 'Réessayer' })).toBeVisible()
+  for (const next of ['running', 'failed', 'completed'] as const) {
+    state = next
+    await page.goto(`/generations/${requestId}`)
+    await expect(page.getByRole('progressbar')).toHaveAttribute(
+      'aria-valuenow',
+      next === 'completed' ? '100' : '0',
+    )
+    if (next === 'failed')
+      await expect(page.getByRole('button', { name: 'Relancer la tâche arrêtée' })).toBeVisible()
     if (next === 'completed')
-      await expect(page.getByRole('link', { name: 'Commencer la formation' })).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Ouvrir la formation' })).toBeVisible()
     const audit = await new AxeBuilder({ page }).analyze()
     expect(
       audit.violations.filter((v) => v.impact === 'critical' || v.impact === 'serious'),

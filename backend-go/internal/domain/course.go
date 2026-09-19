@@ -220,7 +220,7 @@ func (c *Course) MarkFailed() error {
 }
 
 func (c *Course) RestartGenerationFromFailure(next CourseGenerationStatus) error {
-	if c.Status != CourseStatusFailed {
+	if c.Status != CourseStatusFailed && c.Status != CourseStatusPartial {
 		return fmt.Errorf("%w: course is not failed", ErrInvalidStatusTransition)
 	}
 	switch next {

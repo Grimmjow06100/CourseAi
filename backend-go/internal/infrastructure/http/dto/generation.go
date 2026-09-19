@@ -90,6 +90,9 @@ func GenerationPageFromContract(page contract.Page[contract.GenerationSummary]) 
 }
 
 type GenerationJobResponse struct {
+	IsCurrent         bool       `json:"isCurrent"`
+	OperationVersion  int        `json:"operationVersion"`
+	SupersedesJobID   *string    `json:"supersedesJobId"`
 	GenerationAttempt int        `json:"generationAttempt"`
 	ID                string     `json:"id"`
 	RequestID         string     `json:"requestId"`
@@ -213,6 +216,7 @@ func GenerationStartedFromContract(started contract.GenerationStarted) Generatio
 
 func GenerationJobFromDomain(job domain.GenerationJob) GenerationJobResponse {
 	return GenerationJobResponse{
+		IsCurrent: job.IsCurrent, OperationVersion: job.OperationVersion, SupersedesJobID: pointer.Map(job.SupersedesJobID, uuid.UUID.String),
 		GenerationAttempt: job.GenerationAttempt,
 		ID:                job.ID.String(),
 		RequestID:         job.RequestID.String(),

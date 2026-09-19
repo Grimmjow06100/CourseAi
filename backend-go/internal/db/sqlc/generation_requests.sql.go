@@ -109,7 +109,7 @@ VALUES (
   $33,
   $34
 )
-RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt
+RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt, tracking_revision, history_complete
 `
 
 type CreateGenerationRequestParams struct {
@@ -222,6 +222,8 @@ func (q *Queries) CreateGenerationRequest(ctx context.Context, arg CreateGenerat
 		&i.ClarificationVersion,
 		&i.ClerkUserID,
 		&i.GenerationAttempt,
+		&i.TrackingRevision,
+		&i.HistoryComplete,
 	)
 	return i, err
 }
@@ -250,12 +252,15 @@ SELECT
     WHERE active_request.clerk_user_id = $1
       AND active_request.pipeline_status IN ('queued', 'running', 'awaiting_clarification')
   ) AS active_requests,
-  (
+  ((
     SELECT count(*)::bigint
     FROM generation_requests AS daily_request
     WHERE daily_request.clerk_user_id = $1
       AND daily_request.created_at >= $2
-  ) AS daily_requests,
+  ) + (
+    SELECT count(*)::bigint FROM generation_retry_commands retry JOIN generation_requests r ON r.id = retry.request_id
+    WHERE r.clerk_user_id = $1 AND retry.created_at >= $2
+  ))::bigint AS daily_requests,
   (
     SELECT count(*)::bigint
     FROM generation_jobs AS pending_job
@@ -283,7 +288,7 @@ func (q *Queries) GetGenerationAdmissionUsage(ctx context.Context, arg GetGenera
 }
 
 const getGenerationRequestByCourseID = `-- name: GetGenerationRequestByCourseID :one
-SELECT gr.id, gr.initial_user_prompt, gr.pipeline_status, gr.current_step, gr.progress_percent, gr.failure_message, gr.started_at, gr.completed_at, gr.is_out_of_scope, gr.error_message, gr.warning_message, gr.suggested_title, gr.short_synopsis, gr.detected_current_level, gr.detected_target_level, gr.detected_goal, gr.detected_language, gr.clarification_questions, gr.raw_analysis_output, gr.created_at, gr.updated_at, gr.analysis_completed_at, gr.clarification_answers, gr.confirmed_title, gr.confirmed_synopsis, gr.confirmed_current_level, gr.confirmed_target_level, gr.confirmed_goals, gr.confirmed_language, gr.brief_confirmed_at, gr.clarifications_submitted_at, gr.clarification_version, gr.clerk_user_id, gr.generation_attempt
+SELECT gr.id, gr.initial_user_prompt, gr.pipeline_status, gr.current_step, gr.progress_percent, gr.failure_message, gr.started_at, gr.completed_at, gr.is_out_of_scope, gr.error_message, gr.warning_message, gr.suggested_title, gr.short_synopsis, gr.detected_current_level, gr.detected_target_level, gr.detected_goal, gr.detected_language, gr.clarification_questions, gr.raw_analysis_output, gr.created_at, gr.updated_at, gr.analysis_completed_at, gr.clarification_answers, gr.confirmed_title, gr.confirmed_synopsis, gr.confirmed_current_level, gr.confirmed_target_level, gr.confirmed_goals, gr.confirmed_language, gr.brief_confirmed_at, gr.clarifications_submitted_at, gr.clarification_version, gr.clerk_user_id, gr.generation_attempt, gr.tracking_revision, gr.history_complete
 FROM generation_requests gr
 JOIN courses c ON c.request_id = gr.id
 WHERE c.id = $1
@@ -327,12 +332,14 @@ func (q *Queries) GetGenerationRequestByCourseID(ctx context.Context, courseID u
 		&i.ClarificationVersion,
 		&i.ClerkUserID,
 		&i.GenerationAttempt,
+		&i.TrackingRevision,
+		&i.HistoryComplete,
 	)
 	return i, err
 }
 
 const getGenerationRequestByID = `-- name: GetGenerationRequestByID :one
-SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt
+SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt, tracking_revision, history_complete
 FROM generation_requests
 WHERE id = $1
 `
@@ -375,12 +382,14 @@ func (q *Queries) GetGenerationRequestByID(ctx context.Context, id uuid.UUID) (G
 		&i.ClarificationVersion,
 		&i.ClerkUserID,
 		&i.GenerationAttempt,
+		&i.TrackingRevision,
+		&i.HistoryComplete,
 	)
 	return i, err
 }
 
 const getGenerationRequestForUpdate = `-- name: GetGenerationRequestForUpdate :one
-SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt
+SELECT id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt, tracking_revision, history_complete
 FROM generation_requests
 WHERE id = $1
 FOR UPDATE
@@ -424,6 +433,8 @@ func (q *Queries) GetGenerationRequestForUpdate(ctx context.Context, id uuid.UUI
 		&i.ClarificationVersion,
 		&i.ClerkUserID,
 		&i.GenerationAttempt,
+		&i.TrackingRevision,
+		&i.HistoryComplete,
 	)
 	return i, err
 }
@@ -506,15 +517,30 @@ func (q *Queries) GetGenerationStatusByID(ctx context.Context, id uuid.UUID) (Ge
 
 const listGenerationCompletionCandidates = `-- name: ListGenerationCompletionCandidates :many
 SELECT gr.id FROM generation_requests gr
-JOIN courses c ON c.request_id = gr.id
-JOIN course_content_states cs ON cs.course_id = c.id
-WHERE cs.content_complete
+LEFT JOIN courses c ON c.request_id = gr.id
+LEFT JOIN course_content_states cs ON cs.course_id = c.id
+WHERE (cs.content_complete OR (
+    gr.pipeline_status = 'running' AND EXISTS (
+      SELECT 1 FROM generation_jobs stopped WHERE stopped.request_id = gr.id
+        AND stopped.generation_attempt = gr.generation_attempt AND stopped.is_current
+        AND stopped.status IN ('failed', 'cancelled')
+    )
+  ) OR (
+    gr.pipeline_status = 'failed' AND EXISTS (
+      SELECT 1 FROM lessons l JOIN modules m ON m.id = l.module_id
+      WHERE m.course_id = c.id AND (
+        btrim(COALESCE(l.content_markdown, '')) <> ''
+        OR EXISTS (SELECT 1 FROM lesson_quizzes q WHERE q.lesson_id = l.id)
+        OR EXISTS (SELECT 1 FROM lesson_exercises e WHERE e.lesson_id = l.id)
+      )
+    )
+  ))
   AND gr.pipeline_status <> 'awaiting_clarification'
   AND NOT gr.is_out_of_scope
-  AND (gr.pipeline_status <> 'completed' OR c.status <> 'completed')
+  AND (gr.pipeline_status NOT IN ('completed', 'partial') OR c.status <> 'completed' AND cs.content_complete)
   AND NOT EXISTS (
     SELECT 1 FROM generation_jobs j
-    WHERE j.request_id = gr.id AND j.generation_attempt = gr.generation_attempt
+    WHERE j.request_id = gr.id AND j.generation_attempt = gr.generation_attempt AND j.is_current
       AND j.status IN ('queued', 'running', 'retry_scheduled')
   )
 ORDER BY gr.updated_at, gr.id
@@ -638,7 +664,7 @@ const purgeRawGenerationOutputsBefore = `-- name: PurgeRawGenerationOutputsBefor
 WITH eligible_requests AS MATERIALIZED (
   SELECT retained_request.id
   FROM generation_requests AS retained_request
-  WHERE retained_request.pipeline_status IN ('completed', 'failed')
+  WHERE retained_request.pipeline_status IN ('completed', 'partial', 'failed')
     AND retained_request.updated_at < $1
     AND (
       retained_request.raw_analysis_output IS NOT NULL
@@ -785,7 +811,7 @@ SET
   clarification_version = $31,
   updated_at = $32
 WHERE id = $33
-RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt
+RETURNING id, initial_user_prompt, pipeline_status, current_step, progress_percent, failure_message, started_at, completed_at, is_out_of_scope, error_message, warning_message, suggested_title, short_synopsis, detected_current_level, detected_target_level, detected_goal, detected_language, clarification_questions, raw_analysis_output, created_at, updated_at, analysis_completed_at, clarification_answers, confirmed_title, confirmed_synopsis, confirmed_current_level, confirmed_target_level, confirmed_goals, confirmed_language, brief_confirmed_at, clarifications_submitted_at, clarification_version, clerk_user_id, generation_attempt, tracking_revision, history_complete
 `
 
 type UpdateGenerationRequestParams struct {
@@ -896,6 +922,8 @@ func (q *Queries) UpdateGenerationRequest(ctx context.Context, arg UpdateGenerat
 		&i.ClarificationVersion,
 		&i.ClerkUserID,
 		&i.GenerationAttempt,
+		&i.TrackingRevision,
+		&i.HistoryComplete,
 	)
 	return i, err
 }

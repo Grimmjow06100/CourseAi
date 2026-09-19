@@ -423,6 +423,7 @@ func (u *fakeUnitOfWork) WithinTx(ctx context.Context, fn func(context.Context, 
 }
 
 type fakeRepositories struct {
+	contract.TransactionalRepositories
 	requests fakeGenerationRequestRepository
 	courses  contract.CourseRepository
 	modules  contract.ModuleRepository

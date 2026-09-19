@@ -202,12 +202,15 @@ SELECT
     WHERE active_request.clerk_user_id = @clerk_user_id
       AND active_request.pipeline_status IN ('queued', 'running', 'awaiting_clarification')
   ) AS active_requests,
-  (
+  ((
     SELECT count(*)::bigint
     FROM generation_requests AS daily_request
     WHERE daily_request.clerk_user_id = @clerk_user_id
       AND daily_request.created_at >= @created_since
-  ) AS daily_requests,
+  ) + (
+    SELECT count(*)::bigint FROM generation_retry_commands retry JOIN generation_requests r ON r.id = retry.request_id
+    WHERE r.clerk_user_id = @clerk_user_id AND retry.created_at >= @created_since
+  ))::bigint AS daily_requests,
   (
     SELECT count(*)::bigint
     FROM generation_jobs AS pending_job
@@ -221,15 +224,30 @@ WHERE id = @id;
 
 -- name: ListGenerationCompletionCandidates :many
 SELECT gr.id FROM generation_requests gr
-JOIN courses c ON c.request_id = gr.id
-JOIN course_content_states cs ON cs.course_id = c.id
-WHERE cs.content_complete
+LEFT JOIN courses c ON c.request_id = gr.id
+LEFT JOIN course_content_states cs ON cs.course_id = c.id
+WHERE (cs.content_complete OR (
+    gr.pipeline_status = 'running' AND EXISTS (
+      SELECT 1 FROM generation_jobs stopped WHERE stopped.request_id = gr.id
+        AND stopped.generation_attempt = gr.generation_attempt AND stopped.is_current
+        AND stopped.status IN ('failed', 'cancelled')
+    )
+  ) OR (
+    gr.pipeline_status = 'failed' AND EXISTS (
+      SELECT 1 FROM lessons l JOIN modules m ON m.id = l.module_id
+      WHERE m.course_id = c.id AND (
+        btrim(COALESCE(l.content_markdown, '')) <> ''
+        OR EXISTS (SELECT 1 FROM lesson_quizzes q WHERE q.lesson_id = l.id)
+        OR EXISTS (SELECT 1 FROM lesson_exercises e WHERE e.lesson_id = l.id)
+      )
+    )
+  ))
   AND gr.pipeline_status <> 'awaiting_clarification'
   AND NOT gr.is_out_of_scope
-  AND (gr.pipeline_status <> 'completed' OR c.status <> 'completed')
+  AND (gr.pipeline_status NOT IN ('completed', 'partial') OR c.status <> 'completed' AND cs.content_complete)
   AND NOT EXISTS (
     SELECT 1 FROM generation_jobs j
-    WHERE j.request_id = gr.id AND j.generation_attempt = gr.generation_attempt
+    WHERE j.request_id = gr.id AND j.generation_attempt = gr.generation_attempt AND j.is_current
       AND j.status IN ('queued', 'running', 'retry_scheduled')
   )
 ORDER BY gr.updated_at, gr.id
@@ -239,7 +257,7 @@ LIMIT @limit_rows;
 WITH eligible_requests AS MATERIALIZED (
   SELECT retained_request.id
   FROM generation_requests AS retained_request
-  WHERE retained_request.pipeline_status IN ('completed', 'failed')
+  WHERE retained_request.pipeline_status IN ('completed', 'partial', 'failed')
     AND retained_request.updated_at < @cutoff
     AND (
       retained_request.raw_analysis_output IS NOT NULL

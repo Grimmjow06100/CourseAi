@@ -54,6 +54,13 @@ func (r *GenerationJobRepository) Enqueue(ctx context.Context, job domain.Genera
 	}
 
 	existing, findErr := r.FindByIdempotencyKey(ctx, job.IdempotencyKey)
+	if errors.Is(findErr, contract.ErrGenerationJobNotFound) {
+		row, currentErr := r.queries.GetCurrentGenerationOperation(ctx, dbsqlc.GetCurrentGenerationOperationParams{RequestID: job.RequestID, GenerationAttempt: int32(job.GenerationAttempt), Kind: dbsqlc.GenerationJobKind(job.Kind), TargetID: nullableUUID(job.TargetID)})
+		if currentErr != nil {
+			return domain.GenerationJob{}, currentErr
+		}
+		existing, findErr = generationJobFromSQLC(row)
+	}
 	if findErr != nil {
 		return domain.GenerationJob{}, findErr
 	}
@@ -255,6 +262,12 @@ func (r *GenerationJobRepository) PurgeTerminalBefore(ctx context.Context, cutof
 	if cutoff.IsZero() || limit <= 0 {
 		return 0, fmt.Errorf("%w: retention cutoff", domain.ErrBlankField)
 	}
+	if _, err := r.queries.PurgePublicGenerationEventsBefore(ctx, dbsqlc.PurgePublicGenerationEventsBeforeParams{Cutoff: cutoff, LimitRows: int32(limit * 10)}); err != nil {
+		return 0, err
+	}
+	if _, err := r.queries.PurgeGenerationRetryReceiptsBefore(ctx, dbsqlc.PurgeGenerationRetryReceiptsBeforeParams{Cutoff: cutoff, LimitRows: int32(limit)}); err != nil {
+		return 0, err
+	}
 	return r.queries.PurgeTerminalGenerationJobsBefore(ctx, dbsqlc.PurgeTerminalGenerationJobsBeforeParams{Cutoff: cutoff, LimitRows: int32(limit)})
 }
 
@@ -289,6 +302,9 @@ func validateQueuedGenerationJob(job domain.GenerationJob) error {
 
 func enqueueGenerationJobParams(job domain.GenerationJob) dbsqlc.EnqueueGenerationJobParams {
 	return dbsqlc.EnqueueGenerationJobParams{
+		IsCurrent:         job.IsCurrent,
+		OperationVersion:  int32(max(1, job.OperationVersion)),
+		SupersedesJobID:   nullableUUID(job.SupersedesJobID),
 		GenerationAttempt: int32(job.GenerationAttempt),
 		ID:                job.ID,
 		RequestID:         job.RequestID,

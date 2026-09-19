@@ -12,6 +12,7 @@ export const catalogSearchSchema = z.object({
       'lessons_generated',
       'content_generating',
       'completed',
+      'partial',
       'failed',
     ])
     .optional()

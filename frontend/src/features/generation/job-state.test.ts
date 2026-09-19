@@ -4,6 +4,9 @@ import { contentJobState, latestTargetJobs } from './job-state'
 function job(overrides: Partial<GenerationJob> = {}): GenerationJob {
   return {
     id: 'job',
+    isCurrent: true,
+    operationVersion: 1,
+    supersedesJobId: null,
     requestId: 'request',
     parentJobId: null,
     targetId: 'lesson',
@@ -44,7 +47,7 @@ describe('partial generation state', () => {
   })
   it('uses the newest retry rather than a historical failure regardless of API ordering', () => {
     const retry = job({ id: 'retry', status: 'retry_scheduled', createdAt: '2026-09-06T01:00:00Z' })
-    const failed = job({ status: 'failed' })
+    const failed = job({ status: 'failed', isCurrent: false })
     expect(latestTargetJobs([retry, failed])).toEqual([retry])
     expect(contentJobState([failed, retry], ['lesson'])).toEqual({ active: true, failed: false })
   })

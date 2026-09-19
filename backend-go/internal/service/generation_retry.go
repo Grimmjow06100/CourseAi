@@ -38,6 +38,9 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 		if err != nil {
 			return err
 		}
+		if err := s.enforceGenerationAdmission(ctx, repositories.GenerationRequests(), owner); err != nil {
+			return err
+		}
 		continuation, err := s.prepareFailedRequestRetry(&lockedRequest)
 		if err != nil {
 			return err
@@ -67,7 +70,7 @@ func (s *CourseGeneratorService) RetryFullCourseGeneration(ctx context.Context, 
 }
 
 func (s *CourseGeneratorService) prepareFailedRequestRetry(request *domain.GenerationRequest) (retryContinuation, error) {
-	if request.PipelineStatus != domain.PipelineStatusFailed {
+	if request.PipelineStatus != domain.PipelineStatusFailed && request.PipelineStatus != domain.PipelineStatusPartial {
 		return retryFromAnalysis, ErrGenerationNotRetryable
 	}
 
@@ -123,7 +126,7 @@ func (s *CourseGeneratorService) recoverFailedCourse(
 	if errors.Is(err, contract.ErrCourseNotFound) {
 		return nil
 	}
-	if err != nil || course.Status != domain.CourseStatusFailed {
+	if err != nil || (course.Status != domain.CourseStatusFailed && course.Status != domain.CourseStatusPartial) {
 		return err
 	}
 	if err := course.RestartGenerationFromFailure(courseRecoveryStatus(course)); err != nil {

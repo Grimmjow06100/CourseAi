@@ -14,6 +14,7 @@ import (
 type GenerationHandler struct {
 	commands contract.GenerationCommandService
 	queries  contract.GenerationQueryService
+	tracking contract.GenerationTrackingService
 }
 
 type structureOperation uint8
@@ -24,7 +25,8 @@ const (
 )
 
 func NewGenerationHandler(commands contract.GenerationCommandService, queries contract.GenerationQueryService) *GenerationHandler {
-	return &GenerationHandler{commands: commands, queries: queries}
+	tracking, _ := queries.(contract.GenerationTrackingService)
+	return &GenerationHandler{commands: commands, queries: queries, tracking: tracking}
 }
 
 func (h *GenerationHandler) List(c *gin.Context) {

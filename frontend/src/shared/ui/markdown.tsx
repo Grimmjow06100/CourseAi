@@ -19,7 +19,7 @@ function MermaidDiagram({ source }: { source: string }) {
           startOnLoad: false,
           securityLevel: 'strict',
           theme: 'neutral',
-          fontFamily: 'Manrope Variable, sans-serif',
+          fontFamily: 'Geist Variable, sans-serif',
         })
         const result = await mermaid.render(`course-ai-${reactId}`, source)
         if (active) setSvg(result.svg)

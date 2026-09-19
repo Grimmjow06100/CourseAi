@@ -6,9 +6,9 @@ import { GenerationList } from '@/features/generation/generation-list'
 import { generationListSearchSchema } from '@/features/generation/schemas'
 import type { PipelineStatus } from '@/shared/api/types'
 import { EmptyState, ErrorState, LoadingState } from '@/shared/ui/feedback'
-import { Select } from '@/shared/ui/form-controls'
+import { NativeSelect as Select } from '@/components/ui/native-select'
 import { PageHeader, Pagination } from '@/shared/ui/page'
-import { Button } from '@/shared/ui/button'
+import { Button } from '@/components/ui/button'
 
 function GenerationHistoryPage() {
   const { t } = useTranslation()
@@ -35,7 +35,7 @@ function GenerationHistoryPage() {
             }
           >
             <option value="">{t('generation.allStatuses')}</option>
-            {(['queued', 'running', 'awaiting_clarification', 'completed', 'failed'] as const).map(
+            {(['queued', 'running', 'awaiting_clarification', 'completed', 'partial', 'failed'] as const).map(
               (status) => (
                 <option key={status} value={status}>
                   {t(`generation.status.${status}`)}

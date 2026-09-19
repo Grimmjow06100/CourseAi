@@ -1,6 +1,9 @@
+import { trackingFr, trackingEn } from './tracking'
+
 export const resources = {
   fr: {
     translation: {
+      tracking: trackingFr,
       design: {
         workspace: 'Mon espace',
         navigation: 'APPRENDRE',
@@ -102,6 +105,9 @@ export const resources = {
       },
       generation: {
         contentAvailable: 'Contenu disponible',
+        availableAll: 'Toutes les leçons sont disponibles.',
+        availablePartial: 'Des leçons sont disponibles ; certaines restent à générer.',
+        actionsFor: 'Actions pour {{title}}',
         finalizationFailed:
           'Le contenu est prêt, mais la finalisation a rencontré un problème. Vous pouvez ouvrir la formation et actualiser son statut.',
         openPartialCourse: 'Consulter la formation partielle',
@@ -149,6 +155,7 @@ export const resources = {
           awaiting_clarification: 'À préciser',
           completed: 'Terminée',
           failed: 'Échec',
+          partial: 'Partielle',
         },
         deleteTitle: 'Supprimer cette génération ?',
         deleteDescription: 'La demande, les jobs et la formation associée seront supprimés définitivement.',
@@ -177,16 +184,21 @@ export const resources = {
           content_generating: 'Contenu en cours',
           completed: 'Terminée',
           failed: 'Échec',
+          partial: 'Partielle',
         },
         overview: 'Vue d’ensemble',
         curriculum: 'Programme',
+        hideCurriculum: 'Masquer le programme',
+        showCurriculum: 'Afficher le programme',
         objectives: 'Objectifs',
         prerequisites: 'Prérequis',
         skills: 'Compétences acquises',
         audience: 'Public cible',
         finalProject: 'Projet final',
-        modules: '{{count}} modules',
-        lessons: '{{count}} leçons',
+        modules_one: '{{count}} module',
+        modules_other: '{{count}} modules',
+        lessons_one: '{{count}} leçon',
+        lessons_other: '{{count}} leçons',
         duration: 'Durée estimée',
         start: 'Commencer',
         continue: 'Continuer',
@@ -230,6 +242,7 @@ export const resources = {
         type: { theory: 'Théorie', practice: 'Pratique', mixed: 'Mixte', quiz: 'Quiz' },
       },
       errors: {
+        network: 'La connexion a été interrompue. Réessayez.',
         signIn: 'Se connecter',
         generic: 'Une erreur inattendue est survenue.',
         unauthorized: 'Votre session a expiré. Reconnectez-vous.',
@@ -248,6 +261,7 @@ export const resources = {
   },
   en: {
     translation: {
+      tracking: trackingEn,
       design: {
         workspace: 'My workspace',
         navigation: 'LEARN',
@@ -343,6 +357,9 @@ export const resources = {
       },
       generation: {
         contentAvailable: 'Content available',
+        availableAll: 'All lessons are available.',
+        availablePartial: 'Some lessons are available; others still need to be generated.',
+        actionsFor: 'Actions for {{title}}',
         finalizationFailed:
           'The content is ready, but finalization encountered a problem. You can open the course and refresh its status.',
         openPartialCourse: 'View partial course',
@@ -390,6 +407,7 @@ export const resources = {
           awaiting_clarification: 'Needs input',
           completed: 'Completed',
           failed: 'Failed',
+          partial: 'Partial',
         },
         deleteTitle: 'Delete this generation?',
         deleteDescription: 'The request, jobs, and associated course will be permanently deleted.',
@@ -418,16 +436,21 @@ export const resources = {
           content_generating: 'Generating content',
           completed: 'Completed',
           failed: 'Failed',
+          partial: 'Partial',
         },
         overview: 'Overview',
         curriculum: 'Curriculum',
+        hideCurriculum: 'Hide curriculum',
+        showCurriculum: 'Show curriculum',
         objectives: 'Goals',
         prerequisites: 'Prerequisites',
         skills: 'Skills acquired',
         audience: 'Target audience',
         finalProject: 'Final project',
-        modules: '{{count}} modules',
-        lessons: '{{count}} lessons',
+        modules_one: '{{count}} module',
+        modules_other: '{{count}} modules',
+        lessons_one: '{{count}} lesson',
+        lessons_other: '{{count}} lessons',
         duration: 'Estimated duration',
         start: 'Start',
         continue: 'Continue',
@@ -471,6 +494,7 @@ export const resources = {
         type: { theory: 'Theory', practice: 'Practice', mixed: 'Mixed', quiz: 'Quiz' },
       },
       errors: {
+        network: 'The connection was interrupted. Please try again.',
         signIn: 'Sign in',
         generic: 'An unexpected error occurred.',
         unauthorized: 'Your session expired. Please sign in again.',

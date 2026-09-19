@@ -1,6 +1,6 @@
 import { Component, type PropsWithChildren } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from './button'
+import { Button } from '@/components/ui/button'
 
 export function ApplicationError() {
   const { t } = useTranslation()

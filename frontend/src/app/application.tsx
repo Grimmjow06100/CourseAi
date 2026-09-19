@@ -12,6 +12,7 @@ import { LoadingState } from '@/shared/ui/feedback'
 import { createQueryClient } from './query-client'
 import { createAppRouter } from './router'
 import { SessionLifetime } from './session-lifetime'
+import { useTheme } from '@/shared/hooks/use-theme'
 
 function Runtime({
   getToken,
@@ -67,6 +68,8 @@ function ClerkRuntime({ environment }: { environment: Environment }) {
 
 export function Application() {
   const { i18n } = useTranslation()
+  const { resolvedTheme } = useTheme()
+  const tokens = getComputedStyle(document.documentElement)
   const environment = loadEnvironment(import.meta.env, { production: import.meta.env.PROD })
   const localization = i18n.resolvedLanguage?.startsWith('en') ? enUS : frFR
   if (import.meta.env.DEV && environment.VITE_E2E_MODE) {
@@ -79,6 +82,23 @@ export function Application() {
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
       afterSignOutUrl="/sign-in"
+      appearance={{
+        variables: {
+          colorPrimary: tokens.getPropertyValue('--primary').trim(),
+          colorBackground: tokens.getPropertyValue('--card').trim(),
+          colorForeground: tokens.getPropertyValue('--foreground').trim(),
+          colorMutedForeground: tokens.getPropertyValue('--muted-foreground').trim(),
+          colorDanger: tokens.getPropertyValue('--destructive').trim(),
+          borderRadius: '8px',
+          fontFamily: 'Geist Variable, sans-serif',
+        },
+        elements: {
+          rootBox: 'w-full',
+          cardBox: 'w-full shadow-none',
+          card: 'shadow-none border border-border',
+          userButtonPopoverCard: resolvedTheme === 'dark' ? 'dark' : '',
+        },
+      }}
     >
       <ClerkRuntime environment={environment} />
     </ClerkProvider>
