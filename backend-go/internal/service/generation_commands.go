@@ -2,18 +2,15 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
-	"sort"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/contract"
 	"github.com/Grimmjow06100/course-ai/backend-go/internal/domain"
-	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/pointer"
+	"github.com/Grimmjow06100/course-ai/backend-go/internal/shared/textutil"
 	"github.com/google/uuid"
 )
 
@@ -32,6 +29,8 @@ func (s *CourseGeneratorService) enqueueFullCourseGeneration(ctx context.Context
 	if utf8.RuneCountInString(prompt) > 4000 {
 		return contract.GenerationStarted{}, ErrPromptTooLong
 	}
+	// Compare retries using the same normalization as the persisted domain entity.
+	prompt = textutil.CollapseWhitespace(prompt)
 	if utf8.RuneCountInString(strings.TrimSpace(params.IdempotencyKey)) > 200 {
 		return contract.GenerationStarted{}, fmt.Errorf("%w: idempotency key exceeds 200 characters", domain.ErrInvalidCollection)
 	}
@@ -279,32 +278,6 @@ func (s *CourseGeneratorService) EnqueueModuleContentGeneration(ctx context.Cont
 	return s.enqueueTargetedContentJob(ctx, domain.GenerationJobKindModuleContent, moduleID)
 }
 
-func (s *CourseGeneratorService) GetGenerationJob(ctx context.Context, jobID uuid.UUID) (domain.GenerationJob, error) {
-	if err := s.validateDependencies(); err != nil {
-		return domain.GenerationJob{}, err
-	}
-	owner, err := authenticatedOwner(ctx)
-	if err != nil {
-		return domain.GenerationJob{}, err
-	}
-	if jobID == uuid.Nil {
-		return domain.GenerationJob{}, fmt.Errorf("%w: generation job id", domain.ErrBlankField)
-	}
-	var job domain.GenerationJob
-	err = s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
-		if err := authorizeOwnedResource(ctx, repositories.Ownership(), ownedGenerationJob, jobID, owner); err != nil {
-			return err
-		}
-		loadedJob, err := repositories.GenerationJobs().FindByID(ctx, jobID)
-		if err != nil {
-			return err
-		}
-		job = loadedJob
-		return nil
-	})
-	return job, err
-}
-
 func (s *CourseGeneratorService) DeleteGenerationRequest(ctx context.Context, requestID uuid.UUID) error {
 	if err := s.validateDependencies(); err != nil {
 		return err
@@ -393,32 +366,6 @@ func (s *CourseGeneratorService) enqueueTargetedContentJob(ctx context.Context, 
 	return s.generationStarted(request, job), nil
 }
 
-func (s *CourseGeneratorService) enqueueWithCapacity(ctx context.Context, repositories contract.TransactionalRepositories, job domain.GenerationJob) (domain.GenerationJob, error) {
-	if job.GenerationAttempt > 1 {
-		job.IdempotencyKey += fmt.Sprintf(":attempt:%d", job.GenerationAttempt)
-	}
-	jobs, err := repositories.GenerationJobs().ListByRequestID(ctx, job.RequestID)
-	if err != nil {
-		return domain.GenerationJob{}, err
-	}
-	for _, existing := range jobs {
-		if existing.IsCurrent && existing.GenerationAttempt == job.GenerationAttempt && existing.Kind == job.Kind && pointer.Equal(existing.TargetID, job.TargetID) {
-			return existing, nil
-		}
-	}
-
-	if s.config.MaxPendingJobs > 0 {
-		pending, err := repositories.GenerationJobs().CountPendingWithAdmissionLock(ctx)
-		if err != nil {
-			return domain.GenerationJob{}, err
-		}
-		if pending >= s.config.MaxPendingJobs {
-			return domain.GenerationJob{}, contract.ErrGenerationQueueSaturated
-		}
-	}
-	return repositories.GenerationJobs().Enqueue(ctx, job)
-}
-
 func requestIDForTarget(ctx context.Context, repositories contract.TransactionalRepositories, kind domain.GenerationJobKind, targetID uuid.UUID) (uuid.UUID, error) {
 	switch kind {
 	case domain.GenerationJobKindLessonContent:
@@ -450,63 +397,6 @@ func requestIDForTarget(ctx context.Context, repositories contract.Transactional
 	}
 }
 
-func deterministicJobKey(prefix string, requestID uuid.UUID, payload json.RawMessage) string {
-	digest := sha256.Sum256(payload)
-	return fmt.Sprintf("%s:%s:%x", prefix, requestID, digest[:12])
-}
-
-func generationRequestIdempotencyKey(owner string, value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	return "analysis:clerk_user:" + strings.TrimSpace(owner) + ":client:" + value
-}
-
-func generationBriefFromStructureParams(params contract.GenerateStructureParams) domain.GenerationBrief {
-	return domain.GenerationBrief{
-		Title:        params.Title,
-		Synopsis:     params.Synopsis,
-		CurrentLevel: params.CurrentLevel,
-		TargetLevel:  params.TargetLevel,
-		Goals:        params.Goals,
-		Language:     params.Language,
-	}
-}
-
-func generationBriefEqual(left, right domain.GenerationBrief) bool {
-	leftJSON, leftErr := json.Marshal(left)
-	rightJSON, rightErr := json.Marshal(right)
-	return leftErr == nil && rightErr == nil && string(leftJSON) == string(rightJSON)
-}
-
-func clarificationSubmissionMatches(request domain.GenerationRequest, params contract.SubmitClarificationsParams) bool {
-	if request.ConfirmedBrief == nil || request.ClarificationsSubmittedAt == nil {
-		return false
-	}
-	clone := request
-	clone.PipelineStatus = domain.PipelineStatusAwaitingClarification
-	clone.ConfirmedBrief = nil
-	clone.BriefConfirmedAt = nil
-	clone.ClarificationsSubmittedAt = nil
-	clone.ClarificationAnswers = nil
-	clone.ClarificationVersion = 0
-	if err := clone.SubmitClarifications(params.Answers, params.Title, params.Synopsis, params.Language, clone.UpdatedAt); err != nil {
-		return false
-	}
-	return generationBriefEqual(*request.ConfirmedBrief, *clone.ConfirmedBrief) &&
-		clarificationAnswersEqual(request.ClarificationAnswers, clone.ClarificationAnswers)
-}
-
-func clarificationAnswersEqual(left, right []domain.ClarificationAnswer) bool {
-	canonical := func(answers []domain.ClarificationAnswer) map[string]string {
-		values := make(map[string]string, len(answers))
-		for _, answer := range answers {
-			selected := append([]string(nil), answer.SelectedValues...)
-			sort.Strings(selected)
-			values[strings.TrimSpace(answer.QuestionID)] = strings.Join(selected, "\x00")
-		}
-		return values
-	}
-	return reflect.DeepEqual(canonical(left), canonical(right))
+func (s *CourseGeneratorService) StartFullCourseGeneration(ctx context.Context, params contract.StartGenerationParams) (contract.GenerationStarted, error) {
+	return s.enqueueFullCourseGeneration(ctx, params)
 }

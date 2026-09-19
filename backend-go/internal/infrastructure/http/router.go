@@ -14,17 +14,18 @@ import (
 )
 
 type RouterConfig struct {
-	CourseCatalogService     contract.CourseCatalogService
-	GenerationCommandService contract.GenerationCommandService
-	GenerationQueryService   contract.GenerationQueryService
-	Authentication           gin.HandlerFunc
-	AllowedOrigins           []string
-	AppEnv                   string
-	MaxBodyBytes             int64
-	GenerationRateRequests   int
-	GenerationRateWindow     time.Duration
-	ReadyCheck               func(ctx context.Context) error
-	WorkerEnabled            bool
+	CourseCatalogService      contract.CourseCatalogService
+	GenerationCommandService  contract.GenerationCommandService
+	GenerationQueryService    contract.GenerationQueryService
+	GenerationTrackingService contract.GenerationTrackingService
+	Authentication            gin.HandlerFunc
+	AllowedOrigins            []string
+	AppEnv                    string
+	MaxBodyBytes              int64
+	GenerationRateRequests    int
+	GenerationRateWindow      time.Duration
+	ReadyCheck                func(ctx context.Context) error
+	WorkerEnabled             bool
 }
 
 func NewRouter(cfg RouterConfig) *gin.Engine {
@@ -55,7 +56,7 @@ func NewRouter(cfg RouterConfig) *gin.Engine {
 	}
 
 	healthHandler := handlers.NewHealthHandler(cfg.ReadyCheck, cfg.WorkerEnabled)
-	generationHandler := handlers.NewGenerationHandler(cfg.GenerationCommandService, cfg.GenerationQueryService)
+	generationHandler := handlers.NewGenerationHandler(cfg.GenerationCommandService, cfg.GenerationQueryService, cfg.GenerationTrackingService)
 	courseHandler := handlers.NewCourseHandler(cfg.CourseCatalogService)
 
 	router.GET("/health", healthHandler.Ready)

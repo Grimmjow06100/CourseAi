@@ -38,7 +38,7 @@ func trackingTestRouter(service contract.GenerationTrackingService) *gin.Engine 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(middlewares.ErrorHandler())
-	handler := &GenerationHandler{tracking: service}
+	handler := NewGenerationHandler(nil, nil, service)
 	router.GET("/api/generations/:requestID/tracking", handler.Tracking)
 	router.GET("/api/generations/:requestID/events", handler.Events)
 	router.POST("/api/generations/:requestID/jobs/:jobID/retry", handler.RetryJob)

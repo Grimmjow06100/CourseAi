@@ -1,7 +1,7 @@
+import { courseKeys, generationKeys } from '@/shared/api/query-keys'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef } from 'react'
 import { z } from 'zod'
-import { courseKeys } from '@/features/catalog/query-keys'
 import { useApiClient } from '@/shared/api/context'
 import { ApiError, unwrapApiResult } from '@/shared/api/errors'
 import { shouldPollQuery } from '@/shared/api/polling'
@@ -11,13 +11,7 @@ import type {
   RetryOperation,
   RetryOperationsResult,
 } from '@/shared/api/types'
-import { generationKeys } from './query-keys'
-
-export function newestTracking(previous: GenerationTracking | undefined, incoming: GenerationTracking) {
-  if (!previous) return incoming
-  if (incoming.generationAttempt < previous.generationAttempt) return previous
-  return BigInt(incoming.revision) < BigInt(previous.revision) ? previous : incoming
-}
+import { newestTracking } from './tracking-state'
 
 export function useGenerationTracking(requestId: string) {
   const client = useApiClient()

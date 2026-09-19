@@ -2,7 +2,7 @@
 
 ## Objectifs
 
-Le frontend traite l'API Go comme seule source de vérité. Il ne persiste ni JWT, ni génération, ni progression pédagogique dans le navigateur. L'état local est réservé aux interactions éphémères ; seule la langue est une préférence client persistée.
+Le frontend traite l'API Go comme seule source de vérité. Il ne persiste ni JWT, ni génération, ni progression pédagogique dans le navigateur. L'état local est réservé aux interactions éphémères ; la langue et le thème sont des préférences client persistées.
 
 ## Carte des packages
 
@@ -14,13 +14,16 @@ src/
   features/generation/    création, clarification, statut et historique
   features/catalog/       catalogue, cours et accès aux contenus
   features/course-reader/ lecteur, activités et révélation des solutions
-  shared/api/             client OpenAPI, erreurs et types générés
+  components/ui/          primitives shadcn/ui et variantes communes
+  shared/api/             transport OpenAPI, cache keys, erreurs et types générés
   shared/config/          validation Zod de l'environnement
   shared/i18n/            ressources FR/EN
   shared/ui/              composants visuels génériques
 ```
 
-`shared` ne dépend d'aucune feature. Les routes composent des features, et les features n'importent ni les routes ni `app`. ESLint vérifie ces frontières.
+`shared` et les primitives UI ne dépendent d'aucune feature. Les routes composent des features, et les features n'importent ni les routes ni `app`. Les dépendances entre features suivent `course-reader -> catalog -> generation` ; le lecteur peut aussi dépendre directement de `generation`. `auth` et `generation` restent indépendantes des autres features. La règle locale ESLint `architecture` vérifie ces frontières, y compris les chemins relatifs, réexports et imports dynamiques littéraux.
+
+Les hooks API gèrent transport et cache. Les formulaires ou écrans gèrent la navigation après une mutation. Les fonctions pures comme `tracking-state.ts` et `catalog/polling.ts` expriment les politiques d'affichage et de rafraîchissement ; elles sont testables sans monter React. `tracking-operation.tsx` contient les petits composants métier réutilisés par le suivi et le lecteur. La taille d'un fichier ne justifie pas à elle seule une nouvelle abstraction.
 
 ## Authentification
 
@@ -36,13 +39,13 @@ Chaque couple `userId` / `sessionId` possède son propre `QueryClient`, son rout
 
 ## État serveur et API
 
-TanStack Query possède tout l'état distant. Les clés sont centralisées dans `query-keys.ts`, incluent les filtres et servent de cible aux invalidations. `openapi-fetch` compile chaque route, paramètre et payload contre `schema.gen.ts`. `ApiError` normalise le statut HTTP, le code public et `X-Request-ID`.
+TanStack Query possède tout l'état distant. Les clés sont centralisées dans `shared/api/query-keys.ts`, incluent les filtres et servent de cible aux invalidations. Ce module dépend du contrat API, jamais des types d'une feature. Les invalidations indépendantes sont concurrentes ; supprimer une génération retire aussi ses snapshots et événements du cache. `openapi-fetch` compile chaque route, paramètre et payload contre `schema.gen.ts`. `ApiError` normalise le statut HTTP, le code public et `X-Request-ID`.
 
-Le polling de génération retourne `2000` uniquement pour `queued` et `running`, sinon `false`. Une erreur de lecture arrête le polling automatique après les tentatives configurées et propose une relance explicite.
+Le suivi, la vue de cours et le lecteur utilisent `GET /api/generations/:requestID/tracking`. Ce snapshot contient les opérations courantes, phases, modules, leçons, compteurs et autorisations de reprise. `newestTracking` rejette les réponses d'une tentative ou révision antérieure ; les révisions sont comparées avec `BigInt`. Le backend reste responsable du statut global et des opérations relançables. Un incident local ne transforme pas automatiquement la génération en échec.
 
-Les générations partielles utilisent `GET /api/generations/:requestID/jobs`, dont le service vérifie le propriétaire Clerk avant de lire les jobs. Cette réponse ne contient ni payload privé, ni sortie brute IA. La liste est partagée dans le cache et réinterrogée toutes les deux secondes tant qu'un job est `queued`, `running` ou `retry_scheduled`, avec reprise à la remise au premier plan. Elle restaure le suivi après un rechargement sans conserver d'identifiant de job dans le navigateur.
+Le suivi interroge le snapshot toutes les deux secondes pendant les travaux actifs. Les situations de réconciliation bénéficient d'un polling borné ; les erreurs transitoires conservent le dernier snapshot et espacent les lectures à dix secondes. Les refus 401/403/404 arrêtent cette boucle. Focus et reconnexion permettent une nouvelle lecture. Le catalogue ne considère pas un résultat `partial` comme un travail actif. Un échec historique bénéficie seulement de la fenêtre de récupération bornée définie dans `shared/api/polling.ts`.
 
-Un job de module terminé signifie que ses jobs enfants ont été créés, pas que les leçons sont prêtes. Le lecteur et le curriculum tiennent donc compte des jobs `lesson_content` ciblant les leçons du module. Le dernier job de chaque couple type/cible remplace ses anciens essais. Une transition terminale invalide les contenus et les listes ; les gros documents Markdown ne sont plus téléchargés à chaque tick de polling. Un échec propose le suivi de la demande et sa relance, au lieu de laisser un spinner sans fin.
+Un changement du statut, de la disponibilité des leçons ou de la tentative invalide cours et historique. Les gros documents Markdown ne sont donc pas téléchargés à chaque tick. Les événements sont paginés séparément, à la demande. Les reprises ciblées utilisent les identifiants et versions des opérations, avec une clé d'idempotence conservée après une réponse incertaine. L'ancien suivi frontend fondé sur la liste brute des jobs et les mutations de contenu sans consommateur ont été retirés ; les endpoints backend restent disponibles.
 
 La lecture ordinaire n'appelle jamais `/solutions`. Le bouton d'une activité active cette query et n'affiche que la correction choisie. Revenir sur une leçon n'affiche pas automatiquement des réponses déjà présentes dans le cache.
 
@@ -66,7 +69,7 @@ Le Markdown accepte GFM mais pas le HTML brut. `rehype-sanitize` reste actif. Le
 
 ## Tests
 
-Vitest couvre les schémas Zod, la garde, les query keys, l'ajout du bearer token et les erreurs API avec MSW. Playwright intercepte le backend et vérifie le parcours création, clarification, lecture, contenu partiel et révélation. Les projets tournent à 390, 768 et 1440 pixels et contrôlent débordement horizontal, erreurs console, accessibilité critique et navigation clavier.
+Vitest couvre les schémas Zod, la garde, les query keys, les politiques de polling, la cohérence des snapshots, la navigation du formulaire, l'ajout du bearer token et les erreurs API avec MSW. `npm run lint` teste la règle d'architecture avec ESLint puis l'applique aux sources. Playwright intercepte le backend et vérifie le parcours création, clarification, lecture, contenu partiel et révélation. Les projets tournent à 390, 768 et 1440 pixels et contrôlent débordement horizontal, erreurs console, accessibilité critique et navigation clavier.
 
 Le mode `VITE_E2E_MODE` fournit une identité uniquement lorsque Vite est en mode développement. La condition `import.meta.env.DEV` rend ce mécanisme inactif dans les builds de production.
 

@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { ApiErrorNotice } from '@/shared/ui/api-error-notice'
 import type { GenerationTracking } from '@/shared/api/types'
 import { useGenerationEvents } from './tracking-api'
-import { generationKeys } from './query-keys'
+import { generationKeys } from '@/shared/api/query-keys'
 
 export function TrackingHistory({ snapshot, enabled }: { snapshot: GenerationTracking; enabled: boolean }) {
   const { t, i18n } = useTranslation()

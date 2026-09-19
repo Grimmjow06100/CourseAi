@@ -1,9 +1,9 @@
 import { act, cleanup, render, renderHook, screen } from '@testing-library/react'
 import { focusManager, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { PropsWithChildren } from 'react'
-import { generationKeys } from './query-keys'
+import { courseKeys, generationKeys } from '@/shared/api/query-keys'
 import { useGenerationList, useGenerationStatus } from './api'
-import { useRequestJobs } from './jobs'
+import { useGenerationTracking } from './tracking-api'
 import { GenerationTracker } from './generation-tracker'
 import { trackingFixture } from '@/test/tracking-fixture'
 
@@ -80,23 +80,21 @@ it('refreshes a terminal status when window focus returns', async () => {
   cache.clear()
 })
 
-it('terminal jobs invalidate both history and detail', async () => {
+it('tracking changes invalidate both history and course content', async () => {
   vi.useFakeTimers()
   const { cache, Wrapper } = setup()
-  cache.setQueryData(generationKeys.detail('request'), {
-    pipelineStatus: 'failed',
-  })
+  cache.setQueryData(courseKeys.detail('course'), { id: 'course' })
   cache.setQueryData(generationKeys.list({ page: 1, pageSize: 20 }), {
     items: [],
   })
-  get.mockResolvedValue(success([{ id: 'job', status: 'completed' }]))
-  const hook = renderHook(() => useRequestJobs('request'), {
+  get.mockResolvedValue(success(trackingFixture({ pipelineStatus: 'completed' })))
+  const hook = renderHook(() => useGenerationTracking('request'), {
     wrapper: Wrapper,
   })
   await act(async () => {
     await vi.advanceTimersByTimeAsync(10)
   })
-  expect(cache.getQueryState(generationKeys.detail('request'))?.isInvalidated).toBe(true)
+  expect(cache.getQueryState(courseKeys.detail('course'))?.isInvalidated).toBe(true)
   expect(cache.getQueryState(generationKeys.list({ page: 1, pageSize: 20 }))?.isInvalidated).toBe(true)
   hook.unmount()
   cache.clear()

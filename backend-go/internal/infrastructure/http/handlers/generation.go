@@ -24,8 +24,7 @@ const (
 	retryStructure
 )
 
-func NewGenerationHandler(commands contract.GenerationCommandService, queries contract.GenerationQueryService) *GenerationHandler {
-	tracking, _ := queries.(contract.GenerationTrackingService)
+func NewGenerationHandler(commands contract.GenerationCommandService, queries contract.GenerationQueryService, tracking contract.GenerationTrackingService) *GenerationHandler {
 	return &GenerationHandler{commands: commands, queries: queries, tracking: tracking}
 }
 

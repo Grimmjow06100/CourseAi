@@ -10,6 +10,18 @@ Course AI generates structured IT courses with an asynchronous AI pipeline. The 
 
 Prefer explicit, maintainable code over abstractions that only reduce line count. Preserve the dependency rule and keep generated code isolated.
 
+## Engineering principles — backend and frontend
+
+Every change must preserve Clean Code, separation of responsibilities, simplicity, readability, testability, maintainability, low coupling and high cohesion.
+
+- Give each module one cohesive purpose. Split by responsibility, not by an arbitrary line count. Use names that explain domain intent and prefer explicit control flow to deeply nested conditions.
+- Keep business decisions, application orchestration, I/O and presentation at their respective boundaries. Make dependencies explicit at construction; do not discover optional capabilities through runtime casts.
+- Prefer the smallest design that solves an observed need. Avoid speculative frameworks, generic repositories, pass-through wrappers and abstractions that merely hide a few lines.
+- Keep pure transformations separate from side effects so important policies can be tested directly. Test public behavior, errors and invariants; do not mirror private implementation details.
+- Keep related behavior together, remove unused paths, and reuse a single definition of shared contracts. Do not duplicate server lifecycle rules in the client.
+- Preserve authorization, idempotency, cancellation, transaction guarantees and accessibility during refactors. Cover changed behavior with focused regression tests.
+- Update architecture documentation when ownership or dependency direction changes. Run the architecture guards along with the relevant verification suite.
+
 ## Backend architecture
 
 The Go backend follows a clean architecture dependency direction:
@@ -52,6 +64,9 @@ Rules:
 8. Keep unit tests beside the package under test. PostgreSQL integration tests belong in `tests/integration/postgres`.
 9. Add GoDoc to exported APIs when their contract, lifecycle or constraints are not obvious from the name.
 10. Run formatting, static checks and focused tests after each change; run the full verification suite before completion.
+11. Keep AI/network calls outside database transactions. Preserve request-before-claim lock ordering, lease fencing and generation-attempt checks.
+12. Group generation service methods by use case, job execution, scheduling, persistence, tracking or validation. Keep one composition root and existing ports instead of adding an interface for every helper.
+13. `tests/architecture` enforces internal dependency direction and keeps vendor libraries out of domain, contract and service. Change its allowlist only for a documented architectural decision.
 
 ## Backend verification
 
@@ -80,6 +95,23 @@ When database queries change, also run `sqlc generate` and verify that only expe
 - React Hook Form and Zod
 
 Validate user input with Zod before API submission. Keep API DTO types aligned with the OpenAPI document exposed by the backend.
+
+### Frontend architecture and responsibilities
+
+- `app` composes providers, session lifetime and the application shell. `routes` compose screens and validate route parameters; reusable behavior belongs in features.
+- `features` own their use cases, forms, server-state hooks and domain-specific presentation. Keep transport/cache effects in query hooks, navigation in the calling screen or form, and pure display policies in separate functions.
+- `shared` contains feature-independent transport, configuration, i18n and UI helpers. `components/ui` owns shadcn primitives. Neither may import features, routes or app.
+- Features never import `app` or `routes`. Cross-feature dependencies are directed: `course-reader -> catalog -> generation`, with `course-reader -> generation` also allowed. Authentication and generation do not depend on other features. ESLint checks aliases, relative imports, re-exports and literal dynamic imports.
+- Keep resource cache keys in `shared/api/query-keys.ts`, using API contract types rather than feature UI types. Scope keys to their resources; invalidate or remove all affected projections after mutations. Run independent invalidations concurrently.
+- TanStack Query owns remote state. Do not duplicate it in component state or local storage. Local state owns only interaction and client preferences. Treat backend tracking snapshots as authoritative; keep local incidents distinct from overall failure and settled partial results distinct from active work.
+- Keep components focused on one interaction or display responsibility. Extract reusable domain widgets rather than importing an entire screen for a small widget. Preserve stable keys, hook rules, keyboard behavior and loading/error/empty states.
+- Generated `routeTree.gen.ts` and `schema.gen.ts` are not edited by hand. Do not introduce another state or UI framework without a concrete need.
+
+### Frontend verification
+
+From `frontend`, run `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test` and `npm run build`. `lint` also tests and applies the architecture guard. For changed user flows, run `npm run test:e2e` across the mobile, tablet and desktop projects. When API contracts change, run `npm run api:check` and review the generated diff.
+
+The detailed frontend package map and runtime flows are documented in `frontend/docs/architecture.md`.
 
 ### UI component rules
 

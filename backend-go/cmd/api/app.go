@@ -87,17 +87,18 @@ func run(logger *slog.Logger) error {
 	}
 
 	router := httpinfra.NewRouter(httpinfra.RouterConfig{
-		CourseCatalogService:     courseCatalogService,
-		GenerationCommandService: courseGenerationService,
-		GenerationQueryService:   courseGenerationService,
-		Authentication:           httpmiddlewares.ClerkAuthentication(appConfig.Clerk.AuthorizedParties),
-		AllowedOrigins:           appConfig.AllowedOrigins,
-		AppEnv:                   appConfig.Environment,
-		MaxBodyBytes:             appConfig.Guardrails.MaxBodyBytes,
-		GenerationRateRequests:   appConfig.Guardrails.RateLimitRequests,
-		GenerationRateWindow:     appConfig.Guardrails.RateLimitWindow,
-		ReadyCheck:               pool.Ping,
-		WorkerEnabled:            appConfig.Worker.Enabled,
+		CourseCatalogService:      courseCatalogService,
+		GenerationCommandService:  courseGenerationService,
+		GenerationQueryService:    courseGenerationService,
+		GenerationTrackingService: courseGenerationService,
+		Authentication:            httpmiddlewares.ClerkAuthentication(appConfig.Clerk.AuthorizedParties),
+		AllowedOrigins:            appConfig.AllowedOrigins,
+		AppEnv:                    appConfig.Environment,
+		MaxBodyBytes:              appConfig.Guardrails.MaxBodyBytes,
+		GenerationRateRequests:    appConfig.Guardrails.RateLimitRequests,
+		GenerationRateWindow:      appConfig.Guardrails.RateLimitWindow,
+		ReadyCheck:                pool.Ping,
+		WorkerEnabled:             appConfig.Worker.Enabled,
 	})
 	server := &http.Server{
 		Addr:              appConfig.HTTP.Address,

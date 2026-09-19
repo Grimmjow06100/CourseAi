@@ -1,6 +1,5 @@
 import { generationLabel, hasCompleteCourse, shouldPollGenerations } from './presentation'
-import { contentJobState } from './job-state'
-import type { GenerationJob, GenerationSummary } from '@/shared/api/types'
+import type { GenerationSummary } from '@/shared/api/types'
 
 const failed: GenerationSummary = {
   requestId: 'request',
@@ -31,23 +30,4 @@ it('shows availability separately and bounds reconciliation polling', () => {
   expect(shouldPollGenerations([complete], query)).toBe(true)
   query.state.dataUpdateCount += 30
   expect(shouldPollGenerations([complete], query)).toBe(false)
-})
-
-it('ignores failed targets belonging to older generation attempts', () => {
-  const old = {
-    id: 'old',
-    generationAttempt: 1,
-    targetId: 'lesson',
-    kind: 'lesson_content',
-    status: 'failed',
-  } as GenerationJob
-  const current = {
-    id: 'new',
-    isCurrent: true,
-    generationAttempt: 2,
-    targetId: 'module',
-    kind: 'module_content',
-    status: 'running',
-  } as GenerationJob
-  expect(contentJobState([old, current], ['lesson', 'module'])).toEqual({ active: true, failed: false })
 })

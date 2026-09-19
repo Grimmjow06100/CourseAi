@@ -236,7 +236,7 @@ func TestGenerationHandlerRejectsInvalidStructureEnumsAndUnavailableService(t *t
 func generationTestRouter(service contract.CourseGenerationService) *gin.Engine {
 	router := gin.New()
 	router.Use(middlewares.ErrorHandler())
-	handler := NewGenerationHandler(service, service)
+	handler := NewGenerationHandler(service, service, nil)
 	router.GET("/api/generations", handler.List)
 	router.POST("/api/generations", handler.Start)
 	router.POST("/api/generations/:requestID/clarifications", handler.SubmitClarifications)

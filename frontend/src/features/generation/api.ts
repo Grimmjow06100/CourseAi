@@ -1,12 +1,10 @@
+import { courseKeys, generationKeys } from '@/shared/api/query-keys'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from '@tanstack/react-router'
 import { useApiClient } from '@/shared/api/context'
-import { courseKeys } from '@/features/catalog/query-keys'
 import { ensureApiSuccess, unwrapApiResult } from '@/shared/api/errors'
 import type { GenerationPage, GenerationStarted, GenerationStatus, PipelineStatus } from '@/shared/api/types'
 import type { ClarificationFormValues } from './schemas'
 import { shouldPollGenerations } from './presentation'
-import { generationKeys } from './query-keys'
 
 export function useGenerationList(filters: { status?: PipelineStatus; page: number; pageSize?: number }) {
   const client = useApiClient()
@@ -66,7 +64,6 @@ export function useGenerationStatus(requestId: string) {
 
 export function useStartGeneration() {
   const client = useApiClient()
-  const navigate = useNavigate()
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async ({ prompt, idempotencyKey }: { prompt: string; idempotencyKey: string }) =>
@@ -76,10 +73,7 @@ export function useStartGeneration() {
           body: { prompt },
         }),
       ),
-    onSuccess: async ({ requestId }) => {
-      await queryClient.invalidateQueries({ queryKey: generationKeys.lists() })
-      await navigate({ to: '/generations/$requestId', params: { requestId } })
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: generationKeys.lists() }),
   })
 }
 
@@ -103,9 +97,11 @@ export function useSubmitClarifications(requestId: string) {
         }),
       ),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: generationKeys.tracking(requestId) })
-      await queryClient.invalidateQueries({ queryKey: generationKeys.detail(requestId) })
-      await queryClient.invalidateQueries({ queryKey: generationKeys.lists() })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: generationKeys.tracking(requestId) }),
+        queryClient.invalidateQueries({ queryKey: generationKeys.detail(requestId) }),
+        queryClient.invalidateQueries({ queryKey: generationKeys.lists() }),
+      ])
     },
   })
 }
@@ -138,9 +134,12 @@ export function useDeleteGeneration() {
       ),
     onSuccess: async (_, requestId) => {
       queryClient.removeQueries({ queryKey: generationKeys.detail(requestId) })
-      queryClient.removeQueries({ queryKey: generationKeys.jobs(requestId) })
-      await queryClient.invalidateQueries({ queryKey: generationKeys.lists() })
-      await queryClient.invalidateQueries({ queryKey: courseKeys.all })
+      queryClient.removeQueries({ queryKey: generationKeys.tracking(requestId) })
+      queryClient.removeQueries({ queryKey: generationKeys.events(requestId) })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: generationKeys.lists() }),
+        queryClient.invalidateQueries({ queryKey: courseKeys.all }),
+      ])
     },
   })
 }

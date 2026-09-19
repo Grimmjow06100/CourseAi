@@ -4,6 +4,7 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
+import architecture from './eslint/architecture.mjs'
 
 export default defineConfig([
   globalIgnores([
@@ -59,15 +60,10 @@ export default defineConfig([
     rules: { '@typescript-eslint/only-throw-error': 'off' },
   },
   {
-    files: ['src/shared/**/*.{ts,tsx}'],
+    files: ['src/**/*.{ts,tsx}'],
+    plugins: { local: { rules: { architecture } } },
     rules: {
-      'no-restricted-imports': ['error', { patterns: ['@/app/*', '@/features/*', '@/routes/*'] }],
-    },
-  },
-  {
-    files: ['src/features/**/*.{ts,tsx}'],
-    rules: {
-      'no-restricted-imports': ['error', { patterns: ['@/app/*', '@/routes/*'] }],
+      'local/architecture': 'error',
     },
   },
 ])

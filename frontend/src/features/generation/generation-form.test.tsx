@@ -2,10 +2,29 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import '@/shared/i18n'
 import { GenerationForm } from './generation-form'
 
-const { mutateAsync } = vi.hoisted(() => ({ mutateAsync: vi.fn() }))
+const { mutateAsync, navigate } = vi.hoisted(() => ({ mutateAsync: vi.fn(), navigate: vi.fn() }))
+vi.mock('@tanstack/react-router', () => ({ useNavigate: () => navigate }))
 vi.mock('./api', () => ({
   useStartGeneration: () => ({ mutateAsync, isPending: false, error: null }),
 }))
+
+beforeEach(() => {
+  mutateAsync.mockReset()
+  navigate.mockReset()
+})
+
+it('opens the accepted request after the form submission succeeds', async () => {
+  mutateAsync.mockResolvedValue({ requestId: 'accepted-request' })
+  render(<GenerationForm />)
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Learn Linux administration' } })
+  fireEvent.click(screen.getByRole('button', { name: /générer la formation|generate course/i }))
+  await waitFor(() =>
+    expect(navigate).toHaveBeenCalledWith({
+      to: '/generations/$requestId',
+      params: { requestId: 'accepted-request' },
+    }),
+  )
+})
 
 it('reuses an idempotency key only for the same normalized prompt after an uncertain response', async () => {
   mutateAsync.mockRejectedValue(new Error('network'))

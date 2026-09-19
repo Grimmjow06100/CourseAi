@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import { AlertCircle, ArrowUpRight, Check, CircleDashed, LoaderCircle, RotateCcw } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
+import { trackingSummary } from './tracking-state'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -16,7 +17,8 @@ import { ClarificationForm } from './clarification-form'
 import { useGenerationStatus, useRetryGeneration } from './api'
 import { useRetryOperations } from './tracking-api'
 import { TrackingHistory } from './tracking-history'
-import { OperationDetails, OperationStatus, RetryOperationButton, TrackingModules } from './tracking-modules'
+import { TrackingModules } from './tracking-modules'
+import { OperationDetails, OperationStatus, RetryOperationButton } from './tracking-operation'
 
 function ClarificationStep({ requestId }: { requestId: string }) {
   const { t } = useTranslation()
@@ -60,21 +62,7 @@ export function GenerationTracker({
       { onSuccess: () => toast.success(t('tracking.resumed')) },
     )
   }
-  const summary = snapshot.isOutOfScope
-    ? 'scope'
-    : snapshot.contentComplete
-      ? snapshot.reconciliation === 'pending'
-        ? 'repair'
-        : 'complete'
-      : snapshot.pipelineStatus === 'partial'
-        ? 'partial'
-        : snapshot.pipelineStatus === 'failed'
-          ? 'failed'
-          : snapshot.counts.jobsFailed > 0
-            ? 'incidents'
-            : snapshot.reconciliation === 'attention_required'
-              ? 'attention'
-              : null
+  const summary = trackingSummary(snapshot)
   const rootOperations = snapshot.operations.filter(
     (operation) => !['lesson_plan', 'lesson_content'].includes(operation.kind),
   )

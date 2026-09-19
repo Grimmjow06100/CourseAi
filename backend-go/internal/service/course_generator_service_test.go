@@ -108,7 +108,7 @@ func TestNormalizeGeneratedCourseAllowsGeneratedModulesWithoutIDs(t *testing.T) 
 	}
 }
 
-func TestPrepareStructureRetryDeletesPartialCourseAndRestartsRequest(t *testing.T) {
+func TestEnqueueStructureRetryDeletesPartialCourseAndRestartsRequest(t *testing.T) {
 	clock := fixedClock{now: time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)}
 	request := analyzedGenerationRequest(t, clock.Now())
 	if err := request.MarkFailed("lesson plan failed", clock.Now()); err != nil {
@@ -121,13 +121,15 @@ func TestPrepareStructureRetryDeletesPartialCourseAndRestartsRequest(t *testing.
 	uow := &fakeUnitOfWork{
 		requests: map[uuid.UUID]domain.GenerationRequest{request.ID: request},
 		courses:  courses,
+		jobs:     newMemoryGenerationJobQueue(),
 	}
 	service := NewCourseGeneratorService(fakeCourseAI{}, uow, clock, CourseGeneratorConfig{})
 
-	updatedRequest, err := service.prepareStructureRetry(authenticatedTestContext(), request.ID)
+	_, err := service.EnqueueStructureRetry(authenticatedTestContext(), validStructureParams(request.ID))
 	if err != nil {
 		t.Fatalf("prepare structure retry: %v", err)
 	}
+	updatedRequest := uow.requests[request.ID]
 	if courses.deletedRequestID != request.ID {
 		t.Fatalf("expected partial course for request %s to be deleted, got %s", request.ID, courses.deletedRequestID)
 	}
@@ -140,8 +142,11 @@ func TestPrepareStructureRetryDeletesPartialCourseAndRestartsRequest(t *testing.
 	if updatedRequest.CompletedAt != nil {
 		t.Fatal("expected completed at to be cleared")
 	}
-	if updatedRequest.CurrentStep == nil || *updatedRequest.CurrentStep != stepAnalysisCompleted {
-		t.Fatalf("expected step %s, got %#v", stepAnalysisCompleted, updatedRequest.CurrentStep)
+	if updatedRequest.CurrentStep == nil || *updatedRequest.CurrentStep != "brief_confirmed" {
+		t.Fatalf("expected confirmed retry brief, got %#v", updatedRequest.CurrentStep)
+	}
+	if updatedRequest.GenerationAttempt != request.GenerationAttempt+1 {
+		t.Fatal("expected a new generation attempt")
 	}
 }
 

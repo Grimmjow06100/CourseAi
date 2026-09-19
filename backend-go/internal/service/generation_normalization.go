@@ -229,3 +229,11 @@ func attachRawOutputToQuizzes(quizzes []domain.Quiz, rawOutput json.RawMessage) 
 	}
 	return withRawOutput
 }
+
+func isEmptyGeneratedCourse(course domain.Course) bool {
+	return course.ID == uuid.Nil &&
+		course.RequestID == uuid.Nil &&
+		strings.TrimSpace(course.Title) == "" &&
+		strings.TrimSpace(course.Synopsis) == "" &&
+		len(course.Modules) == 0
+}

@@ -1,10 +1,9 @@
+import { courseKeys, generationKeys } from '@/shared/api/query-keys'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useApiClient } from '@/shared/api/context'
 import { ensureApiSuccess, unwrapApiResult } from '@/shared/api/errors'
-import type { Course, CoursePage, GenerationStarted, Lesson, LessonSolutions } from '@/shared/api/types'
-import { generationKeys } from '@/features/generation/query-keys'
-import { shouldPollQuery } from '@/shared/api/polling'
-import { courseKeys } from './query-keys'
+import type { Course, CoursePage, Lesson, LessonSolutions } from '@/shared/api/types'
+import { shouldPollCourses } from './polling'
 import type { CatalogSearch } from './schemas'
 
 export function useCourses(filters: CatalogSearch, pageSize = 12) {
@@ -22,17 +21,8 @@ export function useCourses(filters: CatalogSearch, pageSize = 12) {
     queryKey: courseKeys.list({ ...filters, pageSize }),
     refetchOnWindowFocus: 'always',
     refetchOnReconnect: 'always',
-    refetchInterval: (query) => {
-      const courses = query.state.data?.items ?? []
-      return !query.state.error &&
-        shouldPollQuery(
-          query,
-          courses.some((course) => course.status !== 'completed' && course.status !== 'failed'),
-          courses.some((course) => course.status === 'failed'),
-        )
-        ? 5_000
-        : false
-    },
+    refetchInterval: (query) =>
+      !query.state.error && shouldPollCourses(query.state.data?.items ?? [], query) ? 5_000 : false,
     queryFn: async ({ signal }) =>
       unwrapApiResult<CoursePage>(await client.GET('/api/courses', { params: { query }, signal })),
   })
@@ -74,47 +64,6 @@ export function useLessonSolutions(lessonId: string, enabled: boolean) {
         }),
       ),
     staleTime: Number.POSITIVE_INFINITY,
-  })
-}
-
-export function useGenerateLessonContent(courseId: string, lessonId: string) {
-  const client = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () =>
-      unwrapApiResult<GenerationStarted>(
-        await client.POST('/api/generations/lessons/{lessonID}/content', {
-          params: { path: { lessonID: lessonId } },
-        }),
-      ),
-    onSuccess: async ({ requestId }) =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: generationKeys.jobs(requestId) }),
-        queryClient.invalidateQueries({ queryKey: generationKeys.detail(requestId) }),
-        queryClient.invalidateQueries({ queryKey: generationKeys.lists() }),
-        queryClient.invalidateQueries({ queryKey: courseKeys.lesson(lessonId) }),
-        queryClient.invalidateQueries({ queryKey: courseKeys.detail(courseId) }),
-      ]),
-  })
-}
-
-export function useGenerateModuleContent(courseId: string, moduleId: string) {
-  const client = useApiClient()
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async () =>
-      unwrapApiResult<GenerationStarted>(
-        await client.POST('/api/generations/modules/{moduleID}/contents', {
-          params: { path: { moduleID: moduleId } },
-        }),
-      ),
-    onSuccess: async ({ requestId }) =>
-      Promise.all([
-        queryClient.invalidateQueries({ queryKey: courseKeys.detail(courseId) }),
-        queryClient.invalidateQueries({ queryKey: generationKeys.jobs(requestId) }),
-        queryClient.invalidateQueries({ queryKey: generationKeys.detail(requestId) }),
-        queryClient.invalidateQueries({ queryKey: generationKeys.lists() }),
-      ]),
   })
 }
 

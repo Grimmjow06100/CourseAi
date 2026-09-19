@@ -1,4 +1,5 @@
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useNavigate } from '@tanstack/react-router'
 import { ArrowRight, Code2, LoaderCircle, Server, Sparkles, Terminal } from 'lucide-react'
 import { useRef } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -19,6 +20,7 @@ const examples = [
 export function GenerationForm({ compact = false }: { compact?: boolean }) {
   const { t } = useTranslation()
   const mutation = useStartGeneration()
+  const navigate = useNavigate()
   const submissionKeys = useRef(new Map<string, string>())
   const {
     register,
@@ -36,7 +38,8 @@ export function GenerationForm({ compact = false }: { compact?: boolean }) {
     const idempotencyKey = submissionKeys.current.get(values.prompt) ?? crypto.randomUUID()
     submissionKeys.current.set(values.prompt, idempotencyKey)
     try {
-      await mutation.mutateAsync({ prompt: values.prompt, idempotencyKey })
+      const { requestId } = await mutation.mutateAsync({ prompt: values.prompt, idempotencyKey })
+      await navigate({ to: '/generations/$requestId', params: { requestId } })
     } catch {
       // The mutation error remains visible; an unchanged prompt reuses its key.
     }

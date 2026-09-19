@@ -48,6 +48,26 @@ Gin router
 
 Handlers do not load repositories directly. Repositories do not decide whether a Clerk user may access a resource. Ownership checks and transaction scope stay in application services.
 
+The generation handler receives command, query and tracking ports explicitly. A query implementation is never cast at runtime to discover a tracking capability. The composition root wires all three ports to the existing service implementation.
+
+## Generation service organization
+
+The existing service and its ports remain the application boundary. Its methods are grouped by responsibility rather than wrapped in additional forwarding services:
+
+| Files | Responsibility |
+| --- | --- |
+| `course_generator_service.go` | Construction, shared configuration and dependency checks |
+| `generation_commands.go`, `generation_retry.go`, `generation_operation_retry.go` | Public commands, admission to workflows and explicit retries |
+| `generation_queries.go`, `generation_job_queries.go`, `generation_history.go`, `generation_tracking.go` | Authorized reads and public projections |
+| `course_generator_jobs.go`, `generation_job_executor.go` | Pipeline stage execution and dispatch |
+| `generation_context.go` | Loading the context required by a generation stage |
+| `generation_persistence.go`, `generation_transaction.go` | Transactional writes and claim fencing |
+| `generation_scheduling.go`, `generation_admission.go` | Job creation, deterministic keys, capacity and quota checks |
+| `generation_course_state.go`, `generation_completion.go` | Course phase coordination, finalization and failure reconciliation |
+| `generation_brief.go`, `generation_normalization.go` | Input normalization, brief comparison and validation of generated structures |
+
+State transitions still belong to domain entities. AI calls stay outside transactions; extracted methods preserve their existing transaction boundaries. Structure retry has a single production path, exercised through `EnqueueStructureRetry`. Initial-command idempotency compares the same normalized prompt that the domain persists, after enforcing the original input length limit.
+
 ## Durable generation flow
 
 `POST /api/generations` does not execute OpenAI synchronously. It persists a generation request and an analysis job in one transaction, then returns `202 Accepted`.
@@ -119,6 +139,7 @@ Do not create a shared abstraction merely because two blocks look similar. Extra
 - Service tests use in-memory ports to cover complete job chains and idempotency.
 - PostgreSQL integration tests live in `tests/integration/postgres` and run against real migrations.
 - Race tests cover worker concurrency and shared state.
+- `tests/architecture` parses production imports and enforces the documented layer direction. Domain, contract, service and shared packages allow only standard-library dependencies and UUID values outside the module.
 
 The minimum pre-merge checks are `go vet ./...`, `staticcheck ./...`, `go test -count=1 ./...`, `go test -race ./...`, `sqlc vet` and the PostgreSQL integration suite.
 
@@ -131,6 +152,6 @@ The minimum pre-merge checks are `go vet ./...`, `staticcheck ./...`, `go test -
 5. `internal/service/course_generator_jobs.go`
 6. `internal/service/generation_job_executor.go`
 7. `internal/infrastructure/jobs/worker_pool.go`
-8. `internal/infrastructure/postgres/unit_of_work.go`
+8. `internal/infrastructure/postgres/repositories.go`
 9. `internal/infrastructure/http/router.go`
 10. `cmd/api/app.go`

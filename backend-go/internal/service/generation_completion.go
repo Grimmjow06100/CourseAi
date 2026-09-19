@@ -159,3 +159,36 @@ func (s *CourseGeneratorService) cancelSupersededJobs(ctx context.Context, repos
 	}
 	return nil
 }
+
+func (s *CourseGeneratorService) handleTerminalJobFailure(ctx context.Context, job domain.GenerationJob, cause error) error {
+	return s.withinTx(ctx, func(ctx context.Context, repositories contract.TransactionalRepositories) error {
+		request, err := repositories.GenerationRequests().FindGenerationRequestForUpdate(ctx, job.RequestID)
+		if err != nil {
+			return err
+		}
+		if request.GenerationAttempt != job.GenerationAttempt || request.PipelineStatus.IsTerminal() {
+			return nil
+		}
+		current, err := repositories.GenerationJobs().FindByID(ctx, job.ID)
+		if err != nil {
+			return err
+		}
+		if !current.IsCurrent || current.Status != domain.GenerationJobStatusFailed {
+			return nil
+		}
+		jobs, err := repositories.GenerationJobs().ListByRequestID(ctx, request.ID)
+		if err != nil {
+			return err
+		}
+		for _, sibling := range jobs {
+			if sibling.IsCurrent && sibling.GenerationAttempt == request.GenerationAttempt && !sibling.Status.IsTerminal() {
+				return nil
+			}
+		}
+		complete, err := s.finalizePersistedCourse(ctx, repositories, request)
+		if err != nil || complete {
+			return err
+		}
+		return s.settleStoppedGeneration(ctx, repositories, request, jobs)
+	})
+}

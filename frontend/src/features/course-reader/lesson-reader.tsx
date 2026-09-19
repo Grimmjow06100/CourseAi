@@ -11,7 +11,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Markdown } from '@/shared/ui/markdown'
 import { useLesson, useLessonSolutions } from '@/features/catalog/api'
 import { useGenerationTracking } from '@/features/generation/tracking-api'
-import { OperationStatus } from '@/features/generation/tracking-modules'
+import { OperationStatus } from '@/features/generation/tracking-operation'
 import { ApiErrorNotice } from '@/shared/ui/api-error-notice'
 import { LessonActivities } from './lesson-activities'
 

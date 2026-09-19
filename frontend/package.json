@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "typecheck": "tsc -b",
-    "lint": "eslint .",
+    "lint": "node eslint/architecture.check.mjs && eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "api:generate": "openapi-typescript ../backend-go/internal/infrastructure/http/apidocs/openapi.json -o src/shared/api/schema.gen.ts",

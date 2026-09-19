@@ -88,7 +88,7 @@ func TestStartFullCourseGenerationIsIdempotent(t *testing.T) {
 		fixedClock{now: time.Now()},
 		CourseGeneratorConfig{},
 	)
-	params := contract.StartGenerationParams{Prompt: "Build a Docker course", IdempotencyKey: "same-command"}
+	params := contract.StartGenerationParams{Prompt: "  Build a\n Docker\t course  ", IdempotencyKey: "same-command"}
 
 	first, err := service.StartFullCourseGeneration(authenticatedTestContext(), params)
 	if err != nil {
@@ -100,6 +100,11 @@ func TestStartFullCourseGenerationIsIdempotent(t *testing.T) {
 	}
 	if first.JobID != second.JobID || first.RequestID != second.RequestID || queue.count() != 1 || len(requests) != 1 {
 		t.Fatalf("idempotency failed: first=%+v second=%+v requests=%d jobs=%d", first, second, len(requests), queue.count())
+	}
+	params.Prompt = "Build a Docker course"
+	canonical, err := service.StartFullCourseGeneration(authenticatedTestContext(), params)
+	if err != nil || canonical.JobID != first.JobID || queue.count() != 1 || len(requests) != 1 {
+		t.Fatalf("normalized replay: job=%+v error=%v", canonical, err)
 	}
 
 	_, err = service.StartFullCourseGeneration(authenticatedTestContext(), contract.StartGenerationParams{

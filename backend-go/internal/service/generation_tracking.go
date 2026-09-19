@@ -12,6 +12,9 @@ import (
 var _ contract.GenerationTrackingService = (*CourseGeneratorService)(nil)
 
 func (s *CourseGeneratorService) GetGenerationTracking(ctx context.Context, id uuid.UUID) (contract.GenerationTracking, error) {
+	if err := s.validateDependencies(); err != nil {
+		return contract.GenerationTracking{}, err
+	}
 	owner, err := authenticatedOwner(ctx)
 	if err != nil {
 		return contract.GenerationTracking{}, err
@@ -32,6 +35,9 @@ func (s *CourseGeneratorService) GetGenerationTracking(ctx context.Context, id u
 }
 
 func (s *CourseGeneratorService) GetGenerationEvents(ctx context.Context, id uuid.UUID, cursor int64, limit int) (contract.GenerationEventPage, error) {
+	if err := s.validateDependencies(); err != nil {
+		return contract.GenerationEventPage{}, err
+	}
 	owner, err := authenticatedOwner(ctx)
 	if err != nil {
 		return contract.GenerationEventPage{}, err
